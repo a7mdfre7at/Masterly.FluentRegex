@@ -1,17 +1,40 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFrameworks>netstandard2.0;net462;net5.0;netcoreapp2.0</TargetFrameworks>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <Authors>Ahmad Al-Freihat</Authors>
+    <Description>A creative way to Create regular expression patterns using readable API</Description>
+    <PackageProjectUrl>https://github.com/a7mdfre7at/Masterly.FluentRegex</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/a7mdfre7at/Masterly.FluentRegex</RepositoryUrl>
+    <PackageReadmeFile>README.nuget.md</PackageReadmeFile>
+    <PackageIcon>repo_image.png</PackageIcon>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>Regex;Fluent;FluentRegex;FluentAPI;Regular;Expression;Pattern</PackageTags>
+    <PackageReleaseNotes>Initail release</PackageReleaseNotes>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <AssemblyVersion>1.0.1</AssemblyVersion>
+    <FileVersion>1.0.1</FileVersion>
+    <Version>1.0.1</Version>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(TargetFramework)' == 'net5.0'">
-    <PackageReference Include="Masterly.Extensions.Core">
-      <Version>1.0.0</Version>
-    </PackageReference>
-  </ItemGroup>
-
   <ItemGroup>
-    <PackageReference Include="Masterly.AssembliesScanner" Version="1.0.0" />
+    <None Include="..\..\README.nuget.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+    <None Include="..\..\repo_image.png">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+    <None Include="..\..\README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+    <None Include="..\..\LICENSE.txt">
+      <Pack>True</Pack>
+      <PackagePath>$(PackageLicenseFile)</PackagePath>
+    </None>
   </ItemGroup>
 
 </Project>
