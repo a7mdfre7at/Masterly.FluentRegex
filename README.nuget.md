@@ -50,7 +50,7 @@ Pattern p = Pattern.With
                    .EndOfLine;
 ```
 
-For more samples, please see tests in unit test project [Here](https://github.com/a7mdfre7at/Masterly.FluentRegex/tree/master/tests/Masterly.FluentRegex.UnitTests "Here")                
+For more samples, please see tests in unit test project [Here](https://github.com/a7mdfre7at/Masterly.FluentRegex/tree/master/test/Masterly.FluentRegex.UnitTests "Here")                
 
 
 ## License
