@@ -3,7 +3,7 @@ A creative way to Create regular expression patterns using readable  API
 
 <img src="https://raw.githubusercontent.com/a7mdfre7at/Masterly.FluentRegex/master/repo_image.png" width="200" height="180">
 
-[![Nuget](https://img.shields.io/nuget/v/Masterly.FluentRegex?style=flat-square)](https://www.nuget.org/packages/Masterly.FluentRegex) ![Nuget](https://img.shields.io/nuget/dt/Masterly.FluentRegex?label=nuget%20downloads&style=flat-square) ![GitHub last commit](https://img.shields.io/github/last-commit/a7mdfre7at/Masterly.FluentRegex?style=flat-square) ![GitHub](https://img.shields.io/github/license/a7mdfre7at/Masterly.FluentRegex?style=flat-square)
+[![Nuget](https://img.shields.io/nuget/v/Masterly.FluentRegex?style=flat-square)](https://www.nuget.org/packages/Masterly.FluentRegex) ![Nuget](https://img.shields.io/nuget/dt/Masterly.FluentRegex?label=nuget%20downloads&style=flat-square) ![GitHub last commit](https://img.shields.io/github/last-commit/a7mdfre7at/Masterly.FluentRegex?style=flat-square) ![GitHub](https://img.shields.io/github/license/a7mdfre7at/Masterly.FluentRegex?style=flat-square) [![Build](https://github.com/a7mdfre7at/Masterly.FluentRegex/actions/workflows/build.yml/badge.svg)](https://github.com/a7mdfre7at/Masterly.FluentRegex/actions/workflows/build.yml) [![CodeQL Analysis](https://github.com/a7mdfre7at/Masterly.FluentRegex/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/a7mdfre7at/Masterly.FluentRegex/actions/workflows/codeql-analysis.yml) [![Publish to NuGet](https://github.com/a7mdfre7at/Masterly.FluentRegex/actions/workflows/publish.yml/badge.svg)](https://github.com/a7mdfre7at/Masterly.FluentRegex/actions/workflows/publish.yml)
 
 ## Give a Star! :star:
 
