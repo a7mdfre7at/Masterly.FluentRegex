@@ -16,24 +16,29 @@
     <AssemblyVersion>1.0.1</AssemblyVersion>
     <FileVersion>1.0.1</FileVersion>
     <Version>1.0.1</Version>
+    <!--<PackageReleaseNotes>$([System.IO.File]::ReadAllText("$(MSBuildProjectDirectory)/../../RELEASE-NOTES.md"))</PackageReleaseNotes>-->
   </PropertyGroup>
 
   <ItemGroup>
     <None Include="..\..\README.nuget.md">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
+      <Visible>False</Visible>
     </None>
     <None Include="..\..\repo_image.png">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
+      <Visible>False</Visible>
     </None>
     <None Include="..\..\README.md">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
+      <Visible>False</Visible>
     </None>
     <None Include="..\..\LICENSE.txt">
       <Pack>True</Pack>
       <PackagePath>$(PackageLicenseFile)</PackagePath>
+      <Visible>False</Visible>
     </None>
   </ItemGroup>
 
