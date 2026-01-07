@@ -2,7 +2,7 @@
 
 namespace Masterly.FluentRegex
 {
-    public class Pattern
+    public partial class Pattern
 	{
 		private const string SPECIAL_CHARS = @"^$.|{}[]()*+?\";
 

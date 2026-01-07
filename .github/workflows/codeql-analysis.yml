@@ -2,36 +2,33 @@ name: CodeQL Analysis
 
 on:
   push:
+    branches: [master]
   pull_request:
+    branches: [master]
   schedule:
-    - cron: '0 8 1 * *'
+    - cron: '31 1 * * 2'
 
 jobs:
   analyze:
-    name: CodeQL Analysis
-    runs-on: windows-2019
-    steps:
-      - name: Checkout repository
-        id: checkout_repo
-        uses: actions/checkout@v2
+    name: Analyze C#
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v1
-        with:
-          dotnet-version: '6.0.x'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Initialize CodeQL
-        id: init_codeql
-        uses: github/codeql-action/init@v1
+        uses: github/codeql-action/init@v3
         with:
-          queries: security-and-quality
-
-      - name: Install dependencies
-        run: dotnet restore
-
-      - name: Build
-        run: dotnet build --configuration Release --no-restore
+          languages: csharp
+          build-mode: none
 
       - name: Perform CodeQL Analysis
-        id: analyze_codeql
-        uses: github/codeql-action/analyze@v1
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:csharp

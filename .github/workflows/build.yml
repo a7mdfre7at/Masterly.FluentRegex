@@ -2,40 +2,44 @@ name: Build
 
 on:
   workflow_dispatch:
-    branches: [ master ]
   push:
-    branches: [ master ]
+    branches: [master]
   pull_request:
-    branches: [ master ]
+    branches: [master]
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
+
     steps:
-    - uses: actions/checkout@v2
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v1
-      with:
-          dotnet-version: '6.0.x'
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
 
-    - name: Install dependencies
-      run: dotnet restore
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
 
-    - name: Build
-      run: dotnet build --configuration Release --no-restore
+      - name: Restore dependencies
+        run: dotnet restore
 
-    - name: Test
-      run: dotnet test --no-restore --verbosity normal
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
 
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
-      with:
-        tag_name: v1.0.1
-        release_name: Release v1.0.1
-        body_path: CHANGELOG.md
-        draft: false
-        prerelease: false
+      - name: Test
+        run: dotnet test --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage"
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v5
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        with:
+          fail_ci_if_error: false
+        continue-on-error: true

@@ -9,7 +9,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{B680AC86-21D
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Masterly.FluentRegex", "src\Masterly.FluentRegex\Masterly.FluentRegex.csproj", "{7AF6A47C-00BF-40FC-A43D-715EBC446792}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Masterly.FluentRegex.UnitTests", "test\Masterly.FluentRegex.UnitTests\Masterly.FluentRegex.UnitTests.csproj", "{FD151BA2-04FC-4D16-8FA9-199F75AA9102}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Masterly.FluentRegex.Tests", "test\Masterly.FluentRegex.Tests\Masterly.FluentRegex.Tests.csproj", "{FD151BA2-04FC-4D16-8FA9-199F75AA9102}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

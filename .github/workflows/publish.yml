@@ -1,46 +1,65 @@
 name: Publish to NuGet
-on:
-  push:
-    branches:
-      - master # Your default release branch
-    paths:
-      - 'src/Masterly.FluentRegex/**'
-  workflow_run:
-    workflows: ["Build"]
-    branches: [master]
-    types: 
-      - completed
-jobs:
-  on-success:
-    name: List Masterly.FluentRegex on nuget.org
-    runs-on: windows-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    steps:
-      - uses: actions/checkout@v2
 
-      # Required for a specific dotnet version that doesn't come with ubuntu-latest / windows-latest
-      # Visit bit.ly/2synnZl to see the list of SDKs that are pre-installed with ubuntu-latest / windows-latest
-      - name: Setup dotnet
-        uses: actions/setup-dotnet@v1
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Build]
+    branches: [master]
+    types: [completed]
+
+jobs:
+  publish:
+    name: Publish to NuGet
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '6.0.x'
-      
-      # Publish
-      - name: publish on version change
-        uses: rohith/publish-nuget@v2
+          dotnet-version: 8.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
         with:
-          PROJECT_FILE_PATH: src/Masterly.FluentRegex/Masterly.FluentRegex.csproj # Relative to repository root
-          # VERSION_FILE_PATH: Directory.Build.props # Filepath with version info, relative to repository root. Defaults to project file
-          VERSION_REGEX: <Version>(.*)<\/Version> # Regex pattern to extract version info in a capturing group
-          TAG_COMMIT: true # Flag to enable / disable git tagging
-          TAG_FORMAT: Masterly.FluentRegex-v* # Format of the git tag, [*] gets replaced with version
-          NUGET_KEY: ${{secrets.NUGET_API_KEY}} # nuget.org API key
-  
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Publish to NuGet
+        id: publish_nuget
+        uses: alirezanet/publish-nuget@v3.1.0
+        with:
+          PROJECT_FILE_PATH: src/Masterly.FluentRegex/Masterly.FluentRegex.csproj
+          VERSION_REGEX: ^\s*<Version>(.*)<\/Version>\s*$
+          TAG_COMMIT: true
+          TAG_FORMAT: v*
+          NUGET_KEY: ${{ secrets.NUGET_API_KEY }}
+          INCLUDE_SYMBOLS: false
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: steps.publish_nuget.outputs.VERSION != ''
+        with:
+          name: Release v${{ steps.publish_nuget.outputs.VERSION }}
+          tag_name: v${{ steps.publish_nuget.outputs.VERSION }}
+          body_path: CHANGELOG.md
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   on-failure:
-    runs-on: windows-latest
-    name: Publish Failed
+    name: Build Failed
+    runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'failure' }}
     steps:
-      - run: |
-            echo "This workflow has been canceled because of build or test failed" 
-            exit 1
+      - name: Report failure
+        run: |
+          echo "::error::Build workflow failed. NuGet publish skipped."
+          exit 1
