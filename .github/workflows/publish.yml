@@ -43,17 +43,6 @@ jobs:
           NUGET_KEY: ${{ secrets.NUGET_API_KEY }}
           INCLUDE_SYMBOLS: false
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        if: steps.publish_nuget.outputs.VERSION != ''
-        with:
-          name: Release v${{ steps.publish_nuget.outputs.VERSION }}
-          tag_name: v${{ steps.publish_nuget.outputs.VERSION }}
-          body_path: CHANGELOG.md
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   on-failure:
     name: Build Failed
     runs-on: ubuntu-latest
