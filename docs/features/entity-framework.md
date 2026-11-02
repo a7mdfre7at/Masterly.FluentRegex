@@ -90,6 +90,13 @@ SELECT REGEXP_REPLACE([p].[Sku], N'\A([A-Z]{3})-([0-9]{4})\n?\z', N'\2/\1')     
 `$0` is the whole match on PostgreSQL (`\&`), MySQL (`$0`) and SQL Server 2025 (`\0`); MariaDB cannot express it.
 Groups above 9 are only supported on MySQL. The replacement must be a literal string.
 
+Group numbers are .NET's, and they are mapped to the database's own numbering, which often differs: .NET numbers
+unnamed groups before named ones, every engine numbers left to right, and PostgreSQL drops groups inside
+lookarounds. For `(?<year>\d{4})-(\d{2})`, `Group(col, pattern, 1)` returns the month on every database, as in
+.NET, even though PostgreSQL calls that group 2. The mapping needs the pattern at query compile time, so a group
+reference into a pattern held in a variable throws (except group 0, the whole match). A group number held in a
+variable is accepted only when the pattern numbers its groups the same way in .NET and in the database.
+
 ### Index hints
 
 The core library's [language facts](language-facts.md) prove, from the pattern's minimal automaton, the text every
@@ -241,6 +248,11 @@ db.Products.WhereMatches(p => p.Sku, Sku);
 ```
 
 End such patterns with `\z`: `$` also accepts a final newline, which `LIKE` can only cover with a trailing `%`.
+
+`LIKE` patterns are always sent as Unicode literals (`N'...'`), also for `varchar` columns: SQL Server best-fit
+maps characters in a non-Unicode literal (`'lemon' LIKE 'ł%'` is true) and ignores trailing blanks in non-Unicode
+comparisons, and either would break the proof. With Windows collations SQL Server still seeks an index on the
+`varchar` column; with legacy `SQL_*` collations the conversion can turn the seek into a scan.
 The `MatchingAsync` prefilter on the other dialects compiles its `LIKE` for a binary collation, which stays a
 superset under any case- or accent-insensitive collation.
 

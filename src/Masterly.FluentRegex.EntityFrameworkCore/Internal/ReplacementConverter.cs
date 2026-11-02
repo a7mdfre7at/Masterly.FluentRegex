@@ -17,19 +17,19 @@ internal static class ReplacementConverter
     private const char CloseBrace = '}';
     private const char Ampersand = '&';
     private const int WholeMatch = 0;
+    private const string WholeMatchKey = "0";
     private const int MaxSingleDigitGroup = 9;
-    private const int MaxGroupDigits = 9;
     private const string UnsupportedSubstitutions = "&`'+_";
 
     /// <summary>Converts <paramref name="replacement"/> for <paramref name="dialect"/>.</summary>
     /// <param name="replacement">The .NET replacement string.</param>
     /// <param name="dialect">The target dialect.</param>
     /// <param name="groupNumbers">
-    /// The pattern's group names and numbers, or null when the pattern is not known at query compile time
-    /// (named references then throw).
+    /// The pattern's group names and .NET numbers mapped to the dialect's group numbers, or null when the pattern is
+    /// not known at query compile time (every group reference except <c>$0</c> then throws).
     /// </param>
     /// <exception cref="NotSupportedException">The replacement uses a substitution the dialect cannot express.</exception>
-    /// <exception cref="InvalidOperationException">A named group is referenced but the pattern is not known.</exception>
+    /// <exception cref="InvalidOperationException">A group is referenced but the pattern is not known.</exception>
     /// <exception cref="ArgumentException">A named group does not exist in the pattern.</exception>
     public static string Convert(string replacement, SqlDialect dialect, IReadOnlyDictionary<string, int>? groupNumbers)
     {
@@ -137,16 +137,14 @@ internal static class ReplacementConverter
 
     private static int ResolveGroup(string name, IReadOnlyDictionary<string, int>? groupNumbers)
     {
+        if (string.Equals(name, WholeMatchKey, StringComparison.Ordinal))
+        {
+            return WholeMatch;
+        }
+
         if (groupNumbers == null)
         {
-            if (IsNumber(name))
-            {
-                return ParseNumber(name);
-            }
-
-            throw new InvalidOperationException(
-                $"The named group reference '${{{name}}}' can only be resolved when the pattern is known at query " +
-                "compile time. Reference the pattern through a static readonly field or build it inline in the query, or reference the group by number.");
+            throw UnknownPattern($"${{{name}}}");
         }
 
         if (groupNumbers.TryGetValue(name, out int number))
@@ -158,20 +156,31 @@ internal static class ReplacementConverter
     }
 
     /// <summary>
-    /// Like .NET, takes the longest run of digits that names an existing group; without group knowledge the
-    /// whole run is the group number.
+    /// Like .NET, takes the longest run of digits that names an existing group (group 0, the whole match,
+    /// always exists) and maps it to the dialect's group number, which can differ from the .NET number.
     /// </summary>
     private static int? LongestExistingGroup(string digits, IReadOnlyDictionary<string, int>? groupNumbers, out int consumed)
     {
         if (groupNumbers == null)
         {
-            consumed = digits.Length;
-            return ParseNumber(digits);
+            if (string.Equals(digits, WholeMatchKey, StringComparison.Ordinal))
+            {
+                consumed = digits.Length;
+                return WholeMatch;
+            }
+
+            throw UnknownPattern($"${digits}");
         }
 
         for (int length = digits.Length; length > 0; length--)
         {
             string prefix = digits.Substring(0, length);
+            if (string.Equals(prefix, WholeMatchKey, StringComparison.Ordinal))
+            {
+                consumed = length;
+                return WholeMatch;
+            }
+
             if (groupNumbers.TryGetValue(prefix, out int number))
             {
                 consumed = length;
@@ -183,33 +192,16 @@ internal static class ReplacementConverter
         return null;
     }
 
-    private static bool IsNumber(string text)
-    {
-        if (text.Length == 0)
-        {
-            return false;
-        }
-
-        foreach (char c in text)
-        {
-            if (!char.IsAsciiDigit(c))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static int ParseNumber(string digits)
-    {
-        if (digits.Length > MaxGroupDigits)
-        {
-            throw new ArgumentException($"'{digits}' is not a valid group number.", nameof(digits));
-        }
-
-        return int.Parse(digits, NumberStyles.None, CultureInfo.InvariantCulture);
-    }
+    /// <summary>
+    /// Group numbers differ between .NET and the database engines (.NET numbers unnamed groups first, PostgreSQL
+    /// has no named groups and drops groups inside lookarounds), so a reference can only be mapped when the
+    /// pattern is known at query compile time.
+    /// </summary>
+    private static InvalidOperationException UnknownPattern(string reference) =>
+        new InvalidOperationException(
+            $"The group reference '{reference}' can only be translated when the pattern is known at query compile time, " +
+            "because the database numbers groups differently from .NET. Reference the pattern through a static " +
+            "readonly field or build it inline in the query.");
 
     private static void AppendGroup(StringBuilder sql, int number, SqlDialect dialect)
     {

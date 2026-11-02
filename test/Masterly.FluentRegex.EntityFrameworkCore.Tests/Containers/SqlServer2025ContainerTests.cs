@@ -74,6 +74,9 @@ public sealed class SqlServer2025ContainerTests : IClassFixture<SqlServer2025Fix
     public Task Group_ExtractsCaptures() => ContainerScenarios.GroupExtractsCapturesAsync(_fixture.Options, Cancellation);
 
     [DockerFact]
+    public Task Group_WithRenumberedGroups_EqualsDotNet() => ContainerScenarios.GroupWithRenumberedGroupsEqualsDotNetAsync(_fixture.Options, Cancellation);
+
+    [DockerFact]
     public Task Replace_RewritesWithGroupReferences() => ContainerScenarios.ReplaceRewritesWithGroupReferencesAsync(_fixture.Options, Cancellation);
 
     [DockerFact]

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -40,6 +41,8 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
     private const int FirstOccurrence = 1;
     private const int True = 1;
     private const int False = 0;
+    private const int WholeMatchNumber = 0;
+    private const string WholeMatchGroup = "0";
 
     private static readonly MethodInfo PatternIsMatch = ReflectionHelper.GetMethod(typeof(Pattern), nameof(Pattern.IsMatch), typeof(string));
     private static readonly MethodInfo ConstrainedIsMatch = ReflectionHelper.GetMethod(typeof(ConstrainedPattern), nameof(ConstrainedPattern.IsMatch), typeof(string));
@@ -320,7 +323,7 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
 
         DialectRegex? regex = ResolveRegex(operand, dialect, logger);
         SqlExpression regexSql = regex == null ? RegexParameter(operand.RequireParameter()) : RegexConstant(regex.RegexText);
-        SqlExpression groupNumber = GroupNumber(groupExpression, regex);
+        SqlExpression groupNumber = GroupNumber(groupExpression, regex, operand.Constant as Pattern);
         RelationalTypeMapping resultMapping = value.TypeMapping ?? _stringMapping;
         SqlExpression[] arguments =
         {
@@ -336,32 +339,83 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
         return _sql.Function(function, arguments, nullable: true, propagateNullability, typeof(string), resultMapping);
     }
 
-    private SqlExpression GroupNumber(SqlExpression groupExpression, DialectRegex? regex)
+    /// <summary>
+    /// Maps a .NET group reference to the dialect's group number. The numbers differ: .NET numbers unnamed groups
+    /// before named ones, every engine numbers left to right, and PostgreSQL drops groups inside lookarounds.
+    /// Group 0, the whole match, is the same everywhere.
+    /// </summary>
+    private SqlExpression GroupNumber(SqlExpression groupExpression, DialectRegex? regex, Pattern? pattern)
     {
         switch (groupExpression)
         {
             case SqlConstantExpression { Value: int number }:
-                return _sql.Constant(number, _intMapping);
+                return _sql.Constant(DialectGroupNumber(number.ToString(CultureInfo.InvariantCulture), regex), _intMapping);
             case SqlConstantExpression { Value: string name }:
-                if (regex == null)
-                {
-                    throw new InvalidOperationException(
-                        $"The group name '{name}' can only be resolved when the pattern is known at query compile time. " +
-                        "Reference the pattern through a static readonly field or build it inline in the query, or use the group number overload.");
-                }
-
-                if (!regex.GroupNumbers.TryGetValue(name, out int resolved))
-                {
-                    throw new ArgumentException($"The pattern has no group named '{name}'.", nameof(groupExpression));
-                }
-
-                return _sql.Constant(resolved, _intMapping);
+                return _sql.Constant(DialectGroupNumber(name, regex), _intMapping);
             case SqlParameterExpression parameter when parameter.Type == typeof(int):
+                RequireUnchangedNumbering(regex, pattern);
                 return _sql.ApplyTypeMapping(parameter, _intMapping);
             default:
                 throw new InvalidOperationException(
                     "The group name must be a literal string; the group number may be a literal or a variable.");
         }
+    }
+
+    private static int DialectGroupNumber(string group, DialectRegex? regex)
+    {
+        if (string.Equals(group, WholeMatchGroup, StringComparison.Ordinal))
+        {
+            return WholeMatchNumber;
+        }
+
+        if (regex == null)
+        {
+            throw new InvalidOperationException(
+                $"The group '{group}' can only be translated when the pattern is known at query compile time, because the " +
+                "database numbers groups differently from .NET. Reference the pattern through a static readonly field or " +
+                "build it inline in the query.");
+        }
+
+        if (!regex.GroupNumbers.TryGetValue(group, out int number))
+        {
+            throw new ArgumentException(
+                $"The pattern has no group '{group}' that the database can return (PostgreSQL does not capture inside lookarounds).",
+                nameof(group));
+        }
+
+        return number;
+    }
+
+    /// <summary>
+    /// A group number held in a variable is only known when the query runs, so it can only be passed through when
+    /// every .NET group keeps its number in the dialect.
+    /// </summary>
+    private static void RequireUnchangedNumbering(DialectRegex? regex, Pattern? pattern)
+    {
+        if (regex != null && pattern != null && KeepsGroupNumbers(regex, pattern))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            "A group number held in a variable can only be translated when the pattern is known at query compile time " +
+            "and the database numbers its groups exactly as .NET does. Use a literal group number or name, or a pattern " +
+            "without named groups and without groups inside lookarounds.");
+    }
+
+    private static bool KeepsGroupNumbers(DialectRegex regex, Pattern pattern)
+    {
+        int[] dotNetGroups = pattern.ToRegex().GetGroupNumbers();
+        foreach (int group in dotNetGroups)
+        {
+            bool mapped = regex.GroupNumbers.TryGetValue(group.ToString(CultureInfo.InvariantCulture), out int number);
+            if (group != WholeMatchNumber && (!mapped || number != group))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     // ------------------------------------------------------------------
@@ -488,7 +542,7 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
         SqlExpression? escape = like.EscapeCharacter is char escapeCharacter
             ? _sql.Constant(escapeCharacter.ToString(), _stringMapping)
             : null;
-        return _sql.Like(value, _sql.Constant(like.Expression, value.TypeMapping ?? _stringMapping), escape);
+        return _sql.Like(value, _sql.Constant(like.Expression, _stringMapping), escape);
     }
 
     /// <summary>
@@ -502,7 +556,7 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
         SqlExpression result = predicate;
         if (facts.RequiredPrefix.Length > 0)
         {
-            SqlExpression prefix = _sql.Constant(EscapeLike(facts.RequiredPrefix) + LikeWildcard, value.TypeMapping ?? _stringMapping);
+            SqlExpression prefix = _sql.Constant(EscapeLike(facts.RequiredPrefix) + LikeWildcard, _stringMapping);
             result = _sql.AndAlso(result, _sql.Like(value, prefix, _sql.Constant(LikeEscape, _stringMapping)));
         }
 

@@ -92,6 +92,81 @@ public sealed class SqlGenerationTests
     }
 
     [Fact]
+    public void Npgsql_GroupByDotNetNumber_IsMappedToTheEngineNumber()
+    {
+        using CatalogContext context = Npgsql();
+
+        string sql = context.Products.Select(product => PatternFunctions.Group(product.Sku, TestPatterns.YearMonth, 1)).ToQueryString();
+
+        // .NET group 1 is the unnamed month group, which PostgreSQL numbers 2.
+        sql.ShouldContain(", 1, 1, '', 2)", customMessage: sql);
+    }
+
+    [Fact]
+    public void Npgsql_GroupWholeMatch_IsGroupZero()
+    {
+        using CatalogContext context = Npgsql();
+
+        string sql = context.Products.Select(product => PatternFunctions.Group(product.Sku, TestPatterns.YearMonth, 0)).ToQueryString();
+
+        sql.ShouldContain(", 1, 1, '', 0)", customMessage: sql);
+    }
+
+    [Fact]
+    public void Npgsql_GroupNumberInAVariable_WithRenumberedGroups_Throws()
+    {
+        using CatalogContext context = Npgsql();
+        int group = 1;
+
+        Should.Throw<InvalidOperationException>(
+            () => context.Products.Select(product => PatternFunctions.Group(product.Sku, TestPatterns.YearMonth, group)).ToQueryString())
+            .Message.ShouldContain("numbers its groups exactly as .NET does");
+    }
+
+    [Fact]
+    public void Npgsql_GroupNumberInAVariable_WithUnchangedNumbering_UsesTheParameter()
+    {
+        using CatalogContext context = Npgsql();
+        int group = 2;
+
+        string sql = context.Products.Select(product => PatternFunctions.Group(product.Sku, TestPatterns.SkuParts, group)).ToQueryString();
+
+        sql.ShouldContain("regexp_substr(");
+        sql.ShouldContain(", 1, 1, '', @");
+    }
+
+    [Fact]
+    public void Npgsql_GroupOfAPatternInAVariable_Throws()
+    {
+        using CatalogContext context = Npgsql();
+        Pattern local = TestPatterns.SkuParts;
+
+        Should.Throw<InvalidOperationException>(
+            () => context.Products.Select(product => PatternFunctions.Group(product.Sku, local, 1)).ToQueryString())
+            .Message.ShouldContain("known at query compile time");
+    }
+
+    [Fact]
+    public void Npgsql_ReplaceDotNetNumbers_AreMappedToTheEngineNumbers()
+    {
+        using CatalogContext context = Npgsql();
+
+        string sql = context.Products.Select(product => PatternFunctions.Replace(product.Sku, TestPatterns.YearMonth, "$1/${year}|$0")).ToQueryString();
+
+        sql.ShouldContain(@"'\2/\1|\&', 'g')", customMessage: sql);
+    }
+
+    [Fact]
+    public void Npgsql_ReplaceWithGroupsOfAPatternInAVariable_Throws()
+    {
+        using CatalogContext context = Npgsql();
+        Pattern local = TestPatterns.SkuParts;
+
+        Should.Throw<InvalidOperationException>(
+            () => context.Products.Select(product => PatternFunctions.Replace(product.Sku, local, "$2")).ToQueryString());
+    }
+
+    [Fact]
     public void Npgsql_GroupByName_RemovesGroupNamesPostgreSqlCannotParse()
     {
         using CatalogContext context = Npgsql();
@@ -232,6 +307,32 @@ public sealed class SqlGenerationTests
     }
 
     [Fact]
+    public void SqlServer_VarcharColumn_LikePatternIsStillAUnicodeLiteral()
+    {
+        // A non-Unicode literal would be best-fit mapped by SQL Server ('lemon' LIKE 'ł%' is true) and would ignore
+        // trailing blanks, so the proven LIKE is always sent as N'...'.
+        using VarcharCatalogContext context = new VarcharCatalogContext(
+            new DbContextOptionsBuilder<VarcharCatalogContext>().UseSqlServer(SqlServerConnection)
+                .UseFluentRegex(fluent => fluent.UseLikeCollation(LikeCollation.Binary)).Options);
+
+        string sql = context.Products.WhereMatches(product => product.Sku, TestPatterns.StrictSku).ToQueryString();
+
+        sql.ShouldContain("[p].[Sku] LIKE N'[A-Z][A-Z][A-Z]-[0-9][0-9][0-9][0-9]'", customMessage: sql);
+    }
+
+    [Fact]
+    public void SqlServer2025_VarcharColumn_IndexHintPrefixIsAUnicodeLiteral()
+    {
+        using VarcharCatalogContext context = new VarcharCatalogContext(
+            new DbContextOptionsBuilder<VarcharCatalogContext>().UseSqlServer(SqlServerConnection)
+                .UseFluentRegex(fluent => fluent.UseDialect(SqlDialect.SqlServer2025)).Options);
+
+        string sql = context.Products.WhereMatches(product => product.Sku, TestPatterns.AbcSku).ToQueryString();
+
+        sql.ShouldContain(@"LIKE N'ABC-%'", customMessage: sql);
+    }
+
+    [Fact]
     public void SqlServer_BinaryCollation_EmitsTheProvenExactLikeUnderExactOnly()
     {
         using CatalogContext context = SqlServer(configure: fluent => fluent.UseLikeCollation(LikeCollation.Binary));
@@ -358,18 +459,6 @@ public sealed class SqlGenerationTests
             () => context.Products.Select(product => PatternFunctions.Group(product.Sku, local, "number")).ToQueryString());
 
         ex.Message.ShouldContain("static readonly");
-    }
-
-    [Fact]
-    public void GroupByNumber_ParameterPattern_IsTranslated()
-    {
-        using CatalogContext context = Npgsql();
-        Pattern local = TestPatterns.SkuParts;
-
-        string sql = context.Products.Select(product => PatternFunctions.Group(product.Sku, local, 2)).ToQueryString();
-
-        sql.ShouldContain("regexp_substr(");
-        sql.ShouldContain(", @");
     }
 
     [Fact]

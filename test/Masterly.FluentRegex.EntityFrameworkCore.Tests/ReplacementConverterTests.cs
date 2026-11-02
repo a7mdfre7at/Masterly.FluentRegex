@@ -6,12 +6,20 @@ namespace Masterly.FluentRegex.EntityFrameworkCore.Tests;
 
 public sealed class ReplacementConverterTests
 {
+    // Shaped like FlavorConversion.GroupNumbers: names and .NET numbers, never group 0 (the whole match).
     private static readonly IReadOnlyDictionary<string, int> Groups = new Dictionary<string, int>
     {
-        ["0"] = 0,
         ["1"] = 1,
         ["2"] = 2,
         ["number"] = 2
+    };
+
+    // (?<year>\d{4})-(\d{2}): .NET numbers the unnamed group 1 and "year" 2; the engines number left to right.
+    private static readonly IReadOnlyDictionary<string, int> Renumbered = new Dictionary<string, int>
+    {
+        ["year"] = 1,
+        ["2"] = 1,
+        ["1"] = 2
     };
 
     [Theory]
@@ -41,9 +49,16 @@ public sealed class ReplacementConverterTests
     }
 
     [Fact]
-    public void Convert_WithoutGroupKnowledge_AcceptsNumbersOnly()
+    public void Convert_DotNetNumbers_AreMappedToTheDialectNumbers()
     {
-        ReplacementConverter.Convert("$1", SqlDialect.PostgreSql, null).ShouldBe(@"\1");
+        ReplacementConverter.Convert("$1|${1}|$2|${year}", SqlDialect.PostgreSql, Renumbered).ShouldBe(@"\2|\2|\1|\1");
+    }
+
+    [Fact]
+    public void Convert_WithoutGroupKnowledge_AcceptsOnlyTheWholeMatch()
+    {
+        ReplacementConverter.Convert("[$0]", SqlDialect.PostgreSql, null).ShouldBe(@"[\&]");
+        Should.Throw<InvalidOperationException>(() => ReplacementConverter.Convert("$1", SqlDialect.PostgreSql, null)).Message.ShouldContain("static readonly");
         Should.Throw<InvalidOperationException>(() => ReplacementConverter.Convert("${number}", SqlDialect.PostgreSql, null)).Message.ShouldContain("static readonly");
     }
 

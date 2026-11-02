@@ -85,6 +85,22 @@ internal static class ContainerScenarios
         letters.ShouldBe(new[] { "ABC", "XYZ", null, "ABC" });
     }
 
+    /// <summary>A pattern mixing named and unnamed groups, whose .NET numbers differ from the engine's.</summary>
+    public static async Task GroupWithRenumberedGroupsEqualsDotNetAsync(DbContextOptions<ConstrainedCatalogContext> options, CancellationToken cancellationToken)
+    {
+        await using ConstrainedCatalogContext context = new ConstrainedCatalogContext(options);
+        List<string?> skus = await context.Products.OrderBy(product => product.Id).Select(product => product.Sku).ToListAsync(cancellationToken);
+
+        List<string?> inSql = await context.Products.OrderBy(product => product.Id)
+            .Select(product => PatternFunctions.Group(product.Sku, TestPatterns.NamedLettersUnnamedDigits, 1)).ToListAsync(cancellationToken);
+        List<string?> replaced = await context.Products.OrderBy(product => product.Id)
+            .Select(product => PatternFunctions.Replace(product.Sku, TestPatterns.NamedLettersUnnamedDigits, "$1:${letters}")).ToListAsync(cancellationToken);
+
+        inSql.ShouldBe(skus.Select(sku => PatternFunctions.Group(sku, TestPatterns.NamedLettersUnnamedDigits, 1)));
+        inSql.ShouldBe(new[] { "1234", "0001", null, "0007" });
+        replaced.ShouldBe(skus.Select(sku => PatternFunctions.Replace(sku, TestPatterns.NamedLettersUnnamedDigits, "$1:${letters}")));
+    }
+
     public static async Task ReplaceRewritesWithGroupReferencesAsync(DbContextOptions<ConstrainedCatalogContext> options, CancellationToken cancellationToken)
     {
         await using ConstrainedCatalogContext context = new ConstrainedCatalogContext(options);

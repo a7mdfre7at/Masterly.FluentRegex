@@ -32,6 +32,20 @@ public sealed class CatalogContext : DbContext
     public DbSet<Product> Products => Set<Product>();
 }
 
+/// <summary>Products whose Sku column is non-Unicode (varchar), as in many SQL Server schemas.</summary>
+public sealed class VarcharCatalogContext : DbContext
+{
+    public VarcharCatalogContext(DbContextOptions<VarcharCatalogContext> options)
+        : base(options)
+    {
+    }
+
+    public DbSet<Product> Products => Set<Product>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder) =>
+        modelBuilder.Entity<Product>().Property(product => product.Sku).IsUnicode(false).HasMaxLength(20);
+}
+
 /// <summary>Products whose Sku column carries a HasPattern CHECK constraint.</summary>
 public sealed class ConstrainedCatalogContext : DbContext
 {
