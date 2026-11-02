@@ -67,6 +67,21 @@ internal sealed class MySqlTranslator : SqlRegexTranslator
             ? $"\\k<{group.Name}>"
             : $"\\{number.ToString(CultureInfo.InvariantCulture)}";
 
+    /// <summary>
+    /// ICU backtracks with .NET's preferences and replaces empty matches like .NET, but MySQL's
+    /// <c>REGEXP_REPLACE</c> returns an empty subject unchanged (MySQL 8.4: <c>REGEXP_REPLACE('', '^', 'X')</c>
+    /// is the empty string, .NET gives <c>X</c>).
+    /// </summary>
+    protected override void AddMatchExtentWarnings()
+    {
+        WarnCapturesInNullableRepeats();
+        if (MatchShape.MinWidth(Tree.Root) == 0)
+        {
+            WarnExtent("The pattern can match the empty string. MySQL's REGEXP_REPLACE returns an empty input " +
+                       "unchanged, while .NET replaces the empty match.");
+        }
+    }
+
     protected override void CheckLookbehind(GroupNode group)
     {
         if (HasUnboundedRepeat(group.Body))

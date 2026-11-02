@@ -13,6 +13,14 @@ public partial class Pattern
     /// <summary>
     /// Translates this pattern, including its <see cref="Options"/>, into another regex dialect.
     /// </summary>
+    /// <remarks>
+    /// Case-insensitive parts are expanded with the case equivalences .NET's <see cref="System.Text.RegularExpressions.Regex"/>
+    /// would use for this pattern if it were created now: those of <see cref="System.Globalization.CultureInfo.CurrentCulture"/>
+    /// at the time of the call, or the invariant ones under
+    /// <see cref="System.Text.RegularExpressions.RegexOptions.CultureInvariant"/>. Only Turkish and Azerbaijani
+    /// (dotted and dotless i) and the invariant culture differ from the rest. <see cref="IsMatch(string)"/> follows
+    /// the same rule with the culture current when the pattern first matches, because its regex is cached.
+    /// </remarks>
     /// <param name="flavor">The target dialect.</param>
     /// <param name="options">
     /// Exactness settings for <see cref="RegexFlavor.JavaScript"/> and <see cref="RegexFlavor.JsonSchema"/>,

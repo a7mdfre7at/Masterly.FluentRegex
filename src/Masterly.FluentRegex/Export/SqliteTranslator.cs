@@ -12,8 +12,11 @@ namespace Masterly.FluentRegex.Export;
 /// <c>Regex.IsMatch(input, pattern, RegexOptions.NonBacktracking, TimeSpan.FromMilliseconds(1000))</c>
 /// (src/EFCore.Sqlite.Core/Storage/Internal/SqliteRelationalConnection.cs) and translates only the
 /// two-argument <c>Regex.IsMatch</c>, so the pattern is the .NET pattern itself with its options
-/// written as an inline prefix. Options without an inline form (CultureInvariant, RightToLeft,
-/// ECMAScript, NonBacktracking) and constructs the non-backtracking engine rejects (backreferences,
+/// written as an inline prefix. The function runs in the application process, so case-insensitive
+/// matching uses the culture of the thread that executes the query. Options without an inline form
+/// (RightToLeft, ECMAScript, NonBacktracking, and CultureInvariant unless no case-insensitive construct
+/// involves the culture-dependent letters i, I, U+0130 and U+0131) and constructs the non-backtracking
+/// engine rejects (backreferences,
 /// lookarounds, atomic groups, conditionals, balancing groups, <c>\G</c>) are reported as unsupported
 /// rather than failing at query time. SQLite string literals do not process backslashes
 /// (https://www.sqlite.org/lang_expr.html), so only quotes are doubled.
@@ -30,7 +33,8 @@ internal static class SqliteTranslator
     public static FlavorConversion Translate(RegexTree tree, RegexOptions options)
     {
         List<string> issues = new List<string>();
-        CheckOptions(options & ~IgnoredOptions, issues);
+        RegexOptions ignored = IgnoredOptions | (IsCultureNeutral(tree.Root) ? RegexOptions.CultureInvariant : RegexOptions.None);
+        CheckOptions(options & ~ignored, issues);
         CheckConstructs(tree.Root, issues);
         if (issues.Count > 0)
         {
@@ -48,6 +52,56 @@ internal static class SqliteTranslator
         {
             issues.Add($"RegexOptions.{rest} (has no inline form; the EF Core SQLite regexp() function only receives the pattern text)");
         }
+    }
+
+    /// <summary>
+    /// Gets a value indicating whether no culture can change what the pattern matches: no case-insensitive
+    /// construct can match i, I, U+0130 or U+0131, the only letters whose case equivalents depend on the
+    /// culture, and no backreference compares case-insensitively. Then
+    /// <see cref="RegexOptions.CultureInvariant"/>, which has no inline form, can be dropped without
+    /// changing the meaning.
+    /// </summary>
+    private static bool IsCultureNeutral(RegexNode node)
+    {
+        bool foldsCase = (node.Options & RegexOptions.IgnoreCase) != 0 && TranslationPlan.IsCaseSensitive(node);
+        if (foldsCase && !IsCaseCultureNeutral(node))
+        {
+            return false;
+        }
+
+        foreach (RegexNode child in node.Children)
+        {
+            if (!IsCultureNeutral(child))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsCaseCultureNeutral(RegexNode node)
+    {
+        if (node is BackreferenceNode)
+        {
+            return false;
+        }
+
+        CharSet? set = CharSet.ForNode(node);
+        if (set == null)
+        {
+            return true;
+        }
+
+        foreach (char letter in RegexCaseCulture.CultureSensitiveLetters)
+        {
+            if (set.Contains(letter))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static void CheckConstructs(RegexNode node, List<string> issues)

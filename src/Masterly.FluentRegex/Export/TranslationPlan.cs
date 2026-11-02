@@ -77,6 +77,100 @@ internal sealed class TranslationPlan
     }
 
     /// <summary>
+    /// Gets a value indicating whether <paramref name="group"/> has certainly captured by the time
+    /// <paramref name="reference"/> is matched: the group ends before the reference and nothing between
+    /// them and their closest common ancestor (an alternative, an optional repeat, a conditional or a
+    /// negative lookaround) can skip it.
+    /// </summary>
+    public bool AlwaysParticipatesBefore(GroupNode group, RegexNode reference)
+    {
+        if (group.End > reference.Start)
+        {
+            return false;
+        }
+
+        HashSet<RegexNode> referenceAncestors = new HashSet<RegexNode>();
+        for (RegexNode? node = reference; node != null; node = ParentOf(node))
+        {
+            referenceAncestors.Add(node);
+        }
+
+        for (RegexNode? node = ParentOf(group); node != null; node = ParentOf(node))
+        {
+            if (referenceAncestors.Contains(node))
+            {
+                return !(node is AlternationNode);
+            }
+
+            if (MayBeSkipped(node))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Gets a value indicating whether an iteration of an enclosing repeat that can run more than once
+    /// may skip <paramref name="group"/>. .NET then keeps the capture of an earlier iteration, while
+    /// PostgreSQL and JavaScript reset the group at the start of every iteration: on <c>ab</c>,
+    /// <c>(?:(a)|b)+</c> leaves group 1 at <c>a</c> in .NET and unset in those engines.
+    /// </summary>
+    public bool MayLoseCaptureBetweenIterations(GroupNode group)
+    {
+        bool skippable = false;
+        for (RegexNode? node = ParentOf(group); node != null; node = ParentOf(node))
+        {
+            if (node is QuantifierNode quantifier && skippable && (quantifier.IsUnbounded || quantifier.Max > 1))
+            {
+                return true;
+            }
+
+            skippable |= MayBeSkipped(node);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Gets a value indicating whether <paramref name="group"/> sits in a repeat that can run more than once
+    /// and whose body can match empty text. .NET then runs one more, empty iteration that captures empty
+    /// text, which RE2 and ECMAScript refuse: on <c>aa</c>, <c>(a?)+</c> leaves group 1 empty in .NET and
+    /// <c>a</c> in those engines.
+    /// </summary>
+    public bool MayCaptureInEmptyIteration(GroupNode group)
+    {
+        for (RegexNode? node = ParentOf(group); node != null; node = ParentOf(node))
+        {
+            if (node is QuantifierNode quantifier && (quantifier.IsUnbounded || quantifier.Max > 1) && MatchShape.IsNullable(quantifier.Body))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Gets a value indicating whether a match can pass <paramref name="node"/> without matching all of its children.</summary>
+    public static bool MayBeSkipped(RegexNode node)
+    {
+        switch (node)
+        {
+            case AlternationNode alternation:
+                return alternation.Branches.Count > 1;
+            case QuantifierNode quantifier:
+                return quantifier.Min == 0;
+            case ConditionalNode _:
+                return true;
+            case GroupNode group:
+                return group.GroupKind == GroupKind.NegativeLookahead || group.GroupKind == GroupKind.NegativeLookbehind;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
     /// Gets a value indicating whether case-insensitivity changes what the node matches. Digits,
     /// punctuation and <c>\d</c> are unaffected, so they never force per-node expansion.
     /// </summary>

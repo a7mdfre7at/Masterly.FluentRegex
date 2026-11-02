@@ -54,7 +54,34 @@ internal sealed partial class EcmaScriptTranslator
         string pattern = translator.Emit(tree.Root);
         translator.AddSummaryWarnings();
         translator.ThrowIfUnsupported();
-        return new FlavorConversion(flavor, pattern, translator.Flags(), translator._warnings, translator._plan.GroupNumbers());
+        return new FlavorConversion(flavor, pattern, translator.Flags(), translator._warnings, translator._plan.GroupNumbers(), translator.MatchExtentWarnings());
+    }
+
+    /// <summary>
+    /// ECMAScript engines backtrack with .NET's preferences, so the matched substring is the same; but every
+    /// repeat iteration resets the groups inside it (RepeatMatcher), while .NET keeps an earlier iteration's
+    /// capture, and an iteration that matches empty text is refused, while .NET can end with one (verified
+    /// in Node.js: <c>/(?:(a)|b)+/.exec("ab")[1]</c> is undefined, <c>/(a?)+/.exec("aa")[1]</c> is "a").
+    /// </summary>
+    private List<string> MatchExtentWarnings()
+    {
+        List<string> warnings = new List<string>();
+        foreach (GroupNode group in _tree.Groups.Where(g => g.IsCapturing).OrderBy(g => g.Start))
+        {
+            if (_plan.MayLoseCaptureBetweenIterations(group))
+            {
+                warnings.Add($"The group {At(group)} can be skipped by an iteration of an enclosing repeat: .NET keeps its " +
+                             "capture from an earlier iteration, JavaScript resets it on every iteration.");
+            }
+
+            if (_plan.MayCaptureInEmptyIteration(group))
+            {
+                warnings.Add($"The group {At(group)} is in a repeat whose body can match empty text: .NET ends with an " +
+                             "extra empty iteration that captures empty text, JavaScript refuses empty iterations.");
+            }
+        }
+
+        return warnings;
     }
 
     private void CheckGlobalOptions(RegexOptions options)
@@ -304,7 +331,7 @@ internal sealed partial class EcmaScriptTranslator
             return string.Empty;
         }
 
-        if (!AlwaysParticipatesBefore(group, reference))
+        if (!_plan.AlwaysParticipatesBefore(group, reference))
         {
             Warn($"The backreference {At(reference)} refers to a group that may not have participated; " +
                  ".NET then fails to match, JavaScript matches the empty string.");
@@ -315,49 +342,4 @@ internal sealed partial class EcmaScriptTranslator
             : $"\\{_plan.OrdinalOf(group).ToString(CultureInfo.InvariantCulture)}";
     }
 
-    private bool AlwaysParticipatesBefore(GroupNode group, RegexNode reference)
-    {
-        if (group.End > reference.Start)
-        {
-            return false;
-        }
-
-        HashSet<RegexNode> referenceAncestors = new HashSet<RegexNode>();
-        for (RegexNode? node = reference; node != null; node = _plan.ParentOf(node))
-        {
-            referenceAncestors.Add(node);
-        }
-
-        for (RegexNode? node = _plan.ParentOf(group); node != null; node = _plan.ParentOf(node))
-        {
-            if (referenceAncestors.Contains(node))
-            {
-                return !(node is AlternationNode);
-            }
-
-            if (MayBeSkipped(node))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static bool MayBeSkipped(RegexNode node)
-    {
-        switch (node)
-        {
-            case AlternationNode alternation:
-                return alternation.Branches.Count > 1;
-            case QuantifierNode quantifier:
-                return quantifier.Min == 0;
-            case ConditionalNode _:
-                return true;
-            case GroupNode group:
-                return group.GroupKind == GroupKind.NegativeLookahead || group.GroupKind == GroupKind.NegativeLookbehind;
-            default:
-                return false;
-        }
-    }
 }

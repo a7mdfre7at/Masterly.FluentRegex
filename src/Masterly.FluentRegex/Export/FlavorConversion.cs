@@ -23,6 +23,12 @@ namespace Masterly.FluentRegex;
 /// <see cref="Flags"/> is always empty: every option is embedded in the pattern text, so
 /// <see cref="Pattern.ToSqlCondition"/> can always emit <c>column OPERATOR 'pattern'</c>.
 /// </para>
+/// <para>
+/// Acceptance and extent are reported separately: <see cref="Warnings"/> (and <see cref="IsExact"/>) cover
+/// whether a string matches; <see cref="MatchExtentWarnings"/> (and <see cref="PreservesMatchExtent"/>)
+/// cover which substring is matched and what each group captures, which matters for extraction and
+/// replacement.
+/// </para>
 /// </remarks>
 public sealed class FlavorConversion
 {
@@ -36,12 +42,24 @@ public sealed class FlavorConversion
         string flags,
         IReadOnlyList<string> warnings,
         IReadOnlyDictionary<string, int> groupNumbers)
+        : this(flavor, pattern, flags, warnings, groupNumbers, new List<string>())
+    {
+    }
+
+    internal FlavorConversion(
+        RegexFlavor flavor,
+        string pattern,
+        string flags,
+        IReadOnlyList<string> warnings,
+        IReadOnlyDictionary<string, int> groupNumbers,
+        IReadOnlyList<string> matchExtentWarnings)
     {
         Flavor = flavor;
         Pattern = pattern;
         Flags = flags;
         Warnings = warnings;
         GroupNumbers = groupNumbers;
+        MatchExtentWarnings = matchExtentWarnings;
     }
 
     /// <summary>Gets the target dialect.</summary>
@@ -56,15 +74,40 @@ public sealed class FlavorConversion
     /// </summary>
     public string Flags { get; }
 
-    /// <summary>Gets descriptions of every behavior that differs from .NET. Empty when the translation is exact.</summary>
+    /// <summary>
+    /// Gets descriptions of every difference in which strings match (acceptance). Empty when the
+    /// translation is exact. Differences that only change which substring is matched or what a group
+    /// captures are listed in <see cref="MatchExtentWarnings"/> instead.
+    /// </summary>
     public IReadOnlyList<string> Warnings { get; }
+
+    /// <summary>
+    /// Gets descriptions of differences that change which substring is matched or what a group captures,
+    /// but not whether a string matches: they matter when the translation is used to extract or replace
+    /// text (<c>regexp_substr</c>, <c>REGEXP_REPLACE</c>, JavaScript's <c>exec</c> or <c>replace</c>),
+    /// not when it is only used as a test. Never null; empty when every match covers the same substring
+    /// and every group captures the same text as in .NET. The analysis is conservative: an entry means a
+    /// difference is possible, not that it occurs for every input.
+    /// </summary>
+    /// <example>
+    /// Pattern.FromRegex("(a|ab)").ToFlavor(RegexFlavor.PostgreSql).MatchExtentWarnings;
+    /// // PostgreSQL prefers the longest match ("ab"), .NET the first alternative ("a").
+    /// </example>
+    public IReadOnlyList<string> MatchExtentWarnings { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether every match covers the same substring and every group captures the
+    /// same text as in .NET, for the strings both accept: true when <see cref="MatchExtentWarnings"/> is empty.
+    /// </summary>
+    public bool PreservesMatchExtent => MatchExtentWarnings.Count == 0;
 
     /// <summary>
     /// Gets the 1-based number of every .NET capture group in the converted regex, keyed by the group's
     /// name and by its .NET number written as a string. Numbers can differ because .NET numbers unnamed
     /// groups before named ones, while every other engine numbers groups left to right; PostgreSQL also
     /// has no named groups at all. A .NET group inside a lookaround is absent for PostgreSQL, where
-    /// parentheses inside lookarounds never capture.
+    /// parentheses inside lookarounds never capture. The whole match (.NET group 0) is intentionally
+    /// absent: it is always group 0 in every engine.
     /// </summary>
     /// <example>
     /// Pattern.FromRegex("(?&lt;year&gt;\d{4})-(\d{2})").ToFlavor(RegexFlavor.PostgreSql).GroupNumbers;
@@ -72,7 +115,10 @@ public sealed class FlavorConversion
     /// </example>
     public IReadOnlyDictionary<string, int> GroupNumbers { get; }
 
-    /// <summary>Gets a value indicating whether the translation reported no semantic differences.</summary>
+    /// <summary>
+    /// Gets a value indicating whether the translation accepts exactly the strings .NET accepts (no
+    /// <see cref="Warnings"/>). See <see cref="PreservesMatchExtent"/> for the matched substring and captures.
+    /// </summary>
     public bool IsExact => Warnings.Count == 0;
 
     /// <summary>Gets a value indicating whether <see cref="Flavor"/> is one of the SQL dialects.</summary>

@@ -75,6 +75,22 @@ internal sealed class MariaDbTranslator : SqlRegexTranslator
         }
     }
 
+    /// <summary>
+    /// MariaDB's <c>REGEXP_REPLACE</c> never replaces an empty match, and once it meets one it stops
+    /// replacing (MariaDB 11.4: <c>REGEXP_REPLACE('abc', '^', '-')</c> is <c>abc</c>, .NET gives <c>-abc</c>;
+    /// <c>REGEXP_REPLACE('baaac', 'a*', '-')</c> is <c>baaac</c>, .NET gives <c>-b--c-</c>). PCRE2 is a
+    /// backtracking engine with .NET's preferences, so this is the only difference in what is matched.
+    /// </summary>
+    protected override void AddMatchExtentWarnings()
+    {
+        WarnCapturesInNullableRepeats();
+        if (MatchShape.MinWidth(Tree.Root) == 0)
+        {
+            WarnExtent("The pattern can match the empty string. MariaDB's REGEXP_REPLACE never replaces an empty " +
+                       "match (and stops at the first one), while .NET replaces every match, empty ones included.");
+        }
+    }
+
     private static bool HasFixedBranches(RegexNode body)
     {
         if (body is AlternationNode alternation)

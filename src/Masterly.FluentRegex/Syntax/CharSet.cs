@@ -244,10 +244,15 @@ namespace Masterly.FluentRegex.Syntax
             }
         }
 
+        /// <summary>
+        /// Computes the set a class source matches under <paramref name="options"/>. Case-insensitive
+        /// sets follow the rule <see cref="Regex"/> itself uses: the current culture at the time of the
+        /// call, unless <see cref="RegexOptions.CultureInvariant"/> is set.
+        /// </summary>
         public static CharSet ForSource(string classSource, RegexOptions options)
         {
             options &= RelevantOptions;
-            string key = ((int)options).ToString(System.Globalization.CultureInfo.InvariantCulture) + ":" + classSource;
+            string key = $"{((int)options).ToString(System.Globalization.CultureInfo.InvariantCulture)}:{RegexCaseCulture.Key(options)}:{classSource}";
             return Cache.GetOrAdd(key, _ => Compute(classSource, options));
         }
 

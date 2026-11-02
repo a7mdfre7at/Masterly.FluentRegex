@@ -85,7 +85,7 @@ public sealed class ExportCommandTests : CliTestBase
     [InlineData("pg", @"'\A[0-9]+(?=\n?\Z)'")]
     [InlineData("mysql", @"'(?-i)\\A[0-9]+(?=\\n?\\z)'")]
     [InlineData("mariadb", @"'(?-i)\\A[0-9]+(?=\\n?\\z)'")]
-    [InlineData("sqlserver", @"'\A[0-9]+\n?\z'")]
+    [InlineData("sqlserver", @"N'\A[0-9]+\n?\z'")]
     [InlineData("sqlite", "'^[0-9]+$'")]
     public void Export_SqlTarget_PrintsTheQuotedDialectLiteral(string target, string expected)
     {

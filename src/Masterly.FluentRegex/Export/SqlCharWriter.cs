@@ -26,7 +26,10 @@ internal enum HexEscapeStyle
 internal sealed class SqlCharWriter
 {
     private const string SyntaxCharacters = @"\^$.|?*+()[]{}";
-    private const string ClassSyntaxCharacters = @"\]-[^&";
+    // ':', '=' and '.' are escaped because a set that starts with "[:", "[=" or "[." reads as a POSIX
+    // class or collating element: ICU (MySQL) matches [:alpha:] as letters and PCRE2 (MariaDB) rejects
+    // all three. Every engine reads "\:", "\=" and "\." as the literal character.
+    private const string ClassSyntaxCharacters = @"\]-[^&:=.";
     private const char FirstPrintable = ' ';
     private const char LastPrintable = '~';
     private const int BmpSize = 0x10000;
