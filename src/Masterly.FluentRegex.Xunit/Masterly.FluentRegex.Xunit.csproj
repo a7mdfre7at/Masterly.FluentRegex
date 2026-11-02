@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsPackable>true</IsPackable>
+    <GeneratePackageOnBuild>False</GeneratePackageOnBuild>
+    <PackageId>Masterly.FluentRegex.Xunit</PackageId>
+    <Authors>Ahmad Al-Freihat</Authors>
+    <Description>xUnit v3 theory data from Masterly.FluentRegex patterns: [MatchingData] and [NonMatchingData] feed a theory with reproducible strings that a pattern matches, or near misses that it rejects.</Description>
+    <PackageProjectUrl>https://github.com/a7mdfre7at/Masterly.FluentRegex</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/a7mdfre7at/Masterly.FluentRegex</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>repo_image.png</PackageIcon>
+    <PackageTags>Regex;FluentRegex;xUnit;Theory;TestData;PropertyTesting;Testing</PackageTags>
+    <PackageReleaseNotes>See https://github.com/a7mdfre7at/Masterly.FluentRegex/blob/master/CHANGELOG.md</PackageReleaseNotes>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <AssemblyVersion>3.1.0</AssemblyVersion>
+    <FileVersion>3.1.0</FileVersion>
+    <Version>3.1.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3.extensibility.core" Version="3.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Masterly.FluentRegex\Masterly.FluentRegex.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\LICENSE.txt" Pack="true" PackagePath="$(PackageLicenseFile)" Visible="false" />
+    <None Include="..\..\repo_image.png" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+
+</Project>
