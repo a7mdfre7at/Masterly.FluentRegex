@@ -22,7 +22,7 @@ public class LikeTests
         like.IsSuperset.ShouldBeTrue();
         like.EscapeCharacter.ShouldBeNull();
         like.Warnings.ShouldBeEmpty();
-        like.ToSql("[Number]").ShouldBe("[Number] LIKE 'INV-[0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]'");
+        like.ToSql("[Number]").ShouldBe("[Number] LIKE N'INV-[0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]'");
     }
 
     [Theory]
@@ -61,7 +61,7 @@ public class LikeTests
     [InlineData(@"^aba\z", "aba", true)]
     [InlineData(@"^aba$", "aba%", false)]
     [InlineData(@"^a[\s\S]*b\z", "a%b", true)]
-    [InlineData(@"(?s)^a.c\z", "a_c", true)]
+    [InlineData(@"(?s)^a.c\z", "a_c", false)]
     [InlineData(@"^a.c\z", "a_c", false)]
     [InlineData(@"^(?:aba|ababa)\z", "aba%", false)]
     [InlineData(@"^ab?ba\z", "a%ba", false)]
@@ -80,11 +80,11 @@ public class LikeTests
 
     [Theory]
     [InlineData(@"\d+", "%[0-9]%", true)]
-    [InlineData(@"^a.c\z", "a[^\n]c", true)]
+    [InlineData(@"^a.c\z", "a[^\n]c", false)]
     [InlineData(@"^(?:a|b)x\z", "[a-b]x", true)]
     [InlineData(@"^[a-z]{3}\z", "[a-z][a-z][a-z]", true)]
     [InlineData(@"(?i)^abc\z", "[Aa][Bb][Cc]", true)]
-    [InlineData(@"^[^a-z]\z", "[^a-z]", true)]
+    [InlineData(@"^[^a-z]\z", "[^a-z]", false)]
     [InlineData(@"^(?:ab|ac)\z", "a%", false)]
     public void ToLike_SqlServer_UsesSetsForSingleCharacterClasses(string regex, string expected, bool exact)
     {
@@ -167,7 +167,7 @@ public class LikeTests
     // ------------------------------------------------------------------
 
     [Theory]
-    [InlineData(LikeDialect.SqlServer, @"a%b_c[d]", @"[c] LIKE '%a\%b\_c[d]%' ESCAPE '\'")]
+    [InlineData(LikeDialect.SqlServer, @"a%b_c[d]", @"[c] LIKE N'%a\%b\_c[d]%' ESCAPE '\'")]
     [InlineData(LikeDialect.Standard, @"a%b_c", @"[c] LIKE '%a\%b\_c%' ESCAPE '\'")]
     [InlineData(LikeDialect.MySql, @"a%b_c", @"[c] LIKE '%a\\%b\\_c%' ESCAPE '\\'")]
     [InlineData(LikeDialect.MySql, @"a\\b", @"[c] LIKE '%a\\\\b%' ESCAPE '\\'")]
@@ -180,6 +180,176 @@ public class LikeTests
         LikeConversion like = Pattern.FromRegex(regex).ToLike(dialect);
 
         like.ToSql("[c]").ShouldBe(expected);
+        like.IsExact.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ToSql_SqlServer_WritesAUnicodeLiteralSoTrailingBlanksCount()
+    {
+        LikeConversion like = Pattern.FromRegex(@"^abc \z").ToLike(LikeDialect.SqlServer);
+
+        like.ToSql("[c]").ShouldBe("[c] LIKE N'abc '");
+        like.IsExact.ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData(@"^%[\\a]\z", @"\%[\\a]")]
+    [InlineData(@"^%[\\a-c]\z", @"\%[\\a-c]")]
+    [InlineData(@"^_[\\%]\z", @"\_[%\\]")]
+    public void ToLike_SqlServerSetWithTheEscapeCharacter_DoublesItInsideTheBrackets(string regex, string expected)
+    {
+        LikeConversion like = Pattern.FromRegex(regex).ToLike(LikeDialect.SqlServer);
+
+        like.Expression.ShouldBe(expected);
+        like.EscapeCharacter.ShouldBe('\\');
+        like.IsExact.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ToLike_SqlServerSetWithTheEscapeCharacter_AcceptsTheBackslash()
+    {
+        Pattern pattern = Pattern.FromRegex(@"^%[\\a]\z");
+
+        LikeConversion like = pattern.ToLike(LikeDialect.SqlServer);
+
+        pattern.IsMatch("%\\").ShouldBeTrue();
+        Regex.IsMatch("%\\", $@"\A(?:{like.RegexText})\z").ShouldBeTrue();
+        Regex.IsMatch("%a", $@"\A(?:{like.RegexText})\z").ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData(@"[\a]", "a", true)]
+    [InlineData(@"[\a]", "\\", false)]
+    [InlineData(@"[\\]", "\\", true)]
+    [InlineData(@"[\a-c]", "-", true)]
+    [InlineData(@"[\a-c]", "b", false)]
+    [InlineData(@"[^\\]", "\\", false)]
+    public void LikeRegex_FromExpression_ReadsTheEscapeCharacterInsideSqlServerSetsAsSqlServerDoes(string expression, string input, bool expected)
+    {
+        string regex = LikeRegex.FromExpression(expression, '\\', LikeDialect.SqlServer);
+
+        Regex.IsMatch(input, $@"\A(?:{regex})\z").ShouldBe(expected);
+    }
+
+    // ------------------------------------------------------------------
+    // Soundness: comments, collations, supplementary characters
+    // ------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("^INV-[0-9]{4} # invoice number", RegexOptions.IgnorePatternWhitespace, "INV-[0-9][0-9][0-9][0-9]%", true)]
+    [InlineData("abc #c", RegexOptions.IgnorePatternWhitespace, "%abc%", true)]
+    [InlineData("a|b #c", RegexOptions.IgnorePatternWhitespace, "%[a-b]%", true)]
+    [InlineData("a(?x) b #c", RegexOptions.None, "%ab%", true)]
+    public void ToLike_TrailingFreeSpacingComment_KeepsTheScopePadding(string regex, RegexOptions options, string expected, bool exact)
+    {
+        LikeConversion like = Pattern.FromRegex(regex, options).ToLike(LikeDialect.SqlServer);
+
+        like.Expression.ShouldBe(expected);
+        like.IsExact.ShouldBe(exact);
+    }
+
+    [Theory]
+    [InlineData(@"^[^a]")]
+    [InlineData(@"^[^a]\z")]
+    [InlineData(@"^\W\z")]
+    public void ToLike_NegatedClassUnderCaseInsensitiveSqlServer_IsNeverANegatedSet(string regex)
+    {
+        Pattern pattern = Pattern.FromRegex(regex);
+
+        LikeConversion like = pattern.ToLike(LikeDialect.SqlServer, MatchScope.Substring, LikeCollation.CaseInsensitive);
+
+        like.Expression.ShouldNotContain("[^");
+        like.Expression.ShouldBe("%");
+        like.IsExact.ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(LikeDialect.MySql, "_", false)]
+    [InlineData(LikeDialect.Standard, "_", false)]
+    [InlineData(LikeDialect.SqlServer, "[Kk\u212A]", true)]
+    public void ToLike_IgnoreCaseLetterWithNonAsciiVariants_IsNotLeftToTheCollation(LikeDialect dialect, string expected, bool exact)
+    {
+        Pattern pattern = Pattern.FromRegex(@"(?i)^k\z");
+
+        LikeConversion like = pattern.ToLike(dialect, MatchScope.Substring, LikeCollation.CaseInsensitive);
+
+        pattern.IsMatch("\u212A").ShouldBeTrue();
+        like.Expression.ShouldBe(expected);
+        like.IsExact.ShouldBe(exact);
+    }
+
+    [Theory]
+    [InlineData(@"(?i)^id\z", LikeDialect.Standard, "_d")]
+    [InlineData(@"(?i)^id\z", LikeDialect.SqlServer, "[Ii\u0130]d")]
+    [InlineData(@"(?i)^abc\z", LikeDialect.Sqlite, "abc")]
+    public void ToLike_IgnoreCaseLettersUnderCaseInsensitiveCollation_StayTextOnlyWhenEveryCollationFoldsThem(string regex, LikeDialect dialect, string expected)
+    {
+        LikeConversion like = Pattern.FromRegex(regex).ToLike(dialect, MatchScope.Substring, LikeCollation.CaseInsensitive);
+
+        like.Expression.ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData(@"^..\z", LikeDialect.PostgreSql, "_%")]
+    [InlineData(@"^..\z", LikeDialect.MySql, "_%")]
+    [InlineData(@"^..\z", LikeDialect.SqlServer, "_%")]
+    [InlineData(@"^...\z", LikeDialect.Standard, "__%")]
+    [InlineData(@"^a[^b][^c]d\z", LikeDialect.SqlServer, "a_%d")]
+    [InlineData(@"^.x.\z", LikeDialect.Sqlite, "_x_")]
+    public void ToLike_RunOfPositionsThatCanMatchSurrogates_AcceptsSupplementaryCharactersAsOne(string regex, LikeDialect dialect, string expected)
+    {
+        LikeConversion like = Pattern.FromRegex(regex).ToLike(dialect);
+
+        like.Expression.ShouldBe(expected);
+        like.IsExact.ShouldBeFalse();
+        Regex.IsMatch("\uD83D\uDE00", $@"\A(?:{CodePointRegex(like)})\z").ShouldBe(Pattern.FromRegex(regex).IsMatch("\uD83D\uDE00"));
+    }
+
+    [Fact]
+    public void ToLike_EmojiForTwoDots_IsAcceptedByTheCodePointModel()
+    {
+        Pattern pattern = Pattern.FromRegex(@"^..\z");
+
+        LikeConversion like = pattern.ToLike(LikeDialect.PostgreSql);
+
+        pattern.IsMatch("\uD83D\uDE00").ShouldBeTrue();
+        Regex.IsMatch("\uD83D\uDE00", $@"\A(?:{CodePointRegex(like)})\z").ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData(@"^\d\d\z", LikeDialect.Standard, "__")]
+    [InlineData(@"^[A-Z]{3}\z", LikeDialect.SqlServer, "[A-Z][A-Z][A-Z]")]
+    public void ToLike_ClassesThatCannotMatchSurrogates_KeepOnePositionEach(string regex, LikeDialect dialect, string expected)
+    {
+        LikeConversion like = Pattern.FromRegex(regex).ToLike(dialect);
+
+        like.Expression.ShouldBe(expected);
+    }
+
+    [Fact]
+    public void ToLike_SupplementaryCharactersUnderCaseInsensitiveSqlServer_BecomePercent()
+    {
+        LikeConversion like = Pattern.FromRegex(@"^a...\z").ToLike(LikeDialect.SqlServer, MatchScope.Substring, LikeCollation.CaseInsensitive);
+
+        like.Expression.ShouldBe("a%");
+        like.IsExact.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ToLike_LoneSurrogateLiteral_BecomesAnyCharacter()
+    {
+        LikeConversion like = Pattern.FromRegex("^\\uD83Dx\\z").ToLike(LikeDialect.Standard);
+
+        like.Expression.ShouldBe("_x");
+        like.IsExact.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ToLike_WholeSurrogatePairLiteral_StaysExactText()
+    {
+        LikeConversion like = Pattern.FromRegex("^\\uD83D\\uDE00\\z").ToLike(LikeDialect.PostgreSql);
+
+        like.Expression.ShouldBe("\uD83D\uDE00");
         like.IsExact.ShouldBeTrue();
     }
 
@@ -245,6 +415,8 @@ public class LikeTests
             @"^a.c\z", @"(?s)^a.c\z", @"a|b", @"^(?:ab|ac)\z", @"^x*\z", @"^$", @"^a\d*b\z", @"^(?:abc)+\z", @"^(?=.*\d).{8,}$",
             @"(\w)\1", @"^abc(\w)\1def\z", @"(?m)^abc$", @"\bcat\b", @"^(?!abc)[a-c]{3}\z", @"ab(?<=b)cd", @"(?i)k+\z", @"a%b_c[d]\\",
             @"^[^\s\S]\z", @"[a-z-[aeiou]]+@", @"^(?:aba|ababa)\z",
+            "(?x)^INV-[0-9]{4} # invoice number", "(?x)a|b #c", "a(?x) b #c", @"^[^a]", @"^..\z", @"^.{5}x\z", @"(?i)^k\z", @"(?i)^id\z",
+            @"^%[\\a]\z", @"^%[\\a-c]_\z", "^\\uD83D.\\z", "^\\uD83D\\uDE00\\z", @"(a)\1(?:abc$){1}",
         };
         foreach (string regex in regexes)
         {
@@ -278,20 +450,59 @@ public class LikeTests
 
     public static TheoryData<string> CommonPatternCases() => SqlFlavorTests.CommonPatternCases();
 
+    /// <summary>
+    /// Checks the LIKE pattern against what every collation of the kind is guaranteed to accept (only
+    /// ASCII case partners under a case-insensitive collation, see LikeCaseFolding), in the UTF-16
+    /// model by proof and samples, and in the code-point model on samples with supplementary characters;
+    /// exactness must agree with the algebra and with the absence of '_' and negated sets.
+    /// </summary>
     private static void AssertSuperset(Pattern pattern, LikeDialect dialect, LikeCollation collation)
     {
         MatchScope scope = MatchScope.Substring;
         LikeConversion like = pattern.ToLike(dialect, scope, collation);
         Pattern scoped = Pattern.FromRegex(ScopeAnalysis.ScopedText(pattern.ParseTree(), scope), pattern.Options);
         Pattern likeRegex = Pattern.FromRegex(like.RegexText, collation == LikeCollation.CaseInsensitive ? RegexOptions.IgnoreCase : RegexOptions.None);
-        Regex likeMatcher = new Regex($@"\A(?:{like.RegexText})\z", likeRegex.Options);
+        Pattern guaranteed = Pattern.FromRegex(GuaranteedRegex(like));
+        Regex guaranteedMatcher = new Regex($@"\A(?:{guaranteed})\z");
+        Regex codePointMatcher = new Regex($@"\A(?:{CodePointRegex(like)})\z");
         string[] samples = pattern.GenerateMatching(30, seed: 5).Select((s, i) => Pad(i) + s + Pad(i + 1)).Where(pattern.IsMatch).ToArray();
 
         like.IsSuperset.ShouldBeTrue();
-        samples.ShouldAllBe(sample => likeMatcher.IsMatch(sample), like.ToString());
-        ProvenSubset(scoped, likeRegex).ShouldNotBe(false, like.ToString());
-        (ProvenEquivalent(scoped, likeRegex) ?? like.IsExact).ShouldBe(like.IsExact, like.ToString());
+        samples.ShouldAllBe(sample => guaranteedMatcher.IsMatch(sample), like.ToString());
+        samples.Where(CodePointMatcherApplies).ShouldAllBe(sample => codePointMatcher.IsMatch(sample), like.ToString());
+        ProvenSubset(scoped, guaranteed).ShouldNotBe(false, like.ToString());
+        like.IsExact.ShouldBe((ProvenEquivalent(scoped, likeRegex) ?? like.IsExact) && (ProvenEquivalent(scoped, guaranteed) ?? true) && !MatchesOneCharacter(like), like.ToString());
     }
+
+    private static string GuaranteedRegex(LikeConversion like) =>
+        like.Collation == LikeCollation.CaseInsensitive ? LikeRegex.GuaranteedFromExpression(like.Expression, like.EscapeCharacter, like.Dialect) : like.RegexText;
+
+    private static bool MatchesOneCharacter(LikeConversion like) =>
+        LikeExpressionParser.Parse(like.Expression, like.EscapeCharacter, like.Dialect).Any(part => part.CanMatchSurrogate);
+
+    /// <summary>The code-point model is about well-formed UTF-16, which is all a UTF-8 database can store.</summary>
+    private static bool CodePointMatcherApplies(string sample) => !HasLoneSurrogate(sample);
+
+    private static bool HasLoneSurrogate(string text) =>
+        text.Where((c, i) => char.IsSurrogate(c) && !char.IsSurrogatePair(text, i) && !(i > 0 && char.IsSurrogatePair(text[i - 1], c))).Any();
+
+    /// <summary>
+    /// The LIKE pattern as a regex over well-formed UTF-16 in which '_' and a negated set match one code
+    /// point (a whole surrogate pair, or one code unit that is not a surrogate), as in PostgreSQL, MySQL,
+    /// SQLite and SQL Server's supplementary-character-aware collations.
+    /// </summary>
+    private static string CodePointRegex(LikeConversion like)
+    {
+        bool folds = like.Collation == LikeCollation.CaseInsensitive;
+        IReadOnlyList<LikePart> parts = LikeExpressionParser.Parse(like.Expression, like.EscapeCharacter, like.Dialect);
+        return string.Concat(parts.Select(part => CodePointPart(part, LikeRegex.FromParts(new[] { part }, folds))));
+    }
+
+    private static string CodePointPart(LikePart part, string unitRegex) =>
+        part.CanMatchSurrogate ? $"(?:{SurrogatePair}|(?!{AnySurrogate}){unitRegex})" : unitRegex;
+
+    private const string SurrogatePair = "[\\uD800-\\uDBFF][\\uDC00-\\uDFFF]";
+    private const string AnySurrogate = "[\\uD800-\\uDFFF]";
 
     private static bool? ProvenSubset(Pattern scoped, Pattern likeRegex)
     {
@@ -325,7 +536,7 @@ public class LikeTests
         }
     }
 
-    private static readonly string[] Paddings = { "", "zz", "\n#9 " };
+    private static readonly string[] Paddings = { "", "zz", "\n#9 ", "\uD83D\uDE00" };
 
     private static string Pad(int seed) => Paddings[seed % Paddings.Length];
 }

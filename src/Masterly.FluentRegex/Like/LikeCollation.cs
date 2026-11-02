@@ -9,9 +9,12 @@ public enum LikeCollation
     Binary,
 
     /// <summary>
-    /// Letters match regardless of case; everything else compares by code point. LIKE is modeled as a
-    /// regex with <see cref="System.Text.RegularExpressions.RegexOptions.IgnoreCase"/>, so exactness is
-    /// relative to .NET's case folding, and a case-sensitive pattern with cased letters is never exact.
+    /// Letters match regardless of case; everything else compares by code point. The superset relies only
+    /// on what every case-insensitive collation folds (an ASCII letter with its ASCII partner, except
+    /// <c>i</c>/<c>I</c>); exactness is relative to .NET's case folding
+    /// (<see cref="System.Text.RegularExpressions.RegexOptions.IgnoreCase"/>), and a case-sensitive pattern
+    /// with cased letters is never exact. Linguistic effects such as ignorable characters, contractions and
+    /// accent folding are outside the model (see docs/features/like.md).
     /// </summary>
     CaseInsensitive
 }

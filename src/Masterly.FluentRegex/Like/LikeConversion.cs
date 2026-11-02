@@ -15,6 +15,7 @@ public sealed class LikeConversion
     private const string DoubledQuote = "''";
     private const char Backslash = '\\';
     private const string DoubledBackslash = @"\\";
+    private const string UnicodePrefix = "N";
 
     internal LikeConversion(
         LikeDialect dialect,
@@ -54,7 +55,9 @@ public sealed class LikeConversion
     /// <summary>
     /// Gets a value indicating whether LIKE accepts exactly the strings the pattern accepts in
     /// <see cref="Scope"/> under <see cref="Collation"/>, as proven by language algebra. Always false
-    /// for a pattern outside the regular subset.
+    /// for a pattern outside the regular subset, and whenever the LIKE pattern contains <c>_</c> or a
+    /// negated set: databases that count code points (UTF-8, SQL Server <c>_SC</c> collations) let those
+    /// match a whole supplementary character, which the regex counts as two.
     /// </summary>
     public bool IsExact { get; }
 
@@ -75,8 +78,11 @@ public sealed class LikeConversion
     internal string RegexText { get; }
 
     /// <summary>
-    /// Writes the condition for raw SQL, for example <c>[Email] LIKE 'INV-[0-9]%' ESCAPE '\'</c>.
+    /// Writes the condition for raw SQL, for example <c>[Email] LIKE N'INV-[0-9]%' ESCAPE '\'</c>.
     /// The literal has its quotes doubled, and for <see cref="LikeDialect.MySql"/> its backslashes too.
+    /// For <see cref="LikeDialect.SqlServer"/> the pattern is a Unicode literal (<c>N'...'</c>): non-ASCII
+    /// characters survive, and the comparison is a Unicode one, under which trailing blanks are significant
+    /// (with a <c>varchar</c> pattern, a <c>varchar</c> column would ignore them).
     /// </summary>
     /// <param name="columnSql">The column expression, inserted verbatim; quote it yourself.</param>
     /// <returns>The condition text.</returns>
@@ -88,7 +94,8 @@ public sealed class LikeConversion
             throw new ArgumentNullException(nameof(columnSql));
         }
 
-        string condition = $"{columnSql} LIKE {Literal(Expression)}";
+        string unicode = Dialect == LikeDialect.SqlServer ? UnicodePrefix : string.Empty;
+        string condition = $"{columnSql} LIKE {unicode}{Literal(Expression)}";
         return EscapeCharacter == null ? condition : $"{condition} ESCAPE {Literal(EscapeCharacter.Value.ToString())}";
     }
 

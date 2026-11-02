@@ -42,7 +42,7 @@ internal static class LikeExpressionParser
             else if (c == OpenSet && dialect == LikeDialect.SqlServer)
             {
                 FlushText(parts, text);
-                parts.Add(LikePart.OfSet(ReadSet(expression, ref i)));
+                parts.Add(LikePart.OfSet(ReadSet(expression, escape, ref i)));
             }
             else
             {
@@ -64,8 +64,13 @@ internal static class LikeExpressionParser
         }
     }
 
-    /// <summary>Reads <c>[...]</c> or <c>[^...]</c> starting at the opening bracket; the first <c>]</c> closes it.</summary>
-    private static CharSet ReadSet(string expression, ref int i)
+    /// <summary>
+    /// Reads <c>[...]</c> or <c>[^...]</c> starting at the opening bracket; the first unescaped <c>]</c>
+    /// closes it. As SQL Server does under an <c>ESCAPE</c> clause, the escape character makes the next
+    /// character a plain member (<c>[\a]</c> is <c>a</c>, <c>[\\]</c> is a backslash, <c>[\a-c]</c> is
+    /// <c>a</c>, <c>-</c> and <c>c</c>).
+    /// </summary>
+    private static CharSet ReadSet(string expression, char? escape, ref int i)
     {
         i++; // [
         bool negated = i < expression.Length && expression[i] == Negation;
@@ -78,6 +83,13 @@ internal static class LikeExpressionParser
         while (i < expression.Length && expression[i] != CloseSet)
         {
             char low = expression[i];
+            if (escape != null && low == escape.Value && i + 1 < expression.Length)
+            {
+                members = members.Union(CharSet.Single(expression[i + 1]));
+                i += 2;
+                continue;
+            }
+
             bool isRange = i + 2 < expression.Length && expression[i + 1] == RangeDash && expression[i + 2] != CloseSet;
             char high = isRange ? expression[i + 2] : low;
             members = members.Union(CharSet.Range(low, high));

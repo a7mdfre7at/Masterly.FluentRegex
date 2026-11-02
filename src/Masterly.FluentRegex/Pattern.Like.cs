@@ -25,15 +25,16 @@ public partial class Pattern
     /// </param>
     /// <returns>
     /// The LIKE pattern. <see cref="LikeConversion.IsExact"/> is true only when language algebra proved the
-    /// LIKE pattern equivalent to the scoped pattern; otherwise the result is the tightest proven superset
-    /// (<c>prefix%suffix</c> at worst, or <c>%</c>). Never throws for a valid pattern.
+    /// LIKE pattern equivalent to the scoped pattern and it has no <c>_</c> or negated set (which a
+    /// code-point collation lets match a whole surrogate pair); otherwise the result is the tightest proven
+    /// superset (<c>prefix%suffix</c> at worst, or <c>%</c>). Never throws for a valid pattern.
     /// </returns>
     /// <exception cref="ArgumentOutOfRangeException">An enum argument is not defined.</exception>
     /// <example>
     /// Pattern.FromRegex(@"^INV-[0-9]{4}-[0-9]{4}\z").ToLike(LikeDialect.SqlServer).ToSql("[Number]");
-    /// // [Number] LIKE 'INV-[0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]'   (IsExact: true)
+    /// // [Number] LIKE N'INV-[0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]'   (IsExact: true)
     /// Pattern.FromRegex(@"^INV-\d{4}-\d{4}\z").ToLike(LikeDialect.PostgreSql).Expression;
-    /// // "INV-%"   (IsExact: false)
+    /// // "INV-____-____"   (IsExact: false)
     /// </example>
     public LikeConversion ToLike(LikeDialect dialect, MatchScope scope = MatchScope.Substring, LikeCollation collation = LikeCollation.Binary)
     {

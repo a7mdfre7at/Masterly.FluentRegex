@@ -24,7 +24,12 @@ internal sealed class LikeCompiler
     private const string CaseWarning = "A case-insensitive letter under a binary collation became '_'; SQL Server LIKE can express [Aa] sets.";
     private const string NonAsciiWarning = "A set contains non-ASCII characters; they are written literally in the LIKE pattern.";
     private const string NonRegularWarning = "A construct LIKE cannot express (backreference, conditional) became '%'.";
-    private const char LastAscii = '\u007F';
+    private const string FoldingWarning =
+        "A case-insensitive letter has .NET case variants (such as U+212A KELVIN SIGN for 'k' or U+0130 for 'i') that not every case-insensitive collation folds, so it became a set or '_'.";
+    private const string CodePointWarning =
+        "Positions that can match a surrogate (such as '.', '[^a]', '\\W', or a lone surrogate) can pair up into one supplementary character, which UTF-8 and supplementary-character-aware collations count as one character, so a run of them became one '_' per two positions plus '%' (on SQL Server under a case-insensitive collation, whose legacy versions give supplementary characters no weight, just '%').";
+    private const string SetWarning =
+        "A character class became '_' because it cannot be written as a SQL Server set (it would need a negated set under a case-insensitive collation, contains set syntax or surrogates, or has too many ranges).";
 
     private readonly LikeDialect _dialect;
     private readonly LikeCollation _collation;
@@ -58,7 +63,7 @@ internal sealed class LikeCompiler
             compiler._parts.Add(LikePart.AnyString);
         }
 
-        return Normalize(compiler._parts);
+        return compiler.WidenForCodePoints(Normalize(compiler._parts));
     }
 
     /// <summary>Merges adjacent text and collapses runs of <c>%</c>.</summary>
@@ -83,6 +88,20 @@ internal sealed class LikeCompiler
         }
 
         return result;
+    }
+
+    /// <summary>Applies <see cref="LikeCodePoints.Widen"/>, so the result stays a superset when the database counts code points.</summary>
+    private IReadOnlyList<LikePart> WidenForCodePoints(IReadOnlyList<LikePart> parts)
+    {
+        bool noWeightCollation = _dialect == LikeDialect.SqlServer && _collation == LikeCollation.CaseInsensitive;
+        IReadOnlyList<LikePart> widened = LikeCodePoints.Widen(parts, noWeightCollation, out bool changed);
+        if (!changed)
+        {
+            return widened;
+        }
+
+        Warn(CodePointWarning);
+        return Normalize(widened);
     }
 
     private void Warn(string warning)
@@ -153,13 +172,20 @@ internal sealed class LikeCompiler
             return;
         }
 
-        if (_collation == LikeCollation.CaseInsensitive && literal.Value <= LastAscii)
+        CharSet variants = CharSet.ForNode(literal) ?? CharSet.Empty;
+        if (_collation == LikeCollation.Binary)
         {
-            _parts.Add(LikePart.OfText(literal.Value.ToString())); // the collation folds ASCII letters itself
+            AddSet(variants, CaseWarning);
             return;
         }
 
-        AddSet(CharSet.ForNode(literal) ?? CharSet.Empty, CaseWarning);
+        if (LikeCaseFolding.CoversVariants(literal.Value, variants))
+        {
+            _parts.Add(LikePart.OfText(literal.Value.ToString())); // every case-insensitive collation folds these itself
+            return;
+        }
+
+        AddSet(variants, FoldingWarning);
     }
 
     /// <summary>Adds a single-character part: the exact set when the dialect can write it, otherwise <c>_</c>.</summary>
@@ -167,12 +193,11 @@ internal sealed class LikeCompiler
     {
         if (SqlCharWriter.IsEverything(set))
         {
-            _parts.Add(LikePart.AnyChar);
+            _parts.Add(LikePart.AnyCharFor(set));
             return;
         }
 
-        bool allowRanges = _collation == LikeCollation.Binary;
-        if (LikeWriter.CanWriteSet(set, _dialect, allowRanges, out bool nonAscii))
+        if (LikeWriter.CanWriteSet(set, _dialect, _collation, out bool nonAscii))
         {
             if (nonAscii)
             {
@@ -183,8 +208,8 @@ internal sealed class LikeCompiler
             return;
         }
 
-        Warn(warning);
-        _parts.Add(LikePart.AnyChar);
+        Warn(_dialect == LikeDialect.SqlServer ? SetWarning : warning);
+        _parts.Add(LikePart.AnyCharFor(set));
     }
 
     private void AddAlternation(AlternationNode alternation)

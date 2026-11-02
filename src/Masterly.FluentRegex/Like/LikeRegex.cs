@@ -18,21 +18,31 @@ internal static class LikeRegex
 
     /// <summary>Converts the LIKE text a database would receive.</summary>
     public static string FromExpression(string expression, char? escapeCharacter, LikeDialect dialect) =>
-        FromParts(LikeExpressionParser.Parse(expression, escapeCharacter, dialect));
+        FromParts(LikeExpressionParser.Parse(expression, escapeCharacter, dialect), guaranteedFolds: false);
 
-    /// <summary>Converts parts.</summary>
-    public static string FromParts(IReadOnlyList<LikePart> parts)
+    /// <summary>
+    /// Converts the LIKE text to the case-sensitive regex of what every case-insensitive collation is
+    /// guaranteed to accept: each text character and set member also matches the partners
+    /// <see cref="LikeCaseFolding"/> guarantees, and nothing else. A superset proof against this regex
+    /// holds whatever else the collation folds. (Negated sets, whose meaning depends on the collation's
+    /// full folding, are never written under a case-insensitive collation.)
+    /// </summary>
+    public static string GuaranteedFromExpression(string expression, char? escapeCharacter, LikeDialect dialect) =>
+        FromParts(LikeExpressionParser.Parse(expression, escapeCharacter, dialect), guaranteedFolds: true);
+
+    /// <summary>Converts parts; with <paramref name="guaranteedFolds"/> letters also match their guaranteed case partners.</summary>
+    public static string FromParts(IReadOnlyList<LikePart> parts, bool guaranteedFolds)
     {
         StringBuilder sb = new StringBuilder();
         foreach (LikePart part in parts)
         {
-            AppendPart(sb, part);
+            AppendPart(sb, part, guaranteedFolds);
         }
 
         return sb.ToString();
     }
 
-    private static void AppendPart(StringBuilder sb, LikePart part)
+    private static void AppendPart(StringBuilder sb, LikePart part, bool guaranteedFolds)
     {
         switch (part.Kind)
         {
@@ -43,19 +53,29 @@ internal static class LikeRegex
                 sb.Append(AnyString);
                 break;
             case LikePartKind.Set:
-                AppendClass(sb, part.Set ?? CharSet.Empty);
+                AppendSet(sb, part.Set ?? CharSet.Empty, guaranteedFolds);
                 break;
             default:
-                AppendText(sb, part.Text);
+                AppendText(sb, part.Text, guaranteedFolds);
                 break;
         }
     }
 
-    private static void AppendText(StringBuilder sb, string text)
+    private static void AppendSet(StringBuilder sb, CharSet set, bool guaranteedFolds) =>
+        AppendClass(sb, guaranteedFolds ? LikeCaseFolding.Guaranteed(set) : set);
+
+    private static void AppendText(StringBuilder sb, string text, bool guaranteedFolds)
     {
         foreach (char c in text)
         {
-            sb.Append(Escaped(c));
+            if (guaranteedFolds)
+            {
+                AppendClass(sb, LikeCaseFolding.Guaranteed(c));
+            }
+            else
+            {
+                sb.Append(Escaped(c));
+            }
         }
     }
 
