@@ -37,7 +37,12 @@ jobs:
         run: dotnet build --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage"
+        run: dotnet test --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage" --filter "FullyQualifiedName!~Containers"
+
+      # PostgreSQL, MySQL, MariaDB and SQL Server 2025 in Docker. One target framework at a time: running both
+      # starts two SQL Server containers at once, which can starve the runner.
+      - name: Test against real databases
+        run: dotnet test test/Masterly.FluentRegex.EntityFrameworkCore.Tests --configuration Release --no-build --verbosity normal --filter "FullyQualifiedName~Containers" -p:TestTfmsInParallel=false
 
       - name: Scan for ReDoS-prone regex literals
         run: dotnet run --project tools/Masterly.FluentRegex.Cli --configuration Release --no-build -- scan . --fail-on high
