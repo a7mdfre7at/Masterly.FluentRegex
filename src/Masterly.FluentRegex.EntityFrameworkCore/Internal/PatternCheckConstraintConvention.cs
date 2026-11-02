@@ -11,7 +11,8 @@ namespace Masterly.FluentRegex.EntityFrameworkCore.Infrastructure;
 
 /// <summary>
 /// Turns <c>HasPattern</c> annotations and, when enabled, <c>[MatchesPattern]</c> attributes on string
-/// properties into table CHECK constraints in the configured dialect, with whole-value semantics.
+/// properties into table CHECK constraints in the configured dialect,
+/// with <see cref="Pattern.IsMatch(string)"/> semantics.
 /// NULL passes a CHECK constraint, so nullable columns stay nullable.
 /// </summary>
 internal sealed class PatternCheckConstraintConvention : IModelFinalizingConvention
@@ -81,7 +82,7 @@ internal sealed class PatternCheckConstraintConvention : IModelFinalizingConvent
         string columnSql = _sqlGenerationHelper.DelimitIdentifier(columnName);
         try
         {
-            return SqlConditionBuilder.Build(columnSql, pattern, _options.Dialect, wholeString: true);
+            return SqlConditionBuilder.Build(columnSql, pattern, _options.Dialect, _options.LikeCollation);
         }
         catch (Exception ex) when (ex is InvalidOperationException || ex is NotSupportedException)
         {

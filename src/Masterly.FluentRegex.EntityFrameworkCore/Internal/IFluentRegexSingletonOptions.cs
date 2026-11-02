@@ -15,6 +15,9 @@ internal interface IFluentRegexSingletonOptions : ISingletonOptions
     /// <summary>Gets how patterns are translated on SQL Server without regex support.</summary>
     LikeFallback LikeFallback { get; }
 
+    /// <summary>Gets what the database's collation does to <c>LIKE</c>, which decides when LIKE is proven exact.</summary>
+    LikeCollation LikeCollation { get; }
+
     /// <summary>Gets whether <c>[MatchesPattern]</c> attributes produce CHECK constraints.</summary>
     bool CheckConstraintsFromAttributes { get; }
 

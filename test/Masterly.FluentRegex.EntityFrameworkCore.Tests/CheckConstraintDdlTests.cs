@@ -12,20 +12,19 @@ public sealed class CheckConstraintDdlTests
     private const string NpgsqlConnection = "Host=localhost;Database=fluentregex;Username=test;Password=test";
     private const string SqlServerConnection = "Server=localhost;Database=fluentregex;User Id=test;Password=test;TrustServerCertificate=True";
     private const string SqliteConnection = "DataSource=:memory:";
-    private const string WholeStringSkuRegex = @"\A(?:^[A-Z]{3}-[0-9]{4}$)\z";
 
     private static DbContextOptionsBuilder<TContext> Builder<TContext>()
         where TContext : DbContext =>
         new DbContextOptionsBuilder<TContext>();
 
     [Fact]
-    public void Npgsql_HasPattern_EmitsTheTildeCheckConstraintWithPostgreSqlAnchors()
+    public void Npgsql_HasPattern_EmitsTheTildeCheckConstraintWithIsMatchSemantics()
     {
         using ConstrainedCatalogContext context = new ConstrainedCatalogContext(Builder<ConstrainedCatalogContext>().UseNpgsql(NpgsqlConnection).UseFluentRegex().Options);
 
         string script = context.Database.GenerateCreateScript();
 
-        script.ShouldContain($"CONSTRAINT \"{ConstrainedCatalogContext.ConstraintName}\" CHECK (\"Sku\" ~ '\\A(?:^[A-Z]{{3}}-[0-9]{{4}}$)\\Z')");
+        script.ShouldContain($"CONSTRAINT \"{ConstrainedCatalogContext.ConstraintName}\" CHECK (\"Sku\" ~ '{TestPatterns.SkuPostgreSql}')");
     }
 
     [Fact]
@@ -36,7 +35,7 @@ public sealed class CheckConstraintDdlTests
 
         string script = context.Database.GenerateCreateScript();
 
-        script.ShouldContain($"CHECK (REGEXP_LIKE([Sku], N'{WholeStringSkuRegex}'))");
+        script.ShouldContain($"CHECK (REGEXP_LIKE([Sku], N'{TestPatterns.SkuSqlServer}'))");
     }
 
     [Fact]
@@ -58,7 +57,7 @@ public sealed class CheckConstraintDdlTests
 
         string script = context.Database.GenerateCreateScript();
 
-        script.ShouldContain($"CHECK (\"Sku\" REGEXP '{WholeStringSkuRegex}')");
+        script.ShouldContain($"CHECK (\"Sku\" REGEXP '{TestPatterns.SkuRegex}')");
     }
 
     [Fact]
@@ -79,7 +78,7 @@ public sealed class CheckConstraintDdlTests
 
         string script = context.Database.GenerateCreateScript();
 
-        script.ShouldContain($"CONSTRAINT \"{AttributeCatalogContext.ConstraintName}\" CHECK (\"Sku\" REGEXP '{WholeStringSkuRegex}')");
+        script.ShouldContain($"CONSTRAINT \"{AttributeCatalogContext.ConstraintName}\" CHECK (\"Sku\" REGEXP '{TestPatterns.SkuRegex}')");
     }
 
     [Fact]
@@ -120,7 +119,7 @@ public sealed class CheckConstraintDdlTests
 
         string script = context.Database.GenerateCreateScript();
 
-        script.ShouldContain("CHECK (REGEXP_LIKE(`Sku`, '\\\\A(?:^[A-Z]{3}-[0-9]{4}$)\\\\z', 'c'))");
+        script.ShouldContain($"CHECK (REGEXP_LIKE(`Sku`, '{TestPatterns.SkuMySqlLiteral}', 'c'))");
     }
 
     [Fact]
@@ -131,7 +130,7 @@ public sealed class CheckConstraintDdlTests
 
         string script = context.Database.GenerateCreateScript();
 
-        script.ShouldContain("CHECK (`Sku` REGEXP '(?-i)\\\\A(?:^[A-Z]{3}-[0-9]{4}$)\\\\z')");
+        script.ShouldContain($"CHECK (`Sku` REGEXP '{TestPatterns.SkuMySqlLiteral}')");
     }
 #endif
 }

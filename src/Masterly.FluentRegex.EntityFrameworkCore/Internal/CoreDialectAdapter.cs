@@ -1,13 +1,6 @@
-// TEMPORARY SHIM — replaced by the core API at merge time.
-//
-// The core library is concurrently gaining SQL regex flavors (Pattern.ToFlavor(RegexFlavor.PostgreSql | MySql |
-// MariaDb | SqlServer | Sqlite)), Pattern.GetLanguageFacts(MatchScope) and Pattern.ToLike(LikeDialect, MatchScope,
-// LikeCollation). Every use of those APIs in this package goes through this adapter so that the bodies below can be
-// swapped for the real core calls without touching the translator, the conventions or SqlRegex.
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Text;
-using System.Text.RegularExpressions;
 
 namespace Masterly.FluentRegex.EntityFrameworkCore.Infrastructure;
 
@@ -34,21 +27,23 @@ internal sealed record DialectLike(string Expression, char? EscapeCharacter, boo
 internal sealed record DialectFacts(int MinLength, int? MaxLength, string RequiredPrefix, string RequiredSuffix, bool IsExact);
 
 /// <summary>
-/// The single seam between this package and the core library's SQL dialect knowledge.
+/// The single seam between this package and the core library's SQL knowledge: <see cref="Pattern.ToFlavor"/>
+/// for the regex dialects, <see cref="Pattern.ToLike"/> for LIKE with its proof and
+/// <see cref="Pattern.GetLanguageFacts"/> for index hints. Results are memoized per pattern (patterns have
+/// value equality), because the proofs run language algebra and EF Core may translate the same constant
+/// pattern for many queries.
 /// </summary>
 internal static class CoreDialectAdapter
 {
-    private const string PostgreSqlEndOfString = @"\Z";
-    private const string MariaDbCaseSensitive = "(?-i)";
+    private const int CacheCapacity = 512;
+
+    private static readonly ConcurrentDictionary<(Pattern Pattern, SqlDialect Dialect), DialectRegex> RegexCache = new();
+    private static readonly ConcurrentDictionary<(Pattern Pattern, LikeDialect Dialect, MatchScope Scope, LikeCollation Collation), DialectLike> LikeCache = new();
+    private static readonly ConcurrentDictionary<(Pattern Pattern, MatchScope Scope), DialectFacts> FactsCache = new();
 
     /// <summary>
-    /// Test hook: when set, <see cref="GetFacts"/> returns its result instead of the real facts.
-    /// The hook must only describe facts that are true for the pattern it is given.
-    /// </summary>
-    internal static Func<Pattern, bool, DialectFacts>? FactsOverride { get; set; }
-
-    /// <summary>
-    /// Translates <paramref name="pattern"/> to the regex syntax of <paramref name="dialect"/>.
+    /// Translates <paramref name="pattern"/> to the regex syntax of <paramref name="dialect"/> with the exact
+    /// .NET meaning, or throws when the engine cannot express it.
     /// </summary>
     /// <exception cref="NotSupportedException">
     /// <paramref name="dialect"/> is <see cref="SqlDialect.SqlServer"/>, which has no regex support, or the
@@ -63,27 +58,12 @@ internal static class CoreDialectAdapter
                 "SQL Server before 2025 has no regular expression support. Use the LIKE translation instead.");
         }
 
-        // TEMPORARY SHIM: the .NET regex text with inline options. The real core API translates each construct.
-        string text = InlineOptions(pattern) + pattern.ToString();
-        if (dialect == SqlDialect.MariaDb && (pattern.Options & RegexOptions.IgnoreCase) == 0)
-        {
-            // MariaDB's REGEXP follows the (usually case-insensitive) column collation and has no match-type argument;
-            // the inline (?-i) restores .NET's default (verified on MariaDB 11.4). The real translator must keep this.
-            text = MariaDbCaseSensitive + text;
-        }
-
-        if (dialect == SqlDialect.PostgreSql && text.EndsWith(WholeStringPattern.Suffix, StringComparison.Ordinal))
-        {
-            // PostgreSQL spells the end-of-string anchor \Z; only the whole-string wrapper is fixed up here so that
-            // CHECK constraints created during container tests are valid before the real translator lands.
-            text = text.Substring(0, text.Length - WholeStringPattern.Suffix.Length) + ")" + PostgreSqlEndOfString;
-        }
-
-        return new DialectRegex(text, dialect == SqlDialect.Sqlite, Array.Empty<string>(), GroupNumbers(pattern));
+        return Cached(RegexCache, (Pattern: pattern, Dialect: dialect), key => Translate(key.Pattern, RegexFlavorOf(key.Dialect)));
     }
 
     /// <summary>
-    /// Translates <paramref name="pattern"/> to a <c>LIKE</c> expression for <paramref name="dialect"/>.
+    /// Compiles <paramref name="pattern"/> to a <c>LIKE</c> expression for <paramref name="dialect"/> that accepts
+    /// every string the pattern accepts, with a proof of whether it accepts exactly those strings.
     /// </summary>
     /// <param name="pattern">The pattern.</param>
     /// <param name="dialect">The target dialect.</param>
@@ -93,8 +73,11 @@ internal static class CoreDialectAdapter
     {
         ArgumentNullException.ThrowIfNull(pattern);
 
-        // TEMPORARY SHIM: "%" accepts every non-null string, which is a superset of any pattern and never exact.
-        return new DialectLike("%", null, IsExact: false, IsSuperset: true);
+        LikeCollation collation = caseInsensitiveCollation ? LikeCollation.CaseInsensitive : LikeCollation.Binary;
+        return Cached(
+            LikeCache,
+            (Pattern: pattern, Dialect: LikeDialectOf(dialect), Scope: ScopeOf(substring), Collation: collation),
+            key => Compile(key.Pattern, key.Dialect, key.Scope, key.Collation));
     }
 
     /// <summary>
@@ -105,59 +88,64 @@ internal static class CoreDialectAdapter
     public static DialectFacts GetFacts(Pattern pattern, bool substring)
     {
         ArgumentNullException.ThrowIfNull(pattern);
-        Func<Pattern, bool, DialectFacts>? factsOverride = FactsOverride;
-        if (factsOverride != null)
-        {
-            return factsOverride(pattern, substring);
-        }
-
-        // TEMPORARY SHIM: no facts are known, so no index hint is ever emitted.
-        return new DialectFacts(0, null, string.Empty, string.Empty, false);
+        return Cached(FactsCache, (Pattern: pattern, Scope: ScopeOf(substring)), key => Facts(key.Pattern, key.Scope));
     }
 
-    private static string InlineOptions(Pattern pattern)
+    private static DialectRegex Translate(Pattern pattern, RegexFlavor flavor)
     {
-        RegexOptions options = pattern.Options;
-        RejectOption(options, RegexOptions.CultureInvariant, pattern);
-        RejectOption(options, RegexOptions.RightToLeft, pattern);
-        RejectOption(options, RegexOptions.ECMAScript, pattern);
-        RejectOption(options, RegexOptions.NonBacktracking, pattern);
-
-        StringBuilder flags = new StringBuilder();
-        AppendFlag(flags, options, RegexOptions.IgnoreCase, 'i');
-        AppendFlag(flags, options, RegexOptions.Multiline, 'm');
-        AppendFlag(flags, options, RegexOptions.Singleline, 's');
-        AppendFlag(flags, options, RegexOptions.IgnorePatternWhitespace, 'x');
-        AppendFlag(flags, options, RegexOptions.ExplicitCapture, 'n');
-        return flags.Length == 0 ? string.Empty : $"(?{flags})";
+        FlavorConversion conversion = pattern.ToFlavor(flavor);
+        return new DialectRegex(conversion.Pattern, conversion.IsExact, conversion.Warnings, conversion.GroupNumbers);
     }
 
-    private static void AppendFlag(StringBuilder flags, RegexOptions options, RegexOptions flag, char letter)
+    private static DialectLike Compile(Pattern pattern, LikeDialect dialect, MatchScope scope, LikeCollation collation)
     {
-        if ((options & flag) != 0)
-        {
-            flags.Append(letter);
-        }
+        LikeConversion conversion = pattern.ToLike(dialect, scope, collation);
+        return new DialectLike(conversion.Expression, conversion.EscapeCharacter, conversion.IsExact, conversion.IsSuperset);
     }
 
-    private static void RejectOption(RegexOptions options, RegexOptions rejected, Pattern pattern)
+    private static DialectFacts Facts(Pattern pattern, MatchScope scope)
     {
-        if ((options & rejected) != 0)
-        {
-            throw new NotSupportedException(
-                $"RegexOptions.{rejected} cannot be expressed in a SQL regex dialect (pattern '{pattern}').");
-        }
+        LanguageFacts facts = pattern.GetLanguageFacts(scope);
+        return new DialectFacts(facts.MinLength, facts.MaxLength, facts.RequiredPrefix, facts.RequiredSuffix, facts.IsExact);
     }
 
-    private static IReadOnlyDictionary<string, int> GroupNumbers(Pattern pattern)
+    private static RegexFlavor RegexFlavorOf(SqlDialect dialect) => dialect switch
     {
-        Regex regex = pattern.ToRegex();
-        Dictionary<string, int> numbers = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (int number in regex.GetGroupNumbers())
+        SqlDialect.PostgreSql => RegexFlavor.PostgreSql,
+        SqlDialect.MySql => RegexFlavor.MySql,
+        SqlDialect.MariaDb => RegexFlavor.MariaDb,
+        SqlDialect.SqlServer2025 => RegexFlavor.SqlServer,
+        SqlDialect.Sqlite => RegexFlavor.Sqlite,
+        _ => throw new ArgumentOutOfRangeException(nameof(dialect), dialect, "The dialect has no regex flavor.")
+    };
+
+    private static LikeDialect LikeDialectOf(SqlDialect dialect) => dialect switch
+    {
+        SqlDialect.PostgreSql => LikeDialect.PostgreSql,
+        SqlDialect.MySql or SqlDialect.MariaDb => LikeDialect.MySql,
+        SqlDialect.SqlServer or SqlDialect.SqlServer2025 => LikeDialect.SqlServer,
+        SqlDialect.Sqlite => LikeDialect.Sqlite,
+        _ => throw new ArgumentOutOfRangeException(nameof(dialect), dialect, "Unknown SQL dialect.")
+    };
+
+    private static MatchScope ScopeOf(bool substring) => substring ? MatchScope.Substring : MatchScope.FullString;
+
+    /// <summary>Memoizes <paramref name="compute"/>; the cache is cleared, not evicted, when it fills up.</summary>
+    private static TValue Cached<TKey, TValue>(ConcurrentDictionary<TKey, TValue> cache, TKey key, Func<TKey, TValue> compute)
+        where TKey : notnull
+    {
+        if (cache.TryGetValue(key, out TValue? cached))
         {
-            numbers[regex.GroupNameFromNumber(number)] = number;
+            return cached;
         }
 
-        return numbers;
+        TValue value = compute(key);
+        if (cache.Count >= CacheCapacity)
+        {
+            cache.Clear();
+        }
+
+        cache[key] = value;
+        return value;
     }
 }

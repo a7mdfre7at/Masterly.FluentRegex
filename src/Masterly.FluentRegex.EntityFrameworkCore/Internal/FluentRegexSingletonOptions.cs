@@ -22,6 +22,9 @@ internal sealed class FluentRegexSingletonOptions : IFluentRegexSingletonOptions
     public LikeFallback LikeFallback { get; private set; }
 
     /// <inheritdoc />
+    public LikeCollation LikeCollation { get; private set; }
+
+    /// <inheritdoc />
     public bool CheckConstraintsFromAttributes { get; private set; }
 
     /// <inheritdoc />
@@ -37,6 +40,7 @@ internal sealed class FluentRegexSingletonOptions : IFluentRegexSingletonOptions
         Dialect = ResolveDialect(extension, detection);
         IndexHints = extension.IndexHints;
         LikeFallback = extension.LikeFallback;
+        LikeCollation = extension.LikeCollation;
         CheckConstraintsFromAttributes = extension.CheckConstraintsFromAttributes;
         ProviderAssembly = detection.ProviderAssembly;
     }
@@ -51,6 +55,7 @@ internal sealed class FluentRegexSingletonOptions : IFluentRegexSingletonOptions
         if (ResolveDialect(extension, detection) != Dialect
             || extension.IndexHints != IndexHints
             || extension.LikeFallback != LikeFallback
+            || extension.LikeCollation != LikeCollation
             || extension.CheckConstraintsFromAttributes != CheckConstraintsFromAttributes)
         {
             throw new InvalidOperationException(

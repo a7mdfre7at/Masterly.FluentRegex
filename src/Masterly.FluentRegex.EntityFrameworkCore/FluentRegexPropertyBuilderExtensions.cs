@@ -8,9 +8,12 @@ namespace Masterly.FluentRegex.EntityFrameworkCore;
 public static class FluentRegexPropertyBuilderExtensions
 {
     /// <summary>
-    /// Requires every non-null value of the string property to match <paramref name="pattern"/> as a whole,
-    /// enforced by a CHECK constraint in the configured dialect (<c>CHECK ("Sku" ~ '\A(?:...)\z')</c> on PostgreSQL).
-    /// NULL passes a CHECK constraint, so a nullable column stays nullable. Requires <c>UseFluentRegex()</c> on the
+    /// Requires every non-null value of the string property to be accepted by <paramref name="pattern"/>, enforced by
+    /// a CHECK constraint in the configured dialect (<c>CHECK ("Sku" ~ '...')</c> on PostgreSQL). The constraint has
+    /// the semantics of <see cref="Pattern.IsMatch(string)"/> and <see cref="MatchesPatternAttribute"/>, so the
+    /// database and the validator never disagree; anchor the pattern (<c>^...$</c>, or <c>\A...\z</c> to also reject
+    /// a trailing newline) to constrain the whole value. NULL passes a CHECK constraint, so a nullable column stays
+    /// nullable. Requires <c>UseFluentRegex()</c> on the
     /// context options; on <see cref="SqlDialect.SqlServer"/> the pattern must have an exact <c>LIKE</c> translation,
     /// otherwise model building throws with guidance.
     /// </summary>

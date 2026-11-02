@@ -18,7 +18,6 @@ public sealed class SqliteExecutionTests : IDisposable
 
     public void Dispose()
     {
-        CoreDialectAdapter.FactsOverride = null;
         _connection.Dispose();
     }
 
@@ -83,7 +82,20 @@ public sealed class SqliteExecutionTests : IDisposable
         List<int> notMatching = await context.Products.Where(product => !PatternFunctions.Matches(product.Sku, TestPatterns.Sku)).Select(product => product.Id).ToListAsync(Cancellation);
 
         matching.ShouldBe(new[] { 1, 3, 7 });
-        notMatching.ShouldBe(new[] { 2, 5, 6 }, ignoreOrder: false, customMessage: "SQL three-valued logic excludes NULL from NOT as well");
+        notMatching.ShouldBe(new[] { 2, 4, 5, 6 }, ignoreOrder: false, customMessage: "Matches(NULL) is false, as in .NET, so its negation keeps the NULL row");
+    }
+
+    [Fact]
+    public async Task Matches_Negated_ReturnsTheSameRowsWithAndWithoutIndexHints()
+    {
+        await using CatalogContext hinted = await SeedAsync();
+        await using CatalogContext plain = new CatalogContext(Options<CatalogContext>(fluent => fluent.UseIndexHints(false)));
+
+        List<int> withHints = await hinted.Products.Where(product => !PatternFunctions.Matches(product.Sku, TestPatterns.AbcSku)).Select(product => product.Id).ToListAsync(Cancellation);
+        List<int> withoutHints = await plain.Products.Where(product => !PatternFunctions.Matches(product.Sku, TestPatterns.AbcSku)).Select(product => product.Id).ToListAsync(Cancellation);
+
+        withHints.ShouldBe(withoutHints);
+        withHints.ShouldBe(new[] { 2, 3, 4, 5, 6 });
     }
 
     [Fact]
@@ -128,14 +140,15 @@ public sealed class SqliteExecutionTests : IDisposable
     }
 
     [Fact]
-    public async Task MatchingAsync_LikeFallbackDialect_UsesTheSupersetPrefilterAndStillMatchesExactly()
+    public async Task MatchingAsync_PatternSqliteCannotRun_PrefiltersWithLikeAndStillMatchesExactly()
     {
-        // SqlDialect.SqlServer has no regex, so the prefilter is the superset LIKE path; SQLite executes it.
-        await using CatalogContext context = await SeedAsync(fluent => fluent.UseDialect(SqlDialect.SqlServer));
+        // EF Core's SQLite regexp() uses the non-backtracking engine, which rejects lookarounds, so the SQL side is
+        // only the proven superset; the lookahead is checked in .NET.
+        await using CatalogContext context = await SeedAsync();
 
-        List<Product> products = await context.Products.ToMatchingListAsync(product => product.Sku, TestPatterns.Sku, Cancellation);
+        List<Product> products = await context.Products.ToMatchingListAsync(product => product.Name, TestPatterns.NameWithDigit, Cancellation);
 
-        products.Select(product => product.Id).ShouldBe(new[] { 1, 3, 7 });
+        products.Select(product => product.Id).ShouldBe(new[] { 1, 3, 5, 7 });
     }
 
     [Fact]
@@ -176,22 +189,21 @@ public sealed class SqliteExecutionTests : IDisposable
     }
 
     [Fact]
-    public async Task WhereMatches_LikeFallbackAllowSuperset_ReturnsTheSupersetAndLogsAWarning()
+    public void WhereMatches_LikeFallbackAllowSuperset_EmitsTheProvenSupersetAndLogsAWarning()
     {
+        // The SQL is SQL Server LIKE syntax, so it is inspected rather than executed on SQLite.
         List<string> log = new List<string>();
         DbContextOptions<CatalogContext> options = new DbContextOptionsBuilder<CatalogContext>()
             .UseSqlite(_connection)
             .UseFluentRegex(fluent => fluent.UseDialect(SqlDialect.SqlServer).UseLikeFallback(LikeFallback.AllowSuperset))
             .LogTo(log.Add)
             .Options;
-        await using CatalogContext context = new CatalogContext(options);
-        await context.Database.EnsureCreatedAsync(Cancellation);
-        context.Products.AddRange(TestData.Products());
-        await context.SaveChangesAsync(Cancellation);
+        using CatalogContext context = new CatalogContext(options);
+        string expected = TestPatterns.Sku.ToLike(LikeDialect.SqlServer, MatchScope.Substring, LikeCollation.CaseInsensitive).Expression;
 
-        List<int> ids = await context.Products.WhereMatches(product => product.Sku, TestPatterns.Sku).Select(product => product.Id).ToListAsync(Cancellation);
+        string sql = context.Products.WhereMatches(product => product.Sku, TestPatterns.Sku).ToQueryString();
 
-        ids.ShouldBe(new[] { 1, 2, 3, 5, 6, 7 }, ignoreOrder: false, customMessage: "the shim's LIKE '%' accepts every non-null value");
+        sql.ShouldContain($"LIKE '{expected}'");
         log.ShouldContain(line => line.Contains("superset LIKE", StringComparison.Ordinal) && line.Contains(TestPatterns.SkuRegex, StringComparison.Ordinal));
     }
 
@@ -239,9 +251,6 @@ public sealed class SqliteExecutionTests : IDisposable
     public async Task IndexHints_WithProvenFacts_AddConjunctsAndKeepResultsCorrect()
     {
         await using CatalogContext context = await SeedAsync();
-        CoreDialectAdapter.FactsOverride = (pattern, substring) => pattern == TestPatterns.AbcSku
-            ? new DialectFacts(8, 8, "ABC-", string.Empty, true)
-            : new DialectFacts(0, null, string.Empty, string.Empty, false);
         IQueryable<Product> query = context.Products.WhereMatches(product => product.Sku, TestPatterns.AbcSku);
 
         string sql = query.ToQueryString();
@@ -256,7 +265,6 @@ public sealed class SqliteExecutionTests : IDisposable
     public async Task IndexHints_Disabled_EmitOnlyTheRegex()
     {
         await using CatalogContext context = await SeedAsync(fluent => fluent.UseIndexHints(false));
-        CoreDialectAdapter.FactsOverride = (pattern, substring) => new DialectFacts(8, 8, "ABC-", string.Empty, true);
 
         string sql = context.Products.WhereMatches(product => product.Sku, TestPatterns.AbcSku).ToQueryString();
 

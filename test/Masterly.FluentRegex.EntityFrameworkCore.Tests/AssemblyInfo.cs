@@ -1,4 +1,4 @@
 using Xunit;
 
-// The adapter's test hook (CoreDialectAdapter.FactsOverride) is process-wide, so test classes must not interleave.
+// The container fixtures start several database servers; running test classes in parallel starves them.
 [assembly: CollectionBehavior(DisableTestParallelization = true)]

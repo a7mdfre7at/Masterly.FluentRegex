@@ -164,7 +164,7 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
 
         if (operand.Constant is Pattern pattern)
         {
-            return TranslateConstantMatches(value, pattern, logger);
+            return NullIsNoMatch(value, TranslateConstantMatches(value, pattern, logger));
         }
 
         if (_options.Dialect == SqlDialect.SqlServer)
@@ -176,8 +176,17 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
                 "UseDialect(SqlDialect.SqlServer2025).");
         }
 
-        return RegexPredicate(value, RegexParameter(operand.RequireParameter()));
+        return NullIsNoMatch(value, RegexPredicate(value, RegexParameter(operand.RequireParameter())));
     }
+
+    /// <summary>
+    /// Makes a NULL value a definite non-match, as <see cref="PatternFunctions.Matches"/> is in .NET. Without the
+    /// guard the predicate is NULL for NULL, and whether a negation keeps the row would depend on how EF Core
+    /// rewrites the conjunction, so adding index hints could change results. EF Core removes the guard for
+    /// non-nullable columns.
+    /// </summary>
+    private SqlExpression NullIsNoMatch(SqlExpression value, SqlExpression predicate) =>
+        _sql.AndAlso(_sql.IsNotNull(value), predicate);
 
     private SqlExpression TranslateConstantMatches(SqlExpression value, Pattern pattern, IDiagnosticsLogger<DbLoggerCategory.Query> logger)
     {
@@ -203,7 +212,8 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
                 "UseDialect(SqlDialect.SqlServer2025) when the database runs at compatibility level 170 or later.");
         }
 
-        DialectLike like = CoreDialectAdapter.ToDialectLike(pattern, SqlDialect.SqlServer, substring: true, caseInsensitiveCollation: true);
+        bool caseInsensitive = _options.LikeCollation == LikeCollation.CaseInsensitive;
+        DialectLike like = CoreDialectAdapter.ToDialectLike(pattern, SqlDialect.SqlServer, substring: true, caseInsensitiveCollation: caseInsensitive);
         if (like.IsExact)
         {
             return LikePredicate(value, like);
@@ -251,7 +261,7 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
         }
 
         SqlExpression result = notNull;
-        DialectLike like = CoreDialectAdapter.ToDialectLike(pattern, dialect, substring: true, caseInsensitiveCollation: dialect != SqlDialect.PostgreSql);
+        DialectLike like = CoreDialectAdapter.ToDialectLike(pattern, dialect, substring: true, caseInsensitiveCollation: PrefilterAssumesCaseInsensitiveLike(dialect));
         if ((like.IsExact || like.IsSuperset) && !string.Equals(like.Expression, LikeWildcard, StringComparison.Ordinal))
         {
             result = _sql.AndAlso(result, LikePredicate(value, like));
@@ -265,6 +275,15 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
 
         return result;
     }
+
+    /// <summary>
+    /// Chooses the collation model for a prefilter LIKE. Without sets (every dialect but SQL Server) a LIKE compiled
+    /// for a binary collation stays a superset under a case- or accent-insensitive one, which only accepts more, so
+    /// binary is sound whatever the column's collation is. SQL Server LIKE has sets whose ranges follow the collation
+    /// order, so there the configured collation must be used.
+    /// </summary>
+    private bool PrefilterAssumesCaseInsensitiveLike(SqlDialect dialect) =>
+        (dialect == SqlDialect.SqlServer || dialect == SqlDialect.SqlServer2025) && _options.LikeCollation == LikeCollation.CaseInsensitive;
 
     private static DialectRegex? TryDialectRegex(Pattern pattern, SqlDialect dialect)
     {

@@ -3,12 +3,20 @@ using System.Text.RegularExpressions;
 namespace Masterly.FluentRegex.EntityFrameworkCore.Tests;
 
 /// <summary>
-/// Patterns used across the tests. The container tests only use ASCII constructs that mean the same thing in
-/// .NET, PostgreSQL, ICU, PCRE and RE2, because the dialect adapter is still a shim.
+/// Patterns used across the tests, with the dialect regexes the core library translates them to. The dialect texts
+/// keep the .NET meaning: <c>$</c> also accepts a final newline, and MySQL/MariaDB get <c>(?-i)</c> because their
+/// collations are usually case-insensitive.
 /// </summary>
 public static class TestPatterns
 {
     public const string SkuRegex = "^[A-Z]{3}-[0-9]{4}$";
+
+    public const string SkuPostgreSql = @"\A[A-Z]{3}-[0-9]{4}(?=\n?\Z)";
+
+    public const string SkuSqlServer = @"\A[A-Z]{3}-[0-9]{4}\n?\z";
+
+    /// <summary>The MySQL and MariaDB regex as it appears inside a SQL literal, with backslashes doubled.</summary>
+    public const string SkuMySqlLiteral = @"(?-i)\\A[A-Z]{3}-[0-9]{4}(?=\\n?\\z)";
 
     public static readonly Pattern Sku = Pattern.FromRegex(SkuRegex);
 
@@ -21,6 +29,9 @@ public static class TestPatterns
     public static readonly Pattern NamedSkuParts = Pattern.FromRegex("^(?<letters>[A-Z]{3})-(?<number>[0-9]{4})$");
 
     public static readonly Pattern AbcSku = Pattern.FromRegex("^ABC-[0-9]{4}$");
+
+    /// <summary>Ends with \z instead of $, so a binary-collation LIKE translation is exact.</summary>
+    public static readonly Pattern StrictSku = Pattern.FromRegex(@"^[A-Z]{3}-[0-9]{4}\z");
 
     public static readonly Pattern Email = Pattern.FromRegex(@"^[\w.+-]+@[\w-]+(\.[\w-]+)+$");
 

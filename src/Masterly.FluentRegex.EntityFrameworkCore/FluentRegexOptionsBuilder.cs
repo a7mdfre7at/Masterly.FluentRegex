@@ -61,8 +61,28 @@ public sealed class FluentRegexOptionsBuilder
     }
 
     /// <summary>
+    /// States what the database's collation does to <c>LIKE</c>, which decides when a <c>LIKE</c> translation is
+    /// proven exact. The default, <see cref="LikeCollation.CaseInsensitive"/>, matches SQL Server's default
+    /// collations, where <c>LIKE 'INV-%'</c> also accepts <c>inv-</c>, so a case-sensitive pattern with letters is
+    /// never exact. Use <see cref="LikeCollation.Binary"/> for binary or case-sensitive collations
+    /// (<c>_BIN2</c>, <c>_CS_AS</c>).
+    /// </summary>
+    /// <param name="collation">The collation behavior.</param>
+    /// <returns>This builder, for chaining.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="collation"/> is not a defined value.</exception>
+    public FluentRegexOptionsBuilder UseLikeCollation(LikeCollation collation)
+    {
+        if (!Enum.IsDefined(collation))
+        {
+            throw new ArgumentOutOfRangeException(nameof(collation), collation, "Unknown LIKE collation.");
+        }
+
+        return WithOption(extension => extension.WithLikeCollation(collation));
+    }
+
+    /// <summary>
     /// Creates a CHECK constraint for every string property annotated with <see cref="MatchesPatternAttribute"/>,
-    /// with whole-value semantics. A <see cref="ConstrainedPattern"/> contributes only its
+    /// with the same semantics as the attribute's validator. A <see cref="ConstrainedPattern"/> contributes only its
     /// <see cref="ConstrainedPattern.Pattern"/>; <c>Must</c> rules run in .NET only.
     /// </summary>
     /// <param name="enabled">False to ignore the attributes.</param>

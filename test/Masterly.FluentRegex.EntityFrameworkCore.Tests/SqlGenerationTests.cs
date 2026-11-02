@@ -1,3 +1,5 @@
+using System.Linq.Expressions;
+using System.Reflection;
 using Masterly.FluentRegex.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -7,22 +9,15 @@ using Xunit;
 namespace Masterly.FluentRegex.EntityFrameworkCore.Tests;
 
 /// <summary>
-/// SQL generated with ToQueryString() for providers that need a server, without connecting. The dialect adapter is
-/// a shim, so these tests assert the SQL structure (operator, function, literal and parameter placement, hint
-/// conjuncts), not the regex text.
+/// SQL generated with ToQueryString() for providers that need a server, without connecting. The semantics of the
+/// dialect regexes are verified against real servers by the container tests.
 /// </summary>
-public sealed class SqlGenerationTests : IDisposable
+public sealed class SqlGenerationTests
 {
     private const string NpgsqlConnection = "Host=localhost;Database=fluentregex;Username=test;Password=test";
     private const string SqlServerConnection = "Server=localhost;Database=fluentregex;User Id=test;Password=test;TrustServerCertificate=True";
     private const string SqliteConnection = "DataSource=:memory:";
     private const string Replacement = "$2/${1}";
-
-    public void Dispose() => CoreDialectAdapter.FactsOverride = null;
-
-    private static DialectFacts AbcSkuFacts(Pattern pattern, bool substring) => pattern == TestPatterns.AbcSku
-        ? new DialectFacts(8, 8, "ABC-", string.Empty, true)
-        : new DialectFacts(0, null, string.Empty, string.Empty, false);
 
     private static CatalogContext Npgsql(Action<FluentRegexOptionsBuilder>? configure = null) =>
         new CatalogContext(new DbContextOptionsBuilder<CatalogContext>().UseNpgsql(NpgsqlConnection).UseFluentRegex(configure).Options);
@@ -48,10 +43,16 @@ public sealed class SqlGenerationTests : IDisposable
     private static string Replace(CatalogContext context) =>
         context.Products.Select(product => EF.Functions.Replace(product.Sku, TestPatterns.SkuParts, Replacement)).ToQueryString();
 
-    private static string HintedMatch(CatalogContext context)
+    private static string HintedMatch(CatalogContext context) =>
+        context.Products.WhereMatches(product => product.Sku, TestPatterns.AbcSku).ToQueryString();
+
+    /// <summary>Builds the prefilter the way MatchingAsync does, with the pattern as a constant rather than a closure.</summary>
+    private static string Prefilter(CatalogContext context, Pattern pattern)
     {
-        CoreDialectAdapter.FactsOverride = AbcSkuFacts;
-        return context.Products.WhereMatches(product => product.Sku, TestPatterns.AbcSku).ToQueryString();
+        ParameterExpression product = Expression.Parameter(typeof(Product), "product");
+        MethodInfo isCandidate = typeof(PrefilterFunctions).GetMethod(nameof(PrefilterFunctions.IsCandidate), new[] { typeof(string), typeof(Pattern) })!; // the internal method always exists
+        Expression call = Expression.Call(isCandidate, Expression.Property(product, nameof(Product.Sku)), Expression.Constant(pattern));
+        return context.Products.Where(Expression.Lambda<Func<Product, bool>>(call, product)).ToQueryString();
     }
 
     // ------------------------------------------------------------------
@@ -65,7 +66,7 @@ public sealed class SqlGenerationTests : IDisposable
 
         string sql = ConstantMatch(context);
 
-        sql.ShouldContain($" ~ '{TestPatterns.SkuRegex}'");
+        sql.ShouldContain($" ~ '{TestPatterns.SkuPostgreSql}'");
     }
 
     [Fact]
@@ -76,7 +77,7 @@ public sealed class SqlGenerationTests : IDisposable
         string sql = ParameterMatch(context);
 
         sql.ShouldContain(" ~ @");
-        sql.Substring(sql.IndexOf("SELECT", StringComparison.Ordinal)).ShouldNotContain(TestPatterns.SkuRegex);
+        sql.Substring(sql.IndexOf("SELECT", StringComparison.Ordinal)).ShouldNotContain(TestPatterns.SkuPostgreSql);
     }
 
     [Fact]
@@ -88,6 +89,26 @@ public sealed class SqlGenerationTests : IDisposable
 
         sql.ShouldContain("regexp_substr(");
         sql.ShouldContain(", 1, 1, '', 2)");
+    }
+
+    [Fact]
+    public void Npgsql_GroupByName_RemovesGroupNamesPostgreSqlCannotParse()
+    {
+        using CatalogContext context = Npgsql();
+
+        string sql = GroupByName(context);
+
+        sql.ShouldContain(@"'\A([A-Z]{3})-([0-9]{4})(?=\n?\Z)'");
+    }
+
+    [Fact]
+    public void Npgsql_NullableColumn_GuardsNullSoNegationMatchesDotNet()
+    {
+        using CatalogContext context = Npgsql();
+
+        string sql = context.Products.Where(product => PatternFunctions.Matches(product.Sku, TestPatterns.Sku)).ToQueryString();
+
+        sql.ShouldContain("p.\"Sku\" IS NOT NULL");
     }
 
     [Fact]
@@ -108,10 +129,12 @@ public sealed class SqlGenerationTests : IDisposable
 
         string sql = HintedMatch(context);
 
+        // The facts are proven by the core library: every match starts with "ABC-" and has at most 9 characters
+        // (8, plus the final newline that $ accepts).
         sql.ShouldContain(" ~ '");
         sql.ShouldContain(@"LIKE 'ABC-%' ESCAPE '\'");
         sql.ShouldContain("length(");
-        sql.ShouldContain("<= 8");
+        sql.ShouldContain("<= 9");
     }
 
     // ------------------------------------------------------------------
@@ -126,7 +149,7 @@ public sealed class SqlGenerationTests : IDisposable
         string sql = ConstantMatch(context);
 
         sql.ShouldContain("IIF(REGEXP_LIKE(");
-        sql.ShouldContain($"N'{TestPatterns.SkuRegex}'");
+        sql.ShouldContain($"N'{TestPatterns.SkuSqlServer}'");
         sql.ShouldContain(", 1, 0) = 1");
     }
 
@@ -172,7 +195,7 @@ public sealed class SqlGenerationTests : IDisposable
 
         sql.ShouldContain(@"LIKE N'ABC-%' ESCAPE N'\'");
         sql.ShouldContain("LEN(");
-        sql.ShouldContain("<= 8");
+        sql.ShouldContain("<= 9");
     }
 
     [Fact]
@@ -197,15 +220,61 @@ public sealed class SqlGenerationTests : IDisposable
     }
 
     [Fact]
-    public void SqlServer_AllowSuperset_EmitsLike()
+    public void SqlServer_AllowSuperset_EmitsTheProvenSupersetLike()
     {
         using CatalogContext context = SqlServer(configure: fluent => fluent.UseLikeFallback(LikeFallback.AllowSuperset));
+        string expected = TestPatterns.Sku.ToLike(LikeDialect.SqlServer, MatchScope.Substring, LikeCollation.CaseInsensitive).Expression;
 
         string sql = context.Products.Where(product => PatternFunctions.Matches(product.Sku, TestPatterns.Sku)).ToQueryString();
 
-        // The shim's LIKE '%' only excludes NULL, which EF Core may simplify to IS NOT NULL.
-        (sql.Contains(" LIKE N'%'", StringComparison.Ordinal) || sql.Contains("[Sku] IS NOT NULL", StringComparison.Ordinal)).ShouldBeTrue(sql);
+        sql.ShouldContain($"[p].[Sku] LIKE N'{expected}'");
         sql.ShouldNotContain("REGEXP");
+    }
+
+    [Fact]
+    public void SqlServer_BinaryCollation_EmitsTheProvenExactLikeUnderExactOnly()
+    {
+        using CatalogContext context = SqlServer(configure: fluent => fluent.UseLikeCollation(LikeCollation.Binary));
+
+        string sql = context.Products.WhereMatches(product => product.Sku, TestPatterns.StrictSku).ToQueryString();
+
+        sql.ShouldContain("[p].[Sku] LIKE N'[A-Z][A-Z][A-Z]-[0-9][0-9][0-9][0-9]'");
+        sql.ShouldNotContain("REGEXP");
+    }
+
+    [Fact]
+    public void SqlServer_CaseInsensitiveCollation_CaseSensitivePatternIsNeverExact()
+    {
+        using CatalogContext context = SqlServer();
+
+        Should.Throw<InvalidOperationException>(() => context.Products.WhereMatches(product => product.Sku, TestPatterns.StrictSku).ToQueryString());
+    }
+
+    [Fact]
+    public void SqlServer_MatchingAsyncPrefilter_UsesTheSupersetLikeAndTheLengthBound()
+    {
+        using CatalogContext context = SqlServer();
+        string expected = TestPatterns.Sku.ToLike(LikeDialect.SqlServer, MatchScope.Substring, LikeCollation.CaseInsensitive).Expression;
+
+        string sql = Prefilter(context, TestPatterns.Sku);
+
+        sql.ShouldContain($"LIKE N'{expected}'", customMessage: sql);
+        sql.ShouldContain("LEN(");
+        sql.ShouldContain("<= 9");
+    }
+
+    [Fact]
+    public void Npgsql_MatchingAsyncPrefilter_ForAnAtomicGroup_UsesTheSupersetLike()
+    {
+        // PostgreSQL has no atomic groups, so the regex stays in .NET; the atomic group is outside the provable
+        // subset, so the LIKE is a superset by construction ('ID-_%') with no length bound.
+        using CatalogContext context = Npgsql();
+        Pattern atomic = Pattern.FromRegex(@"^ID-(?>[0-9]+)\z");
+
+        string sql = Prefilter(context, atomic);
+
+        sql.ShouldContain("LIKE 'ID-_%'", customMessage: sql);
+        sql.ShouldNotContain(" ~ ");
     }
 
     [Fact]

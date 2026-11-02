@@ -8,7 +8,11 @@ namespace Masterly.FluentRegex.EntityFrameworkCore.Infrastructure;
 /// <param name="Warnings">Behaviors of the dialect regex that differ from .NET.</param>
 internal sealed record SqlCondition(string Sql, IReadOnlyList<string> Warnings);
 
-/// <summary>Builds raw SQL conditions (for <see cref="SqlRegex"/> and CHECK constraints) from a pattern.</summary>
+/// <summary>
+/// Builds raw SQL conditions (for <see cref="SqlRegex"/> and CHECK constraints) from a pattern. Every condition has
+/// the semantics of <see cref="Pattern.IsMatch(string)"/>, so the database accepts exactly the values that the .NET
+/// pattern and <see cref="MatchesPatternAttribute"/> accept.
+/// </summary>
 internal static class SqlConditionBuilder
 {
     private const string LikeEscapeKeyword = "ESCAPE";
@@ -17,27 +21,26 @@ internal static class SqlConditionBuilder
     private const string CaseSensitiveFlag = "c";
 
     /// <summary>
-    /// Builds the condition that is true when <paramref name="columnSql"/> matches <paramref name="pattern"/>.
+    /// Builds the condition that is true when <paramref name="columnSql"/> contains a match of <paramref name="pattern"/>.
     /// </summary>
     /// <param name="columnSql">The column expression, already quoted for the dialect.</param>
     /// <param name="pattern">The pattern.</param>
     /// <param name="dialect">The dialect.</param>
-    /// <param name="wholeString">True for whole-value semantics (CHECK constraints), false for <c>IsMatch</c> semantics.</param>
+    /// <param name="collation">What the collation does to <c>LIKE</c>; only used on <see cref="SqlDialect.SqlServer"/>.</param>
     /// <exception cref="InvalidOperationException">
     /// <paramref name="dialect"/> is <see cref="SqlDialect.SqlServer"/> and the pattern has no exact LIKE translation.
     /// </exception>
     /// <exception cref="NotSupportedException">The pattern uses a construct the dialect cannot express.</exception>
-    public static SqlCondition Build(string columnSql, Pattern pattern, SqlDialect dialect, bool wholeString)
+    public static SqlCondition Build(string columnSql, Pattern pattern, SqlDialect dialect, LikeCollation collation)
     {
         ArgumentNullException.ThrowIfNull(columnSql);
         ArgumentNullException.ThrowIfNull(pattern);
         if (dialect == SqlDialect.SqlServer)
         {
-            return BuildLike(columnSql, pattern, wholeString);
+            return BuildLike(columnSql, pattern, collation);
         }
 
-        Pattern effective = wholeString ? WholeStringPattern.Wrap(pattern) : pattern;
-        DialectRegex regex = CoreDialectAdapter.ToDialectRegex(effective, dialect);
+        DialectRegex regex = CoreDialectAdapter.ToDialectRegex(pattern, dialect);
         string literal = SqlLiteral.String(regex.RegexText, dialect);
         string sql = dialect switch
         {
@@ -58,9 +61,10 @@ internal static class SqlConditionBuilder
         "regular expression support. Run the database at compatibility level 170 or later and configure " +
         "UseDialect(SqlDialect.SqlServer2025), or keep this check in .NET.";
 
-    private static SqlCondition BuildLike(string columnSql, Pattern pattern, bool wholeString)
+    private static SqlCondition BuildLike(string columnSql, Pattern pattern, LikeCollation collation)
     {
-        DialectLike like = CoreDialectAdapter.ToDialectLike(pattern, SqlDialect.SqlServer, substring: !wholeString, caseInsensitiveCollation: true);
+        bool caseInsensitive = collation == LikeCollation.CaseInsensitive;
+        DialectLike like = CoreDialectAdapter.ToDialectLike(pattern, SqlDialect.SqlServer, substring: true, caseInsensitiveCollation: caseInsensitive);
         if (!like.IsExact)
         {
             throw new InvalidOperationException(NoExactLikeMessage(pattern));

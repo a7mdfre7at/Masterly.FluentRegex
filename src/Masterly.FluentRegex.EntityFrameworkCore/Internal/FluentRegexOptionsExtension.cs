@@ -19,6 +19,7 @@ internal sealed class FluentRegexOptionsExtension : IDbContextOptionsExtension
     {
         IndexHints = true;
         LikeFallback = LikeFallback.ExactOnly;
+        LikeCollation = LikeCollation.CaseInsensitive;
     }
 
     private FluentRegexOptionsExtension(FluentRegexOptionsExtension copyFrom)
@@ -26,6 +27,7 @@ internal sealed class FluentRegexOptionsExtension : IDbContextOptionsExtension
         Dialect = copyFrom.Dialect;
         IndexHints = copyFrom.IndexHints;
         LikeFallback = copyFrom.LikeFallback;
+        LikeCollation = copyFrom.LikeCollation;
         CheckConstraintsFromAttributes = copyFrom.CheckConstraintsFromAttributes;
     }
 
@@ -38,11 +40,22 @@ internal sealed class FluentRegexOptionsExtension : IDbContextOptionsExtension
     /// <summary>Gets how patterns are translated on SQL Server without regex support.</summary>
     public LikeFallback LikeFallback { get; private set; }
 
+    /// <summary>Gets what the database's collation does to <c>LIKE</c>.</summary>
+    public LikeCollation LikeCollation { get; private set; }
+
     /// <summary>Gets whether <c>[MatchesPattern]</c> attributes produce CHECK constraints.</summary>
     public bool CheckConstraintsFromAttributes { get; private set; }
 
     /// <inheritdoc />
     public DbContextOptionsExtensionInfo Info => _info ??= new ExtensionInfo(this);
+
+    /// <summary>Returns a copy with the LIKE collation set.</summary>
+    public FluentRegexOptionsExtension WithLikeCollation(LikeCollation collation)
+    {
+        FluentRegexOptionsExtension clone = new FluentRegexOptionsExtension(this);
+        clone.LikeCollation = collation;
+        return clone;
+    }
 
     /// <summary>Returns a copy with the dialect set.</summary>
     public FluentRegexOptionsExtension WithDialect(SqlDialect dialect)
@@ -109,18 +122,20 @@ internal sealed class FluentRegexOptionsExtension : IDbContextOptionsExtension
 
         public override string LogFragment =>
             $"using FluentRegex (Dialect={DialectText}, IndexHints={Extension.IndexHints}, " +
-            $"LikeFallback={Extension.LikeFallback}, CheckConstraintsFromAttributes={Extension.CheckConstraintsFromAttributes}) ";
+            $"LikeFallback={Extension.LikeFallback}, LikeCollation={Extension.LikeCollation}, " +
+            $"CheckConstraintsFromAttributes={Extension.CheckConstraintsFromAttributes}) ";
 
         private string DialectText => Extension.Dialect?.ToString() ?? AutoDialect;
 
         public override int GetServiceProviderHashCode() =>
-            HashCode.Combine(Extension.Dialect, Extension.IndexHints, Extension.LikeFallback, Extension.CheckConstraintsFromAttributes);
+            HashCode.Combine(Extension.Dialect, Extension.IndexHints, Extension.LikeFallback, Extension.LikeCollation, Extension.CheckConstraintsFromAttributes);
 
         public override bool ShouldUseSameServiceProvider(DbContextOptionsExtensionInfo other) =>
             other is ExtensionInfo info
             && info.Extension.Dialect == Extension.Dialect
             && info.Extension.IndexHints == Extension.IndexHints
             && info.Extension.LikeFallback == Extension.LikeFallback
+            && info.Extension.LikeCollation == Extension.LikeCollation
             && info.Extension.CheckConstraintsFromAttributes == Extension.CheckConstraintsFromAttributes;
 
         public override void PopulateDebugInfo(IDictionary<string, string> debugInfo)
@@ -129,6 +144,7 @@ internal sealed class FluentRegexOptionsExtension : IDbContextOptionsExtension
             debugInfo["FluentRegex:Dialect"] = DialectText;
             debugInfo["FluentRegex:IndexHints"] = Extension.IndexHints.ToString();
             debugInfo["FluentRegex:LikeFallback"] = Extension.LikeFallback.ToString();
+            debugInfo["FluentRegex:LikeCollation"] = Extension.LikeCollation.ToString();
             debugInfo["FluentRegex:CheckConstraintsFromAttributes"] = Extension.CheckConstraintsFromAttributes.ToString();
         }
     }

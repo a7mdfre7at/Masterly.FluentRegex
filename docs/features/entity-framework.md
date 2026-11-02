@@ -44,40 +44,46 @@ Generated SQL for `Where(p => Patterns.Sku.IsMatch(p.Name))`:
 
 | Dialect | SQL |
 |---|---|
-| PostgreSQL (Npgsql) | `WHERE p."Name" ~ '^[A-Z]{3}-[0-9]{4}$'` |
-| MySQL 8 (Pomelo) | ``WHERE REGEXP_LIKE(`p`.`Name`, '^[A-Z]{3}-[0-9]{4}$', 'c')`` |
-| MariaDB (Pomelo) | ``WHERE `p`.`Name` REGEXP '(?-i)^[A-Z]{3}-[0-9]{4}$'`` |
-| SQL Server 2025 | `WHERE IIF(REGEXP_LIKE([p].[Name], N'^[A-Z]{3}-[0-9]{4}$'), 1, 0) = 1` |
-| SQLite | `WHERE "p"."Name" REGEXP '^[A-Z]{3}-[0-9]{4}$'` |
+| PostgreSQL (Npgsql) | `WHERE p."Name" ~ '\A[A-Z]{3}-[0-9]{4}(?=\n?\Z)' AND length(p."Name") <= 9` |
+| MySQL 8 (Pomelo) | ``WHERE REGEXP_LIKE(`p`.`Name`, '(?-i)\\A[A-Z]{3}-[0-9]{4}(?=\\n?\\z)', 'c') AND (CHAR_LENGTH(`p`.`Name`) <= 9)`` |
+| MariaDB (Pomelo) | ``WHERE `p`.`Name` REGEXP '(?-i)\\A[A-Z]{3}-[0-9]{4}(?=\\n?\\z)' AND (CHAR_LENGTH(`p`.`Name`) <= 9)`` |
+| SQL Server 2025 | `WHERE IIF(REGEXP_LIKE([p].[Name], N'\A[A-Z]{3}-[0-9]{4}\n?\z'), 1, 0) = 1 AND CAST(LEN([p].[Name]) AS int) <= 9` |
+| SQLite | `WHERE "p"."Name" REGEXP '^[A-Z]{3}-[0-9]{4}$' AND length("p"."Name") <= 9` |
+
+The regex is not the .NET text passed through: it is translated by the core library's
+[SQL flavors](sql-flavors.md) so it keeps the exact .NET meaning on each engine. `$` accepts a final newline in
+.NET, so it becomes `(?=\n?\Z)` (PostgreSQL), `(?=\n?\z)` (MySQL, MariaDB) or `\n?\z` (SQL Server, whose RE2 engine
+has no lookahead); `\d`, `\w`, case-insensitivity and `\b` are written out the same way. SQLite runs the .NET
+engine itself, so the text is unchanged. The `length` conjunct is an [index hint](#index-hints).
 
 `REGEXP_LIKE` is a predicate on SQL Server, not a function, so it is wrapped in `IIF(...) = 1`, which is valid
-wherever EF Core places a value. MySQL's `'c'` match type and MariaDB's inline `(?-i)` restore .NET's default
-case sensitivity, because both servers otherwise follow the (usually case-insensitive) column collation; a
-pattern with `RegexOptions.IgnoreCase` embeds `(?i)` and stays case-insensitive.
+wherever EF Core places a value. MySQL's `'c'` match type and the inline `(?-i)` restore .NET's default case
+sensitivity, because MySQL and MariaDB otherwise follow the (usually case-insensitive) column collation; a pattern
+with `RegexOptions.IgnoreCase` is expanded into explicit classes and stays case-insensitive.
 
 A pattern held in a variable stays a query parameter; the dialect regex is produced when the query executes,
 so changing the variable never recompiles the query:
 
 ```sql
--- @local='^[A-Z]{3}-[0-9]{4}$'
+-- @__local_0='\A[A-Z]{3}-[0-9]{4}(?=\n?\Z)'
 SELECT p."Id", p."Email", p."Name", p."Sku"
 FROM "Products" AS p
-WHERE p."Name" ~ @local
+WHERE p."Name" ~ @__local_0
 ```
 
 ### Capture groups and replacement
 
 ```sql
--- PostgreSQL: Group(p.Sku, Patterns.SkuParts, "number")   (named groups are mapped to their numbers)
-SELECT regexp_substr(p."Sku", '^(?<letters>[A-Z]{3})-(?<number>[0-9]{4})$', 1, 1, '', 2) FROM "Products" AS p
--- SQL Server 2025
-SELECT REGEXP_SUBSTR([p].[Sku], N'^(?<letters>[A-Z]{3})-(?<number>[0-9]{4})$', 1, 1, 'c', 2) FROM [Products] AS [p]
+-- Group(p.Sku, Patterns.SkuParts, "number"): PostgreSQL has no named groups, so names are removed and mapped
+-- to their numbers; SQL Server 2025 (RE2) spells them (?P<name>...)
+SELECT regexp_substr(p."Sku", '\A([A-Z]{3})-([0-9]{4})(?=\n?\Z)', 1, 1, '', 2)                    -- PostgreSQL
+SELECT REGEXP_SUBSTR([p].[Sku], N'\A(?P<letters>[A-Z]{3})-(?P<number>[0-9]{4})\n?\z', 1, 1, 'c', 2) -- SQL Server 2025
 
 -- Replace(p.Sku, Patterns.SkuParts, "$2/$1"): .NET substitutions are converted to the dialect's syntax
-SELECT regexp_replace(p."Sku", '^([A-Z]{3})-([0-9]{4})$', '\2/\1', 'g') FROM "Products" AS p      -- PostgreSQL
-SELECT REGEXP_REPLACE(`p`.`Sku`, '^([A-Z]{3})-([0-9]{4})$', '$2/$1') FROM `Products` AS `p`        -- MySQL
-SELECT REGEXP_REPLACE(`p`.`Sku`, '(?-i)^([A-Z]{3})-([0-9]{4})$', '\\2/\\1') FROM `Products` AS `p` -- MariaDB
-SELECT REGEXP_REPLACE([p].[Sku], N'^([A-Z]{3})-([0-9]{4})$', N'\2/\1') FROM [Products] AS [p]     -- SQL Server 2025
+SELECT regexp_replace(p."Sku", '\A([A-Z]{3})-([0-9]{4})(?=\n?\Z)', '\2/\1', 'g')              -- PostgreSQL
+SELECT REGEXP_REPLACE(`p`.`Sku`, '(?-i)\\A([A-Z]{3})-([0-9]{4})(?=\\n?\\z)', '$2/$1')           -- MySQL
+SELECT REGEXP_REPLACE(`p`.`Sku`, '(?-i)\\A([A-Z]{3})-([0-9]{4})(?=\\n?\\z)', '\\2/\\1')         -- MariaDB
+SELECT REGEXP_REPLACE([p].[Sku], N'\A([A-Z]{3})-([0-9]{4})\n?\z', N'\2/\1')                     -- SQL Server 2025
 ```
 
 `$1`, `${1}`, `${name}` and `$$` are supported; `$&`, `` $` ``, `$'`, `$+` and `$_` throw `NotSupportedException`.
@@ -86,17 +92,22 @@ Groups above 9 are only supported on MySQL. The replacement must be a literal st
 
 ### Index hints
 
-When the pattern's proven facts (from the core library) give a required prefix or a finite maximum length, they
-are added as conjuncts. Every row that matches the regex satisfies them, so results do not change, but a
-B-tree index on the column can narrow the scan:
+The core library's [language facts](language-facts.md) prove, from the pattern's minimal automaton, the text every
+match starts with and the longest possible match. When they give a required prefix or a finite maximum length,
+they are added as conjuncts. Every row that matches the regex satisfies them, so results do not change, but a
+B-tree index on the column can narrow the scan. For `WhereMatches(p => p.Sku, Pattern.FromRegex("^ABC-[0-9]{4}$"))`:
 
 ```sql
-WHERE p."Sku" ~ '^ABC-[0-9]{4}$' AND p."Sku" LIKE 'ABC-%' ESCAPE '\' AND length(p."Sku") <= 8               -- PostgreSQL
-WHERE IIF(REGEXP_LIKE([p].[Sku], N'^ABC-[0-9]{4}$'), 1, 0) = 1
-  AND [p].[Sku] LIKE N'ABC-%' ESCAPE N'\' AND CAST(LEN([p].[Sku]) AS int) <= 8                                -- SQL Server 2025
-WHERE (REGEXP_LIKE(`p`.`Sku`, '^ABC-[0-9]{4}$', 'c') AND (`p`.`Sku` LIKE 'ABC-%' ESCAPE '\\'))
-  AND (CHAR_LENGTH(`p`.`Sku`) <= 8)                                                                          -- MySQL
+WHERE p."Sku" IS NOT NULL AND p."Sku" ~ '\AABC-[0-9]{4}(?=\n?\Z)'
+  AND p."Sku" LIKE 'ABC-%' ESCAPE '\' AND length(p."Sku") <= 9                                    -- PostgreSQL
+WHERE [p].[Sku] IS NOT NULL AND IIF(REGEXP_LIKE([p].[Sku], N'\AABC-[0-9]{4}\n?\z'), 1, 0) = 1
+  AND [p].[Sku] LIKE N'ABC-%' ESCAPE N'\' AND CAST(LEN([p].[Sku]) AS int) <= 9                     -- SQL Server 2025
+WHERE `p`.`Sku` IS NOT NULL AND ((REGEXP_LIKE(`p`.`Sku`, '(?-i)\\AABC-[0-9]{4}(?=\\n?\\z)', 'c')
+  AND (`p`.`Sku` LIKE 'ABC-%' ESCAPE '\\')) AND (CHAR_LENGTH(`p`.`Sku`) <= 9))                    -- MySQL
 ```
+
+The bound is 9, not 8, because `$` also accepts one final newline; end the pattern with `\z` to get 8. The
+`IS NOT NULL` guard is the [NULL rule](#null-rule); EF Core drops it for required columns.
 
 Only the upper length bound is emitted: SQL length functions count code points (`LEN` also strips trailing
 spaces), so a lower bound computed in UTF-16 units could exclude matches. Hints apply to patterns known at query
@@ -122,9 +133,11 @@ SQL Server before 2025, and for `ConstrainedPattern`, whose `IsMatch` throws in 
 
 ## NULL rule
 
-A NULL value never matches. In SQL the regex predicate on NULL yields NULL, so the row is excluded, and so is
-`!Matches(...)` (three-valued logic): `Where(p => !PatternFunctions.Matches(p.Sku, Patterns.Sku))` does not return
-rows with a NULL `Sku`. `Group` and `Replace` return NULL for NULL. `PatternFunctions` mirror this in .NET.
+A NULL value never matches, exactly as in .NET: `PatternFunctions.Matches(null, pattern)` is `false`, so
+`Where(p => !PatternFunctions.Matches(p.Sku, Patterns.Sku))` returns the rows with a NULL `Sku`, as LINQ to Objects
+would. The translation guards nullable columns with `col IS NOT NULL AND ...` (EF Core drops the guard for required
+columns), so the result never depends on how SQL's three-valued logic treats the index-hint conjuncts: a query
+returns the same rows with and without `UseIndexHints`. `Group` and `Replace` return NULL for NULL.
 
 ## Constants and parameters (EF Core 8 vs EF Core 10)
 
@@ -142,8 +155,9 @@ Server `LIKE` fallback require. Verified with the test suite:
 | static property | parameter | parameter |
 
 On EF Core 10 `EF.Constant` therefore gives correct SQL but no index hints, and cannot be used with `Group` by
-name or named replacements; reference the pattern through a static readonly field instead. Equal-but-distinct
-pattern instances compile separately until `Pattern` gains value equality in the core library.
+name or named replacements; reference the pattern through a static readonly field instead. `Pattern` has value
+equality (same regex, options and timeout), so equal pattern instances share one entry in EF Core's query cache,
+and the package memoizes each translation, `LIKE` proof and fact set per pattern.
 
 ## CHECK constraints
 
@@ -158,16 +172,18 @@ public sealed class Order
 }
 ```
 
-The constraint has whole-value semantics (`\A(?:pattern)\z`) and NULL passes, so nullable columns stay nullable.
-`UseFluentRegex()` must be configured on the context: the constraint is emitted by a model-finalizing convention
-that knows the dialect. A `ConstrainedPattern` contributes only its `Pattern`; `Must` rules stay in .NET.
+The constraint has the semantics of `Pattern.IsMatch` and `[MatchesPattern]`, so the database accepts exactly the
+values your validator accepts and the two can never disagree. Anchor the pattern to constrain the whole value:
+`^...$` (which, as in .NET, also accepts one final newline) or `^...\z`. NULL passes, so nullable columns stay
+nullable. `UseFluentRegex()` must be configured on the context: the constraint is emitted by a model-finalizing
+convention that knows the dialect. A `ConstrainedPattern` contributes only its `Pattern`; `Must` rules stay in .NET.
 
 ```sql
-CONSTRAINT "CK_Products_Sku_Pattern" CHECK ("Sku" ~ '\A(?:^[A-Z]{3}-[0-9]{4}$)\Z')                     -- PostgreSQL
-CONSTRAINT `CK_Products_Sku_Pattern` CHECK (REGEXP_LIKE(`Sku`, '\\A(?:^[A-Z]{3}-[0-9]{4}$)\\z', 'c'))  -- MySQL
-CONSTRAINT `CK_Products_Sku_Pattern` CHECK (`Sku` REGEXP '(?-i)\\A(?:^[A-Z]{3}-[0-9]{4}$)\\z')         -- MariaDB
-CONSTRAINT [CK_Products_Sku_Pattern] CHECK (REGEXP_LIKE([Sku], N'\A(?:^[A-Z]{3}-[0-9]{4}$)\z'))         -- SQL Server 2025
-CONSTRAINT "CK_Products_Sku_Pattern" CHECK ("Sku" REGEXP '\A(?:^[A-Z]{3}-[0-9]{4}$)\z')                -- SQLite
+CONSTRAINT "CK_Products_Sku_Pattern" CHECK ("Sku" ~ '\A[A-Z]{3}-[0-9]{4}(?=\n?\Z)')                         -- PostgreSQL
+CONSTRAINT `CK_Products_Sku_Pattern` CHECK (REGEXP_LIKE(`Sku`, '(?-i)\\A[A-Z]{3}-[0-9]{4}(?=\\n?\\z)', 'c')) -- MySQL
+CONSTRAINT `CK_Products_Sku_Pattern` CHECK (`Sku` REGEXP '(?-i)\\A[A-Z]{3}-[0-9]{4}(?=\\n?\\z)')            -- MariaDB
+CONSTRAINT [CK_Products_Sku_Pattern] CHECK (REGEXP_LIKE([Sku], N'\A[A-Z]{3}-[0-9]{4}\n?\z'))                -- SQL Server 2025
+CONSTRAINT "CK_Products_Sku_Pattern" CHECK ("Sku" REGEXP '^[A-Z]{3}-[0-9]{4}$')                            -- SQLite
 ```
 
 On SQL Server without regex support the constraint is emitted only when the pattern has an exact `LIKE` form;
@@ -192,6 +208,7 @@ options.UseFluentRegex(fluent => fluent
     .UseDialect(SqlDialect.SqlServer2025)          // override detection, e.g. Azure SQL without an explicit level
     .UseIndexHints(true)                           // default
     .UseLikeFallback(LikeFallback.AllowSuperset)   // SQL Server without regex: superset LIKE + logged warning
+    .UseLikeCollation(LikeCollation.Binary)        // SQL Server columns use a _BIN2 or _CS_AS collation
     .AddCheckConstraintsFromAttributes());         // [MatchesPattern] -> CHECK constraints
 ```
 
@@ -207,6 +224,26 @@ exact; otherwise an `InvalidOperationException` names the pattern and suggests `
 throw. Translation differences reported by the dialect conversion are logged as
 `FluentRegexEventId.TranslationWarning`.
 
+### SQL Server `LIKE` and collations
+
+Whether a `LIKE` is exact depends on what the column's collation does to it, so the proof needs to know.
+`UseLikeCollation` defaults to `LikeCollation.CaseInsensitive`, which matches SQL Server's default collations:
+`LIKE 'INV-%'` also accepts `inv-`, so a case-sensitive pattern with letters is never exact, and sets list their
+members instead of using ranges, whose order follows the collation. With `LikeCollation.Binary` (`_BIN2`, `_CS_AS`
+columns) ranges are safe and case is exact:
+
+```csharp
+public static readonly Pattern Sku = Pattern.FromRegex(@"^[A-Z]{3}-[0-9]{4}\z");
+
+options.UseSqlServer(cs).UseFluentRegex(fluent => fluent.UseLikeCollation(LikeCollation.Binary));
+db.Products.WhereMatches(p => p.Sku, Sku);
+// WHERE [p].[Sku] LIKE N'[A-Z][A-Z][A-Z]-[0-9][0-9][0-9][0-9]'      -- proven exact, no regex engine needed
+```
+
+End such patterns with `\z`: `$` also accepts a final newline, which `LIKE` can only cover with a trailing `%`.
+The `MatchingAsync` prefilter on the other dialects compiles its `LIKE` for a binary collation, which stays a
+superset under any case- or accent-insensitive collation.
+
 ## Dialect support matrix
 
 | | PostgreSQL | MySQL 8 | MariaDB | SQL Server 2025 | SQL Server | SQLite |
@@ -221,14 +258,15 @@ throw. Translation differences reported by the dialect conversion are logged as
 
 ## Known limitations
 
-- The SQL regex dialect conversion, the LIKE conversion and the language facts come from the core library through
-  one internal adapter (`CoreDialectAdapter`). Until the core API lands, the adapter passes the .NET regex text
-  through with inline options, reports every non-SQLite translation as not exact, has no LIKE conversion
-  (`%`, a superset) and no facts, so index hints are not emitted, `MatchingAsync` prefilters with `IS NOT NULL`
-  on regex dialects other than SQLite, and SQL Server without regex support always throws under `ExactOnly`.
-- Named groups: PostgreSQL has none and SQL Server 2025 (RE2) uses `(?P<name>...)`; the dialect conversion must
-  rewrite them. Group names are mapped to numbers for `Group` and `${name}` replacements.
+- The regex text comes from the core library's [SQL flavors](sql-flavors.md), so its limits apply: constructs an
+  engine cannot express (atomic groups everywhere; lookarounds and backreferences on SQL Server 2025; lookarounds,
+  backreferences and conditionals on SQLite, whose EF Core `regexp()` uses the non-backtracking engine) throw
+  `NotSupportedException` at query translation, never at run time with different results. Use `MatchingAsync`
+  for them. Group names are rewritten for PostgreSQL (none) and SQL Server 2025 (`(?P<name>...)`) and mapped to
+  numbers for `Group` and `${name}` replacements.
 - `RegexOptions.CultureInvariant`, `RightToLeft`, `ECMAScript` and `NonBacktracking` throw `NotSupportedException`.
+- MySQL and MariaDB semantics were verified against MySQL 8.4 and MariaDB 11.4 through the EF Core container
+  tests; the core flavor's broader construct-by-construct cross-check ran against PostgreSQL and SQL Server only.
 - `Group` needs PostgreSQL 15+ (`regexp_substr`) or SQL Server 2025; `Replace` is unavailable on SQLite.
 - EF Core 10 keeps `EF.Constant(pattern)` as a parameter during translation (see the table above).
 - Relational providers only; the package detects Npgsql, Pomelo, SQL Server and SQLite, other providers need

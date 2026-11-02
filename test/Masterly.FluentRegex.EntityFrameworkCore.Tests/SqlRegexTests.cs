@@ -5,39 +5,36 @@ namespace Masterly.FluentRegex.EntityFrameworkCore.Tests;
 
 public sealed class SqlRegexTests
 {
-    private static readonly Pattern Quoted = Pattern.FromRegex(@"^it's \d+$");
+    private static readonly Pattern Quoted = Pattern.FromRegex(@"^it's [0-9]+\z");
+
+    private static readonly Pattern ExactLikeSku = Pattern.FromRegex(@"^[A-Z]{3}-[0-9]{4}\z");
 
     [Theory]
-    [InlineData(SqlDialect.PostgreSql, "\"Email\" ~ '^[A-Z]{3}-[0-9]{4}$'")]
-    [InlineData(SqlDialect.MySql, "REGEXP_LIKE(`Email`, '^[A-Z]{3}-[0-9]{4}$', 'c')")]
-    [InlineData(SqlDialect.MariaDb, "`Email` REGEXP '(?-i)^[A-Z]{3}-[0-9]{4}$'")]
-    [InlineData(SqlDialect.SqlServer2025, "REGEXP_LIKE([Email], N'^[A-Z]{3}-[0-9]{4}$')")]
-    [InlineData(SqlDialect.Sqlite, "\"Email\" REGEXP '^[A-Z]{3}-[0-9]{4}$'")]
-    public void Condition_EmitsTheDialectPredicate(SqlDialect dialect, string expected)
+    [InlineData(SqlDialect.PostgreSql, "\"Email\"", @"""Email"" ~ '\A[A-Z]{3}-[0-9]{4}(?=\n?\Z)'")]
+    [InlineData(SqlDialect.MySql, "`Email`", @"REGEXP_LIKE(`Email`, '(?-i)\\A[A-Z]{3}-[0-9]{4}(?=\\n?\\z)', 'c')")]
+    [InlineData(SqlDialect.MariaDb, "`Email`", @"`Email` REGEXP '(?-i)\\A[A-Z]{3}-[0-9]{4}(?=\\n?\\z)'")]
+    [InlineData(SqlDialect.SqlServer2025, "[Email]", @"REGEXP_LIKE([Email], N'\A[A-Z]{3}-[0-9]{4}\n?\z')")]
+    [InlineData(SqlDialect.Sqlite, "\"Email\"", @"""Email"" REGEXP '^[A-Z]{3}-[0-9]{4}$'")]
+    public void Condition_EmitsTheDialectPredicateWithDotNetSemantics(SqlDialect dialect, string column, string expected)
     {
-        string column = dialect switch
-        {
-            SqlDialect.MySql => "`Email`",
-            SqlDialect.MariaDb => "`Email`",
-            SqlDialect.SqlServer2025 => "[Email]",
-            _ => "\"Email\""
-        };
-
         SqlRegex.Condition(column, TestPatterns.Sku, dialect).ShouldBe(expected);
     }
 
     [Fact]
     public void Condition_DoublesQuotesAndMySqlBackslashes()
     {
-        SqlRegex.Condition("c", Quoted, SqlDialect.PostgreSql).ShouldBe(@"c ~ '^it''s \d+$'");
-        SqlRegex.Condition("c", Quoted, SqlDialect.MySql).ShouldBe(@"REGEXP_LIKE(c, '^it''s \\d+$', 'c')");
-        SqlRegex.Condition("c", Quoted, SqlDialect.SqlServer2025).ShouldBe(@"REGEXP_LIKE(c, N'^it''s \d+$')");
+        SqlRegex.Condition("c", Quoted, SqlDialect.PostgreSql).ShouldBe(@"c ~ '\Ait''s [0-9]+\Z'");
+        SqlRegex.Condition("c", Quoted, SqlDialect.MySql).ShouldBe(@"REGEXP_LIKE(c, '(?-i)\\Ait''s [0-9]+\\z', 'c')");
+        SqlRegex.Condition("c", Quoted, SqlDialect.SqlServer2025).ShouldBe(@"REGEXP_LIKE(c, N'\Ait''s [0-9]+\z')");
     }
 
     [Fact]
-    public void Condition_EmbedsRegexOptionsInline()
+    public void Condition_ExpandsIgnoreCaseExactlyAsDotNetFoldsIt()
     {
-        SqlRegex.Condition("c", TestPatterns.CaseInsensitiveSku, SqlDialect.PostgreSql).ShouldBe("c ~ '(?i)^[A-Z]{3}-[0-9]{4}$'");
+        // .NET's IgnoreCase also matches U+0130 (dotted capital I) and U+212A (Kelvin sign) for [A-Za-z]. A regular
+        // string with doubled backslashes is used because the compiler expands \u escapes even in verbatim strings.
+        SqlRegex.Condition("c", TestPatterns.CaseInsensitiveSku, SqlDialect.PostgreSql)
+            .ShouldBe("c ~ '\\A[A-Za-z\\u0130\\u212A]{3}-[0-9]{4}(?=\\n?\\Z)'");
     }
 
     [Fact]
@@ -50,10 +47,25 @@ public sealed class SqlRegexTests
     }
 
     [Fact]
+    public void Condition_SqlServerCaseInsensitiveCollation_CaseSensitivePatternIsNeverExact()
+    {
+        Should.Throw<InvalidOperationException>(() => SqlRegex.Condition("[Sku]", ExactLikeSku, SqlDialect.SqlServer));
+    }
+
+    [Fact]
+    public void Condition_SqlServerBinaryCollation_EmitsTheProvenExactLike()
+    {
+        string condition = SqlRegex.Condition("[Sku]", ExactLikeSku, SqlDialect.SqlServer, LikeCollation.Binary);
+
+        condition.ShouldBe("[Sku] LIKE N'[A-Z][A-Z][A-Z]-[0-9][0-9][0-9][0-9]'");
+    }
+
+    [Fact]
     public void Condition_RejectsBadArguments()
     {
         Should.Throw<ArgumentException>(() => SqlRegex.Condition(" ", TestPatterns.Sku, SqlDialect.PostgreSql));
         Should.Throw<ArgumentNullException>(() => SqlRegex.Condition("c", null!, SqlDialect.PostgreSql));
         Should.Throw<ArgumentOutOfRangeException>(() => SqlRegex.Condition("c", TestPatterns.Sku, (SqlDialect)42));
+        Should.Throw<ArgumentOutOfRangeException>(() => SqlRegex.Condition("c", TestPatterns.Sku, SqlDialect.SqlServer, (LikeCollation)42));
     }
 }
