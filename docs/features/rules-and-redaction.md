@@ -127,7 +127,7 @@ report.ToString();  // Redacted 3 span(s): [5..20) Mask, [27..46) KeepLast(4), [
 ## DataAnnotations
 
 `[MatchesPattern]` validates a property against a `Pattern` or `ConstrainedPattern` exposed by a public
-static property, field or parameterless method (available on .NET 8 and .NET 9; netstandard2.1 has no
+static property, field or parameterless method (available on .NET 8 and .NET 10; netstandard2.1 has no
 DataAnnotations):
 
 ```csharp

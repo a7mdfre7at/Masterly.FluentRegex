@@ -1,6 +1,6 @@
 # ASP.NET Core integration
 
-New in 3.1: the `Masterly.FluentRegex.AspNetCore` package (.NET 8 and .NET 9) turns fluent patterns
+New in 3.1: the `Masterly.FluentRegex.AspNetCore` package (.NET 8 and .NET 10) turns fluent patterns
 into route constraints. The behavior below is covered by tests that run a real in-memory app.
 
 ```shell

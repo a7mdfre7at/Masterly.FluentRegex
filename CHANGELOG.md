@@ -21,7 +21,7 @@ package has no new dependencies.
 ### Parsing and Validation
 - **Typed templates:** `Template.Of<T>("{Date:yyyy-MM-dd} [{Level}] {Message}")` with `Parse`, `TryParse`, `ParseAll` and a round-tripping `Format`. Placeholders are typed by member: numbers, enums, Guids, booleans, dates and times with custom formats, and `re:` regex formats.
 - **Semantic rules:** `Must(rule)` and `Must(group, rule)` return a `ConstrainedPattern` with `IsMatch`, `Matches`, `IsValid` and a diagnostic `Check`. `Validators.Luhn`, `IbanChecksum`, `IsoDate` and `IPv4` are included.
-- **DataAnnotations:** `[MatchesPattern(typeof(Patterns), nameof(Patterns.Sku))]` (.NET 8 and 9).
+- **DataAnnotations:** `[MatchesPattern(typeof(Patterns), nameof(Patterns.Sku))]` (.NET 8 and 10).
 - **Redaction:** `Redactor` with `Mask`, `Email`, `KeepFirst`, `KeepLast`, `Label` and `Custom` styles. Reports list redacted spans without the original values.
 - **Streaming:** `Matches(TextReader)`, `MatchesAsync(TextReader)` and `MatchesAsync(Stream)` return the same matches as the whole text within documented length limits, in bounded memory.
 
@@ -36,6 +36,10 @@ package has no new dependencies.
 - **Masterly.FluentRegex.AspNetCore:** `AddFluentPatterns(...)` and the `pattern(name)` route constraint.
 - **Masterly.FluentRegex.Xunit:** `[MatchingData]` and `[NonMatchingData]` theory data for xUnit v3.
 - **Masterly.FluentRegex.AI:** `PatternAssistant` drafts a pattern from a description with Claude, verifies syntax, safety and your examples locally, and retries with precise feedback.
+
+### Platforms
+- **.NET 10:** the core, AspNetCore, Xunit and AI packages now also target .NET 10 (trimming and Native AOT compatible). The test suite runs on .NET 8 and .NET 10.
+- **.NET 9 target removed:** .NET 9 left support in May 2026, so the packages no longer ship a `net9.0` build. .NET 9 apps keep working on the .NET 8 build; only the span `EnumerateSplits` overload needs .NET 10.
 
 ### Tooling
 - New CLI commands: `compare`, `optimize`, `learn`, `profile`, `highlight`, `coverage` and `export`. The CLI now writes UTF-8 output.

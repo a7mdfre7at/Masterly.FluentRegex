@@ -232,7 +232,7 @@ Pattern.With.Literal("محمد").IgnoreDiacritics().IsMatch("مُحَمَّد");
 | `Masterly.FluentRegex.Xunit` | `[MatchingData]` and `[NonMatchingData]` for xUnit v3 theories |
 | `Masterly.FluentRegex.AI` | `PatternAssistant`, which drafts patterns with Claude and verifies them locally |
 
-All three target .NET 8 and .NET 9. The core package has no new dependencies.
+All three target .NET 8 and .NET 10. The core package has no new dependencies.
 
 ---
 
@@ -284,8 +284,9 @@ dotnet tool install --global Masterly.FluentRegex.Tool
 
 | Target | What you get |
 |--------|--------------|
-| .NET 9 | Everything, including `EnumerateSplits` |
+| .NET 10 | Everything, including `EnumerateSplits`; trimming and Native AOT compatible |
 | .NET 8 | Everything except `EnumerateSplits`; trimming and Native AOT compatible |
+| .NET 9 | The .NET 8 build (.NET 9 left support in May 2026) |
 | .NET Standard 2.1 (.NET Core 3.0+, .NET 5-7, Mono, Unity) | The full builder, analysis, generation, tracing and diagrams; no span APIs |
 
 ---
@@ -1129,12 +1130,12 @@ number.Count(text);     // 2  (Count(string) works on every target)
 foreach (ValueMatch m in number.EnumerateMatches(text))
     Console.WriteLine(text.Slice(m.Index, m.Length).ToString());
 
-// .NET 9+
+// .NET 10
 foreach (Range part in Pattern.With.Literal(",").EnumerateSplits("a,b,c"))
     Console.WriteLine(part);
 ```
 
-The .NET 8 and .NET 9 builds are annotated for trimming and Native AOT. The `RegEx` and
+The .NET 8 and .NET 10 builds are annotated for trimming and Native AOT. The `RegEx` and
 `FromRegex` parameters are marked as regex syntax, so the IDE colorizes and validates them.
 
 ---
@@ -2518,7 +2519,7 @@ dotnet restore
 # Build
 dotnet build
 
-# Run tests (on .NET 8 and .NET 9)
+# Run tests (on .NET 8 and .NET 10)
 dotnet test
 
 # Tour every feature

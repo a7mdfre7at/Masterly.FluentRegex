@@ -28,4 +28,4 @@ app.MapGet("/items/{id:pattern(sku)}", (string id) => $"item {id}");
 - An unknown name in a route template, such as `{id:pattern(nope)}`, fails when the route table is
   built (on the first request) with a `RouteCreationException` whose inner
   `InvalidOperationException` names the pattern and lists the registered names.
-- Pattern names are case-insensitive. Targets .NET 8 and .NET 9, trimming and AOT compatible.
+- Pattern names are case-insensitive. Targets .NET 8 and .NET 10, trimming and AOT compatible.
