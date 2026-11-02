@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using Masterly.FluentRegex.Templates;
 
 namespace Masterly.FluentRegex.Tests;
 
@@ -70,6 +71,62 @@ public class TemplateTests
         {
             _ = secret;
         }
+    }
+
+    public record Day(DateOnly Date);
+
+    public record Clock(TimeOnly Time);
+
+    public record Hexes(long Long, short Short, sbyte SByte, uint UInt, ulong ULong, ushort UShort, byte Byte);
+
+    public record Ratio(double Value);
+
+    public record Labeled(string Left, string Right);
+
+    public record Packaged(Barcode Code);
+
+    /// <summary>A type that is not <see cref="IFormattable"/>, read by a registered extraction converter.</summary>
+    public sealed class Barcode
+    {
+        public Barcode(string digits) => Digits = digits;
+
+        public string Digits { get; }
+
+        public override string ToString() => Digits;
+    }
+
+    public class Nothing
+    {
+    }
+
+    public class Coded
+    {
+        public string Whole { get; set; } = "";
+
+        public string? Prefix { get; set; }
+
+        public int Number { get; set; }
+    }
+
+    public class Banner
+    {
+        public string Text { get; set; } = "unset";
+    }
+
+    /// <summary>The constructor takes a <see cref="Guid"/> but the property exposes it as nullable.</summary>
+    public class LooseReference
+    {
+        public LooseReference(Guid id) => Id = id;
+
+        public Guid? Id { get; set; }
+    }
+
+    /// <summary>The constructor takes a <see cref="LogLevel"/> but the property exposes it as nullable.</summary>
+    public class LooseLevel
+    {
+        public LooseLevel(LogLevel level) => Level = level;
+
+        public LogLevel? Level { get; set; }
     }
 
     private const string LogTemplate = "{Date:yyyy-MM-dd} [{Level}] {User}: {Message}";
@@ -230,7 +287,10 @@ public class TemplateTests
     [Fact]
     public void Of_EmptyTemplate_ThrowsArgumentException()
     {
-        Should.Throw<ArgumentException>(() => Template.Of<LogLine>(""));
+        ArgumentException ex = Should.Throw<ArgumentException>(() => Template.Of<LogLine>(""));
+
+        ex.ParamName.ShouldBe("template");
+        ex.Message.ShouldStartWith("The template is empty.");
     }
 
     [Fact]
@@ -346,7 +406,10 @@ public class TemplateTests
     [Fact]
     public void Of_RepeatedPlaceholderWithDifferentFormat_ThrowsArgumentException()
     {
-        Should.Throw<ArgumentException>(() => Template.Of<Invoice>("{Number:D4}/{Number:D2}"));
+        ArgumentException ex = Should.Throw<ArgumentException>(() => Template.Of<Invoice>("{Number:D4}/{Number:D2}"));
+
+        ex.ParamName.ShouldBe("template");
+        ex.Message.ShouldContain("{Number:D2} at position 12 repeats {Number:D4} with a different format");
     }
 
     // ------------------------------------------------------------------
@@ -539,14 +602,16 @@ public class TemplateTests
         enabled.ShouldBe(expected);
     }
 
-    [Fact]
-    public void Format_Bool_RendersLowerCase()
+    [Theory]
+    [InlineData(true, "enabled=true")]
+    [InlineData(false, "enabled=false")]
+    public void Format_Bool_RendersLowerCase(bool enabled, string expected)
     {
         Template<Flag> template = Template.Of<Flag>("enabled={Enabled}");
 
-        string text = template.Format(new Flag(true));
+        string text = template.Format(new Flag(enabled));
 
-        text.ShouldBe("enabled=true");
+        text.ShouldBe(expected);
     }
 
     [Theory]
@@ -646,6 +711,7 @@ public class TemplateTests
         template.Parse("42kg").ShouldBe(new Reading(42, "kg"));
         template.Parse("kg").ShouldBe(new Reading(null, "kg"));
         template.Format(new Reading(null, "kg")).ShouldBe("kg");
+        template.Format(new Reading(42, "kg")).ShouldBe("42kg");
     }
 
     // ------------------------------------------------------------------
@@ -851,5 +917,610 @@ public class TemplateTests
         DateTime when = template.Parse("٢٠٢٦-١١-٠٢").When;
 
         when.ShouldBe(new DateTime(2026, 11, 2));
+    }
+
+    // ------------------------------------------------------------------
+    // Template-level edge cases
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public void Of_NullCultureOption_FallsBackToTheInvariantCultureNotTheCurrentOne()
+    {
+        // Culture is declared non-nullable, but callers without nullable analysis can still pass null.
+        TemplateOptions options = new TemplateOptions { Culture = null! };
+        CultureInfo previous = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = CultureWithThreeCommaDecimals();
+        try
+        {
+            Template<Price> template = Template.Of<Price>("{Amount}", options);
+
+            decimal parsed = template.Parse("2.5").Amount;
+            string text = template.Format(new Price(1.5m));
+
+            parsed.ShouldBe(2.5m);
+            text.ShouldBe("1.5");
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
+    }
+
+    [Fact]
+    public void Parse_NamedGroupInsideRegexFormat_BindsAnotherMemberWithTheDefaultConversion()
+    {
+        Template<Coded> template = Template.Of<Coded>(@"{Whole:re:(?<Prefix>[A-Z]+)-(?<Number>\d+)}");
+
+        Coded coded = template.Parse("AB-42");
+
+        coded.Whole.ShouldBe("AB-42");
+        coded.Prefix.ShouldBe("AB");
+        coded.Number.ShouldBe(42);
+    }
+
+    [Fact]
+    public void ParseAll_NamedGroupInsideRegexFormat_BindsEveryOccurrence()
+    {
+        Template<Coded> template = Template.Of<Coded>(@"{Whole:re:(?<Prefix>[A-Z]+)-(?<Number>\d+)};");
+
+        List<Coded> codes = template.ParseAll("AB-42; CD-7;").ToList();
+
+        codes.Select(c => c.Prefix).ShouldBe(new[] { "AB", "CD" });
+        codes.Select(c => c.Number).ShouldBe(new[] { 42, 7 });
+    }
+
+    [Fact]
+    public void ParseAll_OccurrenceThatCannotConvert_ThrowsFormatExceptionWhenEnumerated()
+    {
+        Template<Year> template = Template.Of<Year>("{Value};");
+        IEnumerable<Year> years = template.ParseAll("1;99999999999;");
+
+        FormatException ex = Should.Throw<FormatException>(() => years.ToList());
+
+        ex.Message.ShouldContain("Value");
+    }
+
+    [Fact]
+    public void Parse_LiteralTextMismatch_MessageNamesTheLiteralAndPosition()
+    {
+        Template<Labeled> template = Template.Of<Labeled>(@"{Left:re:\d+}<->{Right:re:\d+}");
+
+        FormatException ex = Should.Throw<FormatException>(() => template.Parse("12<=>34"));
+
+        ex.Message.ShouldContain("at position 3");
+        ex.Message.ShouldContain("while reading the text \"<->\"");
+    }
+
+    [Fact]
+    public void Parse_CatastrophicRegexFormatWithTimeout_ThrowsRegexMatchTimeoutException()
+    {
+        TemplateOptions options = new TemplateOptions { Timeout = TimeSpan.FromMilliseconds(50) };
+        Template<Note> template = Template.Of<Note>("{Text:re:(a+)+b}", options);
+        string input = $"{new string('a', 40)}!";
+
+        Should.Throw<RegexMatchTimeoutException>(() => template.Parse(input));
+    }
+
+    [Fact]
+    public void ParseFormat_LiteralOnlyTemplate_MatchesTheTextAndKeepsDefaults()
+    {
+        Template<Banner> template = Template.Of<Banner>("hello");
+
+        Banner banner = template.Parse("hello");
+
+        banner.Text.ShouldBe("unset");
+        template.Format(new Banner { Text = "ignored" }).ShouldBe("hello");
+        template.TryParse("goodbye", out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Of_TypeWithoutBindableMembers_ThrowsSayingThereAreNone()
+    {
+        ArgumentException ex = Should.Throw<ArgumentException>(() => Template.Of<Nothing>("{Anything}"));
+
+        ex.ParamName.ShouldBe("template");
+        ex.Message.ShouldContain("{Anything} at position 0 does not match any member of Nothing");
+        ex.Message.ShouldContain("Available: (none: the type has no bindable constructor parameters or settable properties)");
+    }
+
+    // ------------------------------------------------------------------
+    // Strings, nullables and registered converters
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public void Format_NullString_RendersNothing()
+    {
+        Template<Note> template = Template.Of<Note>("note: {Text}");
+
+        // Deliberately violates the non-nullable annotation to exercise the null fallback.
+        string text = template.Format(new Note(null!));
+
+        text.ShouldBe("note: ");
+    }
+
+    [Fact]
+    public void Format_GuidPropertyHoldingNull_ThrowsArgumentException()
+    {
+        Template<LooseReference> template = Template.Of<LooseReference>("id={Id}");
+        LooseReference reference = new LooseReference(Guid.Empty) { Id = null };
+
+        ArgumentException ex = Should.Throw<ArgumentException>(() => template.Format(reference));
+
+        ex.ParamName.ShouldBe("value");
+        ex.Message.ShouldContain("The value \"\" cannot be written as {Id}");
+    }
+
+    [Fact]
+    public void Format_EnumPropertyHoldingNull_ThrowsArgumentException()
+    {
+        Template<LooseLevel> template = Template.Of<LooseLevel>("[{Level}]");
+        LooseLevel level = new LooseLevel(LogLevel.Info) { Level = null };
+
+        ArgumentException ex = Should.Throw<ArgumentException>(() => template.Format(level));
+
+        ex.ParamName.ShouldBe("value");
+        ex.Message.ShouldContain("The LogLevel value '' is not a single named member");
+        ex.Message.ShouldContain("Debug, Info, Warn, Error");
+    }
+
+    [Fact]
+    public void ParseFormat_RegisteredConverterType_ParsesWithTheConverterAndRendersWithToString()
+    {
+        ExtractionConverters.Register<Barcode>(text => new Barcode(text.ToUpperInvariant()));
+        try
+        {
+            Template<Packaged> template = Template.Of<Packaged>("item {Code}");
+
+            Packaged parsed = template.Parse("item abc12");
+            string text = template.Format(new Packaged(new Barcode("XY9")));
+
+            parsed.Code.Digits.ShouldBe("ABC12");
+            text.ShouldBe("item XY9");
+        }
+        finally
+        {
+            ExtractionConverters.Unregister<Barcode>();
+        }
+    }
+
+    [Fact]
+    public void Format_RegisteredConverterTypeWithNullValue_ThrowsArgumentException()
+    {
+        ExtractionConverters.Register<Barcode>(text => new Barcode(text));
+        try
+        {
+            Template<Packaged> template = Template.Of<Packaged>("item {Code}");
+
+            ArgumentException ex = Should.Throw<ArgumentException>(() => template.Format(new Packaged(null!)));
+
+            ex.ParamName.ShouldBe("value");
+            ex.Message.ShouldContain("The value \"\" cannot be written as {Code}");
+        }
+        finally
+        {
+            ExtractionConverters.Unregister<Barcode>();
+        }
+    }
+
+    [Fact]
+    public void Of_RegisteredConverterTypeWithFormat_ThrowsArgumentException()
+    {
+        ExtractionConverters.Register<Barcode>(text => new Barcode(text));
+        try
+        {
+            ArgumentException ex = Should.Throw<ArgumentException>(() => Template.Of<Packaged>("item {Code:N}"));
+
+            ex.ParamName.ShouldBe("template");
+            ex.Message.ShouldContain("Barcode placeholders do not take a format ('N')");
+        }
+        finally
+        {
+            ExtractionConverters.Unregister<Barcode>();
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Integer and floating-point formats
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public void ParseFormat_HexFormatOnEveryIntegerType_RoundTrips()
+    {
+        Template<Hexes> template = Template.Of<Hexes>(
+            "{Long:X}|{Short:X}|{SByte:X}|{UInt:X}|{ULong:X}|{UShort:X}|{Byte:X2}");
+        Hexes original = new Hexes(-1L, short.MaxValue, (sbyte)-2, 0xDEADBEEF, ulong.MaxValue, (ushort)0xBEEF, (byte)0xAB);
+
+        string text = template.Format(original);
+        Hexes parsed = template.Parse(text);
+
+        text.ShouldBe("FFFFFFFFFFFFFFFF|7FFF|FE|DEADBEEF|FFFFFFFFFFFFFFFF|BEEF|AB");
+        parsed.ShouldBe(original);
+    }
+
+    [Theory]
+    [InlineData("{Number:D}", 255, "255")]
+    [InlineData("{Number:X}", 255, "FF")]
+    [InlineData("{Number:x4}", 255, "00ff")]
+    [InlineData("{Number:D}", -7, "-7")]
+    public void ParseFormat_IntegerFormatWithOrWithoutWidth_RoundTrips(string placeholder, int number, string expected)
+    {
+        Template<Invoice> template = Template.Of<Invoice>(placeholder);
+
+        string text = template.Format(new Invoice(number));
+
+        text.ShouldBe(expected);
+        template.Parse(text).Number.ShouldBe(number);
+    }
+
+    [Theory]
+    [InlineData("{Number:D100}", "'D100'")]
+    [InlineData("{Number:X100}", "'X100'")]
+    [InlineData("{Number:D-1}", "'D-1'")]
+    [InlineData("{Number:D 1}", "'D 1'")]
+    public void Of_IntegerWidthOutOfRangeOrMalformed_ThrowsListingSupportedFormats(string placeholder, string format)
+    {
+        ArgumentException ex = Should.Throw<ArgumentException>(() => Template.Of<Invoice>(placeholder));
+
+        ex.ParamName.ShouldBe("template");
+        ex.Message.ShouldContain($"The format {format} is not supported for Int32 placeholders");
+        ex.Message.ShouldContain("Use D, Dn, X or Xn");
+    }
+
+    [Theory]
+    [InlineData("{Amount:F0}", "42", "42")]
+    [InlineData("{Amount:F}", "12.5", "12.50")]
+    [InlineData("{Amount:f3}", "12.5", "12.500")]
+    [InlineData("{Amount:G}", "12.5", "12.5")]
+    [InlineData("{Amount:g}", "-0.25", "-0.25")]
+    public void ParseFormat_DecimalFormats_RoundTrip(string placeholder, string amount, string expected)
+    {
+        Template<Price> template = Template.Of<Price>(placeholder);
+        decimal value = decimal.Parse(amount, CultureInfo.InvariantCulture);
+
+        string text = template.Format(new Price(value));
+
+        text.ShouldBe(expected);
+        template.Parse(text).Amount.ShouldBe(value);
+    }
+
+    [Fact]
+    public void ParseFormat_FixedFormatWithoutDigits_UsesTheCultureDecimalDigitsAndSeparator()
+    {
+        TemplateOptions options = new TemplateOptions { Culture = CultureWithThreeCommaDecimals() };
+        Template<Price> template = Template.Of<Price>("{Amount:F}", options);
+
+        string text = template.Format(new Price(12.5m));
+
+        text.ShouldBe("12,500");
+        template.Parse("3,750").Amount.ShouldBe(3.75m);
+        template.TryParse("3,75", out _).ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData("{Value:G}", 0.1, "0.1")]
+    [InlineData("{Value:g}", 1e20, "1e+20")]
+    [InlineData("{Value:R}", -2.5, "-2.5")]
+    [InlineData("{Value:r}", double.NaN, "NaN")]
+    public void ParseFormat_DoubleGeneralFormats_RoundTrip(string placeholder, double value, string expected)
+    {
+        Template<Ratio> template = Template.Of<Ratio>(placeholder);
+
+        string text = template.Format(new Ratio(value));
+
+        text.ShouldBe(expected);
+        template.Parse(text).Value.ShouldBe(value);
+    }
+
+    [Theory]
+    [InlineData("{Amount:R}", "'R'")]
+    [InlineData("{Amount:r}", "'r'")]
+    [InlineData("{Amount:E}", "'E'")]
+    [InlineData("{Amount:F100}", "'F100'")]
+    [InlineData("{Amount:Fx}", "'Fx'")]
+    public void Of_UnsupportedDecimalFormat_ThrowsListingSupportedFormats(string placeholder, string format)
+    {
+        ArgumentException ex = Should.Throw<ArgumentException>(() => Template.Of<Price>(placeholder));
+
+        ex.ParamName.ShouldBe("template");
+        ex.Message.ShouldContain($"The format {format} is not supported for Decimal placeholders");
+        ex.Message.ShouldContain("Use G, R, F or Fn");
+    }
+
+    // ------------------------------------------------------------------
+    // Standard and custom date formats
+    // ------------------------------------------------------------------
+
+    public static TheoryData<string, string> InvariantStandardDateFormats => new TheoryData<string, string>
+    {
+        { "D", "Monday, 02 November 2026" },
+        { "f", "Monday, 02 November 2026 21:05" },
+        { "F", "Monday, 02 November 2026 21:05:07" },
+        { "g", "11/02/2026 21:05" },
+        { "G", "11/02/2026 21:05:07" },
+        { "m", "November 02" },
+        { "M", "November 02" },
+        { "t", "21:05" },
+        { "T", "21:05:07" },
+        { "y", "2026 November" },
+        { "Y", "2026 November" },
+        { "u", "2026-11-02 21:05:07Z" },
+        { "r", "Mon, 02 Nov 2026 21:05:07 GMT" },
+        { "R", "Mon, 02 Nov 2026 21:05:07 GMT" }
+    };
+
+    [Theory]
+    [MemberData(nameof(InvariantStandardDateFormats))]
+    public void ParseFormat_StandardDateFormat_RendersTheCulturePatternAndReadsItBack(string format, string expected)
+    {
+        Template<Moment> template = Template.Of<Moment>($"{{When:{format}}}");
+
+        string text = template.Format(new Moment(new DateTime(2026, 11, 2, 21, 5, 7)));
+        string reformatted = template.Format(template.Parse(expected));
+
+        text.ShouldBe(expected);
+        reformatted.ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("D", "lundi 2 novembre 2026")]
+    [InlineData("d", "02/11/2026")]
+    public void ParseFormat_StandardDateFormatInFrenchCulture_UsesTheFrenchPattern(string format, string expected)
+    {
+        TemplateOptions french = new TemplateOptions { Culture = new CultureInfo("fr-FR") };
+        Template<Moment> template = Template.Of<Moment>($"{{When:{format}}}", french);
+
+        string text = template.Format(new Moment(new DateTime(2026, 11, 2)));
+
+        text.ShouldBe(expected);
+        template.Parse(expected).When.ShouldBe(new DateTime(2026, 11, 2));
+    }
+
+    public static TheoryData<string, DateTime, string> CustomDateFormats => new TheoryData<string, DateTime, string>
+    {
+        { "yyyy-MM-%d", new DateTime(2026, 11, 2), "2026-11-2" },
+        { "MM-dd-y", new DateTime(2026, 11, 2), "11-02-26" },
+        { "MM-dd-yy", new DateTime(2026, 11, 2), "11-02-26" },
+        { "yyy-MM-dd", new DateTime(999, 1, 2), "999-01-02" },
+        { "yyyyy-MM-dd", new DateTime(2026, 1, 2), "02026-01-02" },
+        { "yyyy-MM-dd h:mm t", new DateTime(2026, 11, 2, 21, 5, 0), "2026-11-02 9:05 P" },
+        { "yyyy \"y\" MM", new DateTime(2026, 11, 1), "2026 y 11" },
+        { @"yyyy-MM-dd'\''x", new DateTime(2026, 11, 2), "2026-11-02'x" },
+        { "yyyy/MM/dd", new DateTime(2026, 11, 2), "2026/11/02" }
+    };
+
+    [Theory]
+    [MemberData(nameof(CustomDateFormats))]
+    public void ParseFormat_CustomDateFormat_RoundTrips(string format, DateTime value, string expected)
+    {
+        Template<Moment> template = Template.Of<Moment>($"{{When:{format}}}");
+
+        string text = template.Format(new Moment(value));
+
+        text.ShouldBe(expected);
+        template.Parse(text).When.ShouldBe(value);
+    }
+
+    [Fact]
+    public void ParseFormat_DateSeparatorInGermanCulture_UsesTheCultureSeparator()
+    {
+        TemplateOptions german = new TemplateOptions { Culture = new CultureInfo("de-DE") };
+        Template<Moment> template = Template.Of<Moment>("{When:dd/MM/yyyy}", german);
+
+        string text = template.Format(new Moment(new DateTime(2026, 11, 2)));
+
+        text.ShouldBe("02.11.2026");
+        template.TryParse("02/11/2026", out _).ShouldBeFalse();
+    }
+
+    public static TheoryData<string, DateTimeOffset, string, TimeSpan> DateTimeOffsetFormats =>
+        new TheoryData<string, DateTimeOffset, string, TimeSpan>
+        {
+            {
+                "o", new DateTimeOffset(2026, 11, 2, 21, 5, 7, 123, TimeSpan.FromHours(3)),
+                "2026-11-02T21:05:07.1230000+03:00", TimeSpan.FromHours(3)
+            },
+            {
+                "r", new DateTimeOffset(2026, 11, 2, 21, 5, 7, TimeSpan.FromHours(3)),
+                "Mon, 02 Nov 2026 18:05:07 GMT", TimeSpan.Zero
+            },
+            {
+                "u", new DateTimeOffset(2026, 11, 2, 21, 5, 7, TimeSpan.FromHours(3)),
+                "2026-11-02 18:05:07Z", TimeSpan.Zero
+            },
+            {
+                "yyyy-MM-dd HH:mm z", new DateTimeOffset(2026, 11, 2, 10, 30, 0, TimeSpan.FromHours(-5)),
+                "2026-11-02 10:30 -5", TimeSpan.FromHours(-5)
+            },
+            {
+                "yyyy-MM-dd HH:mm zz", new DateTimeOffset(2026, 11, 2, 10, 30, 0, TimeSpan.FromHours(-5)),
+                "2026-11-02 10:30 -05", TimeSpan.FromHours(-5)
+            }
+        };
+
+    [Theory]
+    [MemberData(nameof(DateTimeOffsetFormats))]
+    public void ParseFormat_DateTimeOffsetFormat_RoundTripsTheInstant(
+        string format,
+        DateTimeOffset value,
+        string expected,
+        TimeSpan expectedOffset)
+    {
+        Template<Stamp> template = Template.Of<Stamp>($"{{When:{format}}}");
+
+        string text = template.Format(new Stamp(value));
+        DateTimeOffset parsed = template.Parse(text).When;
+
+        text.ShouldBe(expected);
+        parsed.ShouldBe(value);
+        parsed.Offset.ShouldBe(expectedOffset);
+    }
+
+    [Theory]
+    [InlineData("o", "2026-11-02")]
+    [InlineData("O", "2026-11-02")]
+    [InlineData("r", "Mon, 02 Nov 2026")]
+    public void ParseFormat_DateOnlyStandardFormat_RoundTrips(string format, string expected)
+    {
+        Template<Day> template = Template.Of<Day>($"{{Date:{format}}}");
+        DateOnly value = new DateOnly(2026, 11, 2);
+
+        string text = template.Format(new Day(value));
+
+        text.ShouldBe(expected);
+        template.Parse(text).Date.ShouldBe(value);
+    }
+
+    [Theory]
+    [InlineData("o", 123, "21:05:07.1230000")]
+    [InlineData("r", 0, "21:05:07")]
+    [InlineData("R", 0, "21:05:07")]
+    public void ParseFormat_TimeOnlyStandardFormat_RoundTrips(string format, int milliseconds, string expected)
+    {
+        Template<Clock> template = Template.Of<Clock>($"{{Time:{format}}}");
+        TimeOnly value = new TimeOnly(21, 5, 7, milliseconds);
+
+        string text = template.Format(new Clock(value));
+
+        text.ShouldBe(expected);
+        template.Parse(text).Time.ShouldBe(value);
+    }
+
+    [Theory]
+    [InlineData("yyyy-MM-dd hh:mm tt", 9, "2026-11-02 09:05 ")]
+    [InlineData("yyyy-MM-dd hh:mm tt", 21, "2026-11-02 09:05 PM")]
+    [InlineData("yyyy-MM-dd hh:mm t", 21, "2026-11-02 09:05 P")]
+    public void ParseFormat_CultureWithEmptyAmDesignator_MakesTheDesignatorOptional(
+        string format,
+        int hour,
+        string expected)
+    {
+        TemplateOptions options = new TemplateOptions { Culture = CultureWithoutAmDesignator() };
+        Template<Moment> template = Template.Of<Moment>($"{{When:{format}}}", options);
+        DateTime value = new DateTime(2026, 11, 2, hour, 5, 0);
+
+        string text = template.Format(new Moment(value));
+
+        text.ShouldBe(expected);
+        template.Parse(text).When.ShouldBe(value);
+    }
+
+    [Theory]
+    [InlineData("{When:U}", "the standard format 'U'")]
+    [InlineData("{When:ffffffff}", "'ffffffff' (at most 7 fraction digits)")]
+    [InlineData("{When:yyyy gg}", "the specifier 'gg'")]
+    [InlineData("{When:HH:mm:ss.FFF}", "the specifier 'FFF'")]
+    [InlineData("{When:'open}", "an unterminated quoted literal in \"'open\"")]
+    [InlineData("{When:yyyy \"open}", "an unterminated quoted literal in \"yyyy \"open\"")]
+    public void Of_UnsupportedDateFormat_MessageNamesTheProblem(string template, string problem)
+    {
+        ArgumentException ex = Should.Throw<ArgumentException>(() => Template.Of<Moment>(template));
+
+        ex.ParamName.ShouldBe("template");
+        ex.Message.ShouldContain($"The date/time format uses {problem}, which templates do not support.");
+    }
+
+    // A template can never pass a format ending in a lone backslash (it would escape the closing brace),
+    // so the translator's own guards are exercised directly.
+    [Theory]
+    [InlineData(@"yyyy\", "a trailing backslash in \"yyyy\\\"")]
+    [InlineData(@"'ab\", "an unterminated quoted literal in \"'ab\\\"")]
+    public void DateFormatTranslatorToRegex_FormatEndingInBackslash_ThrowsArgumentException(
+        string format,
+        string problem)
+    {
+        ArgumentException ex = Should.Throw<ArgumentException>(
+            () => DateFormatTranslator.ToRegex(format, TemporalKind.DateTime, CultureInfo.InvariantCulture));
+
+        ex.Message.ShouldContain($"The date/time format uses {problem}");
+    }
+
+    // ------------------------------------------------------------------
+    // TimeSpan formats
+    // ------------------------------------------------------------------
+
+    public static TheoryData<string, TimeSpan, string, string> TimeSpanFormats =>
+        new TheoryData<string, TimeSpan, string, string>
+        {
+            { "g", new TimeSpan(1, 2, 3, 4, 567), "", "1:2:03:04.567" },
+            { "g", -new TimeSpan(1, 2, 3, 4, 567), "", "-1:2:03:04.567" },
+            { "g", new TimeSpan(0, 2, 3, 4), "", "2:03:04" },
+            { "g", new TimeSpan(1, 2, 3, 4, 567), "de-DE", "1:2:03:04,567" },
+            { "G", new TimeSpan(1, 2, 3, 4, 567), "", "1:02:03:04.5670000" },
+            { "G", -new TimeSpan(1, 2, 3, 4, 567), "de-DE", "-1:02:03:04,5670000" },
+            { "t", new TimeSpan(1, 2, 3, 4, 567), "", "1.02:03:04.5670000" },
+            { "T", new TimeSpan(1, 2, 3, 4, 567), "", "1.02:03:04.5670000" },
+            { @"dd\.hh\:mm\:ss\.fff", new TimeSpan(1, 2, 3, 4, 567), "", "01.02:03:04.567" },
+            { @"h\:m\:s", new TimeSpan(0, 2, 3, 4), "", "2:3:4" },
+            { "\"at \"hh", new TimeSpan(0, 2, 0, 0), "", "at 02" }
+        };
+
+    [Theory]
+    [MemberData(nameof(TimeSpanFormats))]
+    public void ParseFormat_TimeSpanFormat_RendersAndReadsBack(
+        string format,
+        TimeSpan value,
+        string cultureName,
+        string expected)
+    {
+        TemplateOptions options = new TemplateOptions { Culture = new CultureInfo(cultureName) };
+        Template<Duration> template = Template.Of<Duration>($"{{Elapsed:{format}}}", options);
+
+        string text = template.Format(new Duration(value));
+
+        text.ShouldBe(expected);
+        template.Parse(text).Elapsed.ShouldBe(value);
+    }
+
+    [Fact]
+    public void ParseFormat_TimeSpanWithoutFormat_RendersTheConstantFormat()
+    {
+        Template<Duration> template = Template.Of<Duration>("{Elapsed}");
+        TimeSpan value = new TimeSpan(1, 2, 3, 4, 567);
+
+        string text = template.Format(new Duration(value));
+
+        text.ShouldBe("1.02:03:04.5670000");
+        template.Parse(text).Elapsed.ShouldBe(value);
+    }
+
+    [Theory]
+    [InlineData("{Elapsed:x}", "the standard format 'x'")]
+    [InlineData("{Elapsed:ddddddddd}", "the specifier 'ddddddddd'")]
+    [InlineData("{Elapsed:ffffffff}", "the specifier 'ffffffff'")]
+    [InlineData("{Elapsed:hhh}", "the specifier 'hhh'")]
+    [InlineData("{Elapsed:mmm}", "the specifier 'mmm'")]
+    [InlineData("{Elapsed:sss}", "the specifier 'sss'")]
+    [InlineData("{Elapsed:'abc}", "an unterminated quoted literal in \"'abc\"")]
+    [InlineData("{Elapsed:hh:mm}", @"the unescaped character ':' (quote it or escape it with \, as in hh\:mm)")]
+    public void Of_UnsupportedTimeSpanFormat_MessageNamesTheProblem(string template, string problem)
+    {
+        ArgumentException ex = Should.Throw<ArgumentException>(() => Template.Of<Duration>(template));
+
+        ex.ParamName.ShouldBe("template");
+        ex.Message.ShouldContain($"The TimeSpan format uses {problem}, which templates do not support.");
+    }
+
+    [Fact]
+    public void TimeSpanFormatTranslatorToRegex_FormatEndingInBackslash_ThrowsArgumentException()
+    {
+        ArgumentException ex = Should.Throw<ArgumentException>(
+            () => TimeSpanFormatTranslator.ToRegex(@"hh\", CultureInfo.InvariantCulture));
+
+        ex.Message.ShouldContain("The TimeSpan format uses a trailing backslash in \"hh\\\"");
+    }
+
+    private static CultureInfo CultureWithThreeCommaDecimals()
+    {
+        CultureInfo culture = (CultureInfo)CultureInfo.InvariantCulture.Clone();
+        culture.NumberFormat.NumberDecimalSeparator = ",";
+        culture.NumberFormat.NumberDecimalDigits = 3;
+        return culture;
+    }
+
+    private static CultureInfo CultureWithoutAmDesignator()
+    {
+        CultureInfo culture = (CultureInfo)CultureInfo.InvariantCulture.Clone();
+        culture.DateTimeFormat.AMDesignator = string.Empty;
+        return culture;
     }
 }

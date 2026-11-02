@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage" enabled="false">
+        <Configuration>
+          <!--
+            Disabled by default so a plain 'dotnet test' does not collect coverage. Passing the collect option for
+            "XPlat Code Coverage" turns it on, and this configuration still applies. The playground sources are link-compiled into this
+            assembly, so it must be instrumented.
+          -->
+          <IncludeTestAssembly>true</IncludeTestAssembly>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

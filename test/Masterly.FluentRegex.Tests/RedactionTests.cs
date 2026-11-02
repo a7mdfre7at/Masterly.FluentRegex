@@ -249,6 +249,45 @@ public class RedactionTests
         masked.ShouldBe("a\n******\nb secret");
     }
 
+    [Theory]
+    [InlineData(@"\A\d{3}\z", "id 123 and x1234", "id *** and x1234")]
+    [InlineData(@"^\d{3}", "a 123 4567", "a *** ***7")]
+    [InlineData(@"\d{3}$", "1234 56", "1*** 56")]
+    [InlineData(@"\d{3}\Z", "1234 56", "1*** 56")]
+    [InlineData(@"\d{3}", "1234", "***4")]
+    [InlineData(@"\b\d{3}\b", "1234 567", "1234 ***")]
+    public void Mask_WrappingAnchors_AreRewrittenToTokenBoundaries(string regex, string text, string expected)
+    {
+        Redactor redactor = Redactor.For(Pattern.FromRegex(regex));
+
+        string masked = redactor.Mask(text);
+
+        masked.ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("123", "***")]
+    [InlineData("id 123", "id 123")]
+    public void Mask_RightToLeftAnchoredPattern_KeepsTheAnchors(string text, string expected)
+    {
+        Redactor redactor = Redactor.For(Pattern.FromRegex(@"^\d{3}$", RegexOptions.RightToLeft));
+
+        string masked = redactor.Mask(text);
+
+        masked.ShouldBe(expected);
+    }
+
+    [Fact]
+    public void Add_ConstrainedPatternWithAnchors_FindsValuesInsideText()
+    {
+        ConstrainedPattern evenNumber = Pattern.FromRegex(@"^(?<n>\d{2})$").Must("n", value => "02468".Contains(value[1]), "even");
+        Redactor redactor = Redactor.For().Add(evenNumber, RedactionStyle.Label("[N]"));
+
+        string masked = redactor.Mask("12 13 14");
+
+        masked.ShouldBe("[N] 13 [N]");
+    }
+
     [Fact]
     public void StyleNames_DescribeTheStyle()
     {

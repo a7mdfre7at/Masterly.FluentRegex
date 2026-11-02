@@ -1,4 +1,6 @@
 using System.Text.RegularExpressions;
+using Masterly.FluentRegex.Profiling;
+using Masterly.FluentRegex.Syntax;
 
 namespace Masterly.FluentRegex.Tests;
 
@@ -99,6 +101,18 @@ public class ProfilerTests
         { @"\d+", RegexOptions.None, "no digits" },
         { @"^$", RegexOptions.None, string.Empty },
         { @"(?:)", RegexOptions.None, "abc" },
+        { @"\bx", RegexOptions.None, "‍x x" },
+        { @"\bx", RegexOptions.None, "‌x" },
+        { @"\Bx", RegexOptions.None, "‍x" },
+        { @"\bx", RegexOptions.ECMAScript, "‍x" },
+        { @"(?m)^b", RegexOptions.None, "ab\nb" },
+        { @"b$", RegexOptions.Multiline, "ab" },
+        { @"(?!(a)b)\w", RegexOptions.None, "ab ac" },
+        { @"(ab)(?<=\1)c", RegexOptions.None, "abc" },
+        { @"(\w{3})(?<=\1\1)|x", RegexOptions.None, "abc" },
+        { @"(?<=\1(a))b", RegexOptions.None, "aab" },
+        { @"(?<1>a)\k<1>", RegexOptions.None, "aa" },
+        { @"(a)?\1b", RegexOptions.None, "b" },
     };
 
     public static TheoryData<string, string> CommonPatternSamples()
@@ -293,6 +307,120 @@ public class ProfilerTests
         ProfileOptions options = new ProfileOptions();
 
         Should.Throw<ArgumentOutOfRangeException>(() => options.StepBudget = budget);
+    }
+
+    [Fact]
+    public void Profile_NonBacktrackingPattern_IsCheckedAgainstTheBacktrackingEngine()
+    {
+        ProfileReport report = Pattern.FromRegex("a+", RegexOptions.NonBacktracking).Profile("baa");
+
+        report.AgreesWithEngine.ShouldBeTrue(report.ToString());
+        report.MatchIndex.ShouldBe(1);
+        report.MatchLength.ShouldBe(2);
+    }
+
+    [Fact]
+    public void ToString_ModerateWork_ReportsModerateVerdict()
+    {
+        string text = Pattern.FromRegex(@"\w+x").Profile(new string('a', 20)).ToString();
+
+        text.ShouldContain("Result   no match: 672 steps, 210 backtracks");
+        text.ShouldContain("Verdict  moderate: 33.6 steps per input character, mostly in '\\w+'.");
+    }
+
+    [Fact]
+    public void ToString_HeavyWork_ReportsHeavyVerdict()
+    {
+        string text = Pattern.FromRegex(@"\w*\w*\w*\w*x").Profile(new string('a', 14)).ToString();
+
+        text.ShouldContain("Engine   agrees with the .NET engine");
+        text.ShouldContain("Verdict  heavy backtracking: 3043.1 steps per input character, mostly in '\\w*'. Consider an atomic group or a narrower class.");
+    }
+
+    [Fact]
+    public void ToString_ManyHotspots_ListsOnlyTheTopFive()
+    {
+        ProfileReport report = Pattern.FromRegex(@"\w*\w*\w*\w*\w*x").Profile(new string('a', 6));
+
+        string text = report.ToString();
+
+        report.Hotspots.Count.ShouldBe(6);
+        text.Split('\n').Count(line => line.Contains("  (at ", StringComparison.Ordinal)).ShouldBe(5);
+        text.ShouldNotContain($"{report.Hotspots[5].Fragment}  (at {report.Hotspots[5].Start})");
+    }
+
+    [Fact]
+    public void ToString_ControlCharacterInPattern_IsShownAsPlaceholder()
+    {
+        string text = Pattern.FromRegex("a\tb").Profile("a\tb").ToString();
+
+        text.ShouldContain("Pattern  a·b");
+        text.ShouldContain("  ·  (at 1)");
+    }
+
+    [Fact]
+    public void ToString_BudgetExhausted_SaysEngineWasNotChecked()
+    {
+        string text = Pattern.With.Digit.Repeat.OneOrMore.Profile("abcdef123", new ProfileOptions { StepBudget = 5 }).ToString();
+
+        text.ShouldContain("Engine   not checked, because the step budget ran out");
+        text.ShouldContain("ran out after 0 backtracks");
+    }
+
+    [Theory]
+    [InlineData(true, 2, 1, "DISAGREES: the .NET engine found match at 2, length 1")]
+    [InlineData(true, 0, 3, "DISAGREES: the .NET engine found match at 0, length 3")]
+    [InlineData(false, -1, 0, "DISAGREES: the .NET engine found no match")]
+    public void ToString_EngineDisagrees_ReportsEngineResultAndWarns(bool engineMatched, int engineIndex, int engineLength, string engineLine)
+    {
+        InterpreterResult interpreter = new InterpreterResult(new MatchSpan(true, 0, 1), 4, 0, false, new long[0], new long[0]);
+        ProfileRun run = new ProfileRun("a", 3, 100, interpreter, new MatchSpan(engineMatched, engineIndex, engineLength));
+        ProfileReport report = new ProfileReport(run, Array.Empty<ProfileHotspot>());
+
+        string text = report.ToString();
+
+        report.AgreesWithEngine.ShouldBeFalse();
+        text.ShouldContain("Engine   " + engineLine);
+        text.ShouldContain("Verdict  the interpreter and the .NET engine disagree, so these counts may not describe the real engine.");
+    }
+
+    [Fact]
+    public void ToString_BudgetExhaustedWithoutHotspots_BlamesThePattern()
+    {
+        InterpreterResult interpreter = new InterpreterResult(MatchSpan.None, 5, 0, true, new long[0], new long[0]);
+        ProfileReport report = new ProfileReport(new ProfileRun("a", 3, 5, interpreter, null), Array.Empty<ProfileHotspot>());
+
+        report.ToString().ShouldContain("Verdict  catastrophic backtracking, mostly in the pattern.");
+    }
+
+    [Theory]
+    [InlineData("(?(x)a|b)", "conditional '(?(x)a|b)' at position 0")]
+    [InlineData("(?<o>a)(?<-o>b)", "balancing group '(?<-o>' at position 7")]
+    [InlineData(@"\k<nope>", @"The backreference '\k<nope>' refers to an unknown group.")]
+    [InlineData(@"\5", @"The backreference '\5' refers to an unknown group.")]
+    public void ProgramCompiler_ConstructRejectedBeforeCompilation_ThrowsNotSupportedWhenCompiledDirectly(string regex, string message)
+    {
+        RegexTree tree = RegexParser.Parse(regex);
+
+        NotSupportedException error = Should.Throw<NotSupportedException>(() => ProgramCompiler.Compile(tree));
+
+        error.Message.ShouldContain(message);
+    }
+
+    [Fact]
+    public void AnchorEvaluator_ContiguousMatchAnchor_ThrowsNotSupported()
+    {
+        NotSupportedException error = Should.Throw<NotSupportedException>(
+            () => AnchorEvaluator.IsSatisfied(AnchorKind.ContiguousMatch, RegexOptions.None, "a", 0));
+
+        error.Message.ShouldBe("The backtracking profiler does not emulate the anchor ContiguousMatch.");
+    }
+
+    [Fact]
+    public void MatchSpan_ToString_DescribesMatchOrNoMatch()
+    {
+        new MatchSpan(true, 2, 3).ToString().ShouldBe("match at 2, length 3");
+        MatchSpan.None.ToString().ShouldBe("no match");
     }
 
     [Fact]

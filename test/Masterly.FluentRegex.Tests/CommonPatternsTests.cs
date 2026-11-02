@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace Masterly.FluentRegex.Tests;
 
 public class CommonPatternsTests
@@ -36,6 +38,139 @@ public class CommonPatternsTests
     {
         var pattern = CommonPatterns.Url();
         pattern.IsMatch(input).ShouldBe(expected);
+    }
+
+    #endregion
+
+    #region Phone Number Tests
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("phone")]
+    [InlineData("12345")]
+    [InlineData("123-45-6789")]
+    [InlineData("(555) 123-456")]
+    [InlineData("555-123-45678")]
+    public void PhoneNumber_NonPhoneInput_DoesNotMatch(string input)
+    {
+        Pattern pattern = CommonPatterns.PhoneNumber();
+
+        bool isMatch = pattern.IsMatch(input);
+
+        isMatch.ShouldBeFalse();
+    }
+
+    #endregion
+
+    #region IPv4 Tests
+
+    [Theory]
+    [InlineData("192.168.1.1", true)]
+    [InlineData("0.0.0.0", true)]
+    [InlineData("255.255.255.255", true)]
+    [InlineData("249.200.199.9", true)]
+    [InlineData("10.0.0.255", true)]
+    [InlineData("256.1.1.1", false)]
+    [InlineData("1.1.1.260", false)]
+    [InlineData("300.1.1.1", false)]
+    [InlineData("192.168.1", false)]
+    [InlineData("1.2.3.4.5", false)]
+    [InlineData("192.168.1.0/24", false)]
+    [InlineData("a.b.c.d", false)]
+    [InlineData("1234.1.1.1", false)]
+    [InlineData("", false)]
+    public void IPv4_Input_MatchesOnlyValidAddresses(string input, bool expected)
+    {
+        Pattern pattern = CommonPatterns.IPv4();
+
+        bool isMatch = pattern.IsMatch(input);
+
+        isMatch.ShouldBe(expected);
+    }
+
+    #endregion
+
+    #region IPv6 Tests
+
+    [Theory]
+    [InlineData("2001:0db8:85a3:0000:0000:8a2e:0370:7334", true)]
+    [InlineData("2001:0DB8:85A3:0000:0000:8A2E:0370:7334", true)]
+    [InlineData("1:2:3:4:5:6:7:8", true)]
+    [InlineData("::1", false)]
+    [InlineData("2001:db8::8a2e:370:7334", false)]
+    [InlineData("2001:0db8:85a3:0000:0000:8a2e:0370", false)]
+    [InlineData("2001:0db8:85a3:0000:0000:8a2e:0370:7334:abcd", false)]
+    [InlineData("2001:0db8:85a3:0000:0000:8a2e:0370:733g", false)]
+    [InlineData("20011:0db8:85a3:0000:0000:8a2e:0370:7334", false)]
+    [InlineData("192.168.1.1", false)]
+    public void IPv6_Input_MatchesOnlyFullNotation(string input, bool expected)
+    {
+        Pattern pattern = CommonPatterns.IPv6();
+
+        bool isMatch = pattern.IsMatch(input);
+
+        isMatch.ShouldBe(expected);
+    }
+
+    #endregion
+
+    #region File Path Tests
+
+    [Theory]
+    [InlineData(@"C:\Users\file.txt", true)]
+    [InlineData(@"d:\my folder\sub-dir\file_name.tar.gz", true)]
+    [InlineData("/home/user/file.txt", true)]
+    [InlineData("/", true)]
+    [InlineData("/var/log/", true)]
+    [InlineData(@"C:\", false)]
+    [InlineData("C:/Users/file.txt", false)]
+    [InlineData("relative/path.txt", false)]
+    [InlineData(@"C:\Users\fi*le.txt", false)]
+    [InlineData("/home/us?er", false)]
+    [InlineData("", false)]
+    public void FilePath_Input_MatchesWindowsAndUnixPaths(string input, bool expected)
+    {
+        Pattern pattern = CommonPatterns.FilePath();
+
+        bool isMatch = pattern.IsMatch(input);
+
+        isMatch.ShouldBe(expected);
+    }
+
+    #endregion
+
+    #region HTML Tag Tests
+
+    [Theory]
+    [InlineData("<div>", true)]
+    [InlineData("</div>", true)]
+    [InlineData("<br/>", true)]
+    [InlineData("<h1>", true)]
+    [InlineData("<img src=\"test.jpg\" />", true)]
+    [InlineData("<a href='link.html' data-id=\"7\">", true)]
+    [InlineData("<input value=\"\">", true)]
+    [InlineData("div", false)]
+    [InlineData("<>", false)]
+    [InlineData("< div>", false)]
+    [InlineData("<div", false)]
+    [InlineData("<a href=unquoted>", false)]
+    public void HtmlTag_Input_MatchesTagsWithOptionalQuotedAttributes(string input, bool expected)
+    {
+        Pattern pattern = CommonPatterns.HtmlTag();
+
+        bool isMatch = pattern.IsMatch(input);
+
+        isMatch.ShouldBe(expected);
+    }
+
+    [Fact]
+    public void HtmlTag_TagWithMultipleAttributes_MatchValueIsWholeTag()
+    {
+        Pattern pattern = CommonPatterns.HtmlTag();
+
+        Match match = pattern.Match("<span class=\"x\" data-id='7'/>");
+
+        match.Value.ShouldBe("<span class=\"x\" data-id='7'/>");
     }
 
     #endregion

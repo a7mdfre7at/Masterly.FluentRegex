@@ -315,12 +315,163 @@ public class CoverageTests
     [Fact]
     public void MeasureCoverage_NullInputs_ThrowsArgumentNullException()
     {
-        Should.Throw<ArgumentNullException>(() => Title.MeasureCoverage(null!));
+        ArgumentNullException exception = Should.Throw<ArgumentNullException>(() => Title.MeasureCoverage(null!));
+
+        exception.ParamName.ShouldBe("inputs");
     }
 
     [Fact]
     public void MeasureCoverage_NullInputElement_ThrowsArgumentNullException()
     {
-        Should.Throw<ArgumentNullException>(() => Title.MeasureCoverage(new[] { "Mr. A", null! }));
+        ArgumentNullException exception = Should.Throw<ArgumentNullException>(() => Title.MeasureCoverage(new[] { "Mr. A", null! }));
+
+        exception.ParamName.ShouldBe("inputs");
+        exception.Message.ShouldStartWith("The inputs cannot contain null.");
+    }
+
+    [Fact]
+    public void ToString_NoDecisionPoints_SaysThereIsNothingToCover()
+    {
+        CoverageReport report = Pattern.FromRegex("^abc$").MeasureCoverage(new[] { "abc" });
+
+        string expected = string.Join(Environment.NewLine,
+            "Coverage for ^abc$: 100% (0/0), 1 input",
+            "  (no alternation branches, optional parts or bounded repetitions to cover)",
+            string.Empty);
+        report.ToString().ShouldBe(expected);
+    }
+
+    [Fact]
+    public void CoverageItemToString_EachKind_DescribesHitsOrWhatWasNeverExercised()
+    {
+        CoverageReport report = Pattern.FromRegex(@"^(?:x|y)c?d{1,3}$").MeasureCoverage(new[] { "xd" });
+
+        report.Items.Select(i => i.ToString()).ShouldBe(new[]
+        {
+            "✓ branch \"x\" (1 hit)",
+            "✗ branch \"y\" was never matched",
+            "✗ optional part \"c?\" was never taken",
+            "✗ upper bound 3 of \"d{1,3}\" was never reached"
+        });
+        report.Items.Select(i => i.Kind).ShouldBe(new[]
+        {
+            CoverageItemKind.AlternationBranch,
+            CoverageItemKind.AlternationBranch,
+            CoverageItemKind.OptionalPartTaken,
+            CoverageItemKind.UpperBoundReached
+        });
+    }
+
+    [Fact]
+    public void MeasureCoverage_BranchLongerThanFortyCharacters_TruncatesDescription()
+    {
+        Pattern pattern = Pattern.FromRegex("^(?:abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz|b)$");
+
+        CoverageReport report = pattern.MeasureCoverage(new[] { "b" });
+
+        report.Items[0].Description.ShouldBe("branch \"abcdefghijklmnopqrstuvwxyzabcdefghijklmn...\"");
+        report.Items[0].Length.ShouldBe(52);
+        report.Items[1].Description.ShouldBe("branch \"b\"");
+    }
+
+    [Fact]
+    public void MeasureCoverage_BranchOfExactlyFortyCharacters_KeepsFullDescription()
+    {
+        Pattern pattern = Pattern.FromRegex("^(?:abcdefghijklmnopqrstuvwxyzabcdefghijklmn|b)$");
+
+        CoverageReport report = pattern.MeasureCoverage(new[] { "b" });
+
+        report.Items[0].Description.ShouldBe("branch \"abcdefghijklmnopqrstuvwxyzabcdefghijklmn\"");
+    }
+
+    [Fact]
+    public void TrackCoverage_ZeroRepetitionQuantifier_IsNotInstrumented()
+    {
+        PatternCoverage coverage = Pattern.FromRegex("^a(?:b|c){0}$").TrackCoverage();
+
+        coverage.IsMatch("a").ShouldBeTrue();
+        coverage.IsMatch("ab").ShouldBeFalse();
+        coverage.Report().Items.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void TrackCoverage_ExplicitGroupNumberAboveGroupCount_KeepsBackreferenceMeaning()
+    {
+        PatternCoverage coverage = Pattern.FromRegex(@"^(?<5>a|z)(b|c)\5$").TrackCoverage();
+
+        coverage.IsMatch("aba").ShouldBeTrue();
+        coverage.IsMatch("abz").ShouldBeFalse();
+        coverage.Report().Items.Select(i => $"{i.Description}:{i.HitCount}").ShouldBe(new[]
+        {
+            "branch \"a\":1",
+            "branch \"z\":0",
+            "branch \"b\":1",
+            "branch \"c\":0"
+        });
+    }
+
+    [Fact]
+    public void TrackCoverage_ExplicitGroupNumberAboveMarkerRange_KeepsBackreferenceMeaning()
+    {
+        PatternCoverage coverage = Pattern.FromRegex(@"^(?<2000000>a)(b|c)\2000000$").TrackCoverage();
+
+        coverage.IsMatch("aca").ShouldBeTrue();
+        coverage.IsMatch("acb").ShouldBeFalse();
+        coverage.Report().Items.Select(i => $"{i.Description}:{i.HitCount}").ShouldBe(new[]
+        {
+            "branch \"b\":0",
+            "branch \"c\":1"
+        });
+    }
+
+    [Fact]
+    public void Match_ExplicitGroupNumberAboveMarkerRange_ReturnsOriginalGroup()
+    {
+        PatternCoverage coverage = Pattern.FromRegex(@"^(?<2000000>a)(b|c)$").TrackCoverage();
+
+        Match match = coverage.Match("ab");
+
+        match.Groups[2000000].Value.ShouldBe("a");
+        match.Groups[1].Value.ShouldBe("b");
+    }
+
+    [Fact]
+    public void TrackCoverage_ExplicitGroupNumberEqualToFirstMarker_StartsMarkersAboveIt()
+    {
+        PatternCoverage coverage = Pattern.FromRegex(@"^(?<1000000>a|z)(b|c)\1000000$").TrackCoverage();
+
+        coverage.IsMatch("zcz").ShouldBeTrue();
+        coverage.IsMatch("zca").ShouldBeFalse();
+        coverage.Report().Items.Select(i => $"{i.Description}:{i.HitCount}").ShouldBe(new[]
+        {
+            "branch \"a\":0",
+            "branch \"z\":1",
+            "branch \"b\":0",
+            "branch \"c\":1"
+        });
+    }
+
+    [Fact]
+    public void MeasureCoverage_MoreThanSixteenMarkerInsertions_CountsEveryOptionalPart()
+    {
+        // Twenty marker insertions take List.Sort past its insertion-sort threshold into introsort partitioning,
+        // where every insertion must still land at its own offset for the markers to nest correctly.
+        Pattern pattern = Pattern.FromRegex("^a?b?c?d?(?:e?f?g?h?i?)?$");
+
+        CoverageReport report = pattern.MeasureCoverage(new[] { "ace", "bdfghi" });
+
+        report.Items.Select(i => $"{i.Description}:{i.HitCount}").ShouldBe(new[]
+        {
+            "optional part \"a?\":1",
+            "optional part \"b?\":1",
+            "optional part \"c?\":1",
+            "optional part \"d?\":1",
+            "optional part \"(?:e?f?g?h?i?)?\":2",
+            "optional part \"e?\":1",
+            "optional part \"f?\":1",
+            "optional part \"g?\":1",
+            "optional part \"h?\":1",
+            "optional part \"i?\":1"
+        });
     }
 }

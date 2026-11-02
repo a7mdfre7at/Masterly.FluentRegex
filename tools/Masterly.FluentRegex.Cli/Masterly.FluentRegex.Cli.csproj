@@ -35,4 +35,8 @@
     <None Include="..\..\repo_image.png" Pack="true" PackagePath="\" Visible="false" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Masterly.FluentRegex.Cli.Tests" />
+  </ItemGroup>
+
 </Project>

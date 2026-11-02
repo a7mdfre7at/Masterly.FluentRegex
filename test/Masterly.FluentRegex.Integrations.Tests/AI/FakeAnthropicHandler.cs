@@ -17,7 +17,13 @@ internal sealed class FakeAnthropicHandler : HttpMessageHandler
     public FakeAnthropicHandler EnqueueDraft(string regex, string explanation = "Explained.") =>
         EnqueueText(JsonSerializer.Serialize(new { regex, explanation }));
 
-    public FakeAnthropicHandler EnqueueText(string text, string stopReason = "end_turn")
+    public FakeAnthropicHandler EnqueueText(string text, string stopReason = "end_turn") =>
+        EnqueueContent(
+            stopReason,
+            new { type = "thinking", thinking = string.Empty, signature = "sig-test" },
+            new { type = "text", text });
+
+    public FakeAnthropicHandler EnqueueContent(string stopReason, params object[] content)
     {
         object body = new
         {
@@ -26,11 +32,7 @@ internal sealed class FakeAnthropicHandler : HttpMessageHandler
             role = "assistant",
             model = "claude-opus-5-5",
             stop_reason = stopReason,
-            content = new object[]
-            {
-                new { type = "thinking", thinking = string.Empty, signature = "sig-test" },
-                new { type = "text", text },
-            },
+            content,
         };
         return EnqueueJson(HttpStatusCode.OK, JsonSerializer.Serialize(body));
     }
@@ -51,6 +53,12 @@ internal sealed class FakeAnthropicHandler : HttpMessageHandler
 
     public FakeAnthropicHandler EnqueueError(HttpStatusCode status, string errorType, string message, Action<HttpResponseMessage>? configure = null) =>
         EnqueueJson(status, JsonSerializer.Serialize(new { type = "error", error = new { type = errorType, message } }), configure);
+
+    public FakeAnthropicHandler EnqueueFailure(Exception exception)
+    {
+        _replies.Enqueue(_ => Task.FromException<HttpResponseMessage>(exception));
+        return this;
+    }
 
     public FakeAnthropicHandler EnqueueHang()
     {

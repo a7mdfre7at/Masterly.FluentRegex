@@ -274,6 +274,16 @@ public class StreamingTests
         error.Message.ShouldContain(@"\G");
     }
 
+    [Fact]
+    public void Matches_UppercaseInlineOptionLetter_StreamsTheMatches()
+    {
+        using StringReader reader = new StringReader("ab CD e");
+
+        string[] values = Pattern.FromRegex("(?I)[a-z]{2}").Matches(reader).Select(match => match.Value).ToArray();
+
+        values.ShouldBe(new[] { "ab", "CD" });
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-5)]

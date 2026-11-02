@@ -412,6 +412,20 @@ public class UnicodeTests
         pattern.IsMatch("th\u00E9").ShouldBeTrue();
     }
 
+    [Theory]
+    [InlineData("محمد", true)]
+    [InlineData("مـحمد", true)]
+    [InlineData("مُحمد", true)]
+    [InlineData("مـ", false)]
+    public void IgnoreDiacritics_LiteralTatweel_IsCoveredByTheMarkRun(string input, bool expected)
+    {
+        Pattern pattern = Pattern.With.StartOfInput.Literal("مـحمد").EndOfInput.IgnoreDiacritics();
+
+        bool isMatch = pattern.IsMatch(input);
+
+        isMatch.ShouldBe(expected);
+    }
+
     [Fact]
     public void IgnoreDiacritics_NonLetterLiterals_StayExact()
     {
@@ -456,9 +470,140 @@ public class UnicodeTests
         pattern.IsMatch("re\u0301sume\u0301").ShouldBeTrue();
     }
 
+    [Theory]
+    [InlineData("a\u00E9", true)]
+    [InlineData("ae\u0301", true)]
+    [InlineData("\u00F3", true)]
+    [InlineData("o", true)]
+    [InlineData("a\u00F3", false)]
+    [InlineData("\u00E9", false)]
+    public void IgnoreDiacritics_ConditionalWithNoBranch_RewritesBothBranches(string input, bool expected)
+    {
+        Pattern pattern = Pattern.FromRegex("^(a)?(?(1)e|o)$").IgnoreDiacritics();
+
+        bool isMatch = pattern.IsMatch(input);
+
+        isMatch.ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("a\u00E9", true)]
+    [InlineData("", true)]
+    [InlineData("a", false)]
+    public void IgnoreDiacritics_ConditionalWithoutNoBranch_RewritesTheYesBranch(string input, bool expected)
+    {
+        Pattern pattern = Pattern.FromRegex("^(a)?(?(1)e)$").IgnoreDiacritics();
+
+        bool isMatch = pattern.IsMatch(input);
+
+        isMatch.ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("cafe", true)]
+    [InlineData("caf\u00E9", true)]
+    [InlineData("cafe\u0301\u0301", true)]
+    [InlineData("cafx", false)]
+    public void IgnoreDiacritics_QuantifiedNonSpacingMark_IsCoveredByTheMarkRun(string input, bool expected)
+    {
+        Pattern pattern = Pattern.FromRegex("^cafe\u0301+$").IgnoreDiacritics();
+
+        bool isMatch = pattern.IsMatch(input);
+
+        isMatch.ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("\u0915", true)]
+    [InlineData("\u0915\u0903", true)]
+    [InlineData("\u0915\u0903\u0903", false)]
+    public void IgnoreDiacritics_SpacingCombiningMarkLiteral_BecomesOptional(string input, bool expected)
+    {
+        Pattern pattern = Pattern.With.StartOfInput.Literal("\u0915\u0903").EndOfInput.IgnoreDiacritics();
+
+        bool isMatch = pattern.IsMatch(input);
+
+        isMatch.ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("a==b", true)]
+    [InlineData("a=b", true)]
+    [InlineData("ab", false)]
+    public void IgnoreDiacritics_QuantifiedNonLetterLiteral_KeepsItsQuantifier(string input, bool expected)
+    {
+        Pattern pattern = Pattern.FromRegex("^a=+b$").IgnoreDiacritics();
+
+        bool isMatch = pattern.IsMatch(input);
+
+        isMatch.ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData(@"^[0-9]+$", "123", true)]
+    [InlineData(@"^[0-9]+$", "1\u0301", false)]
+    [InlineData(@"^\d+$", "1\u0301", false)]
+    public void IgnoreDiacritics_ClassWithoutLetters_GetsNoMarkRun(string regex, string input, bool expected)
+    {
+        Pattern pattern = Pattern.FromRegex(regex).IgnoreDiacritics();
+
+        bool isMatch = pattern.IsMatch(input);
+
+        isMatch.ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData(@"[0-9]")]
+    [InlineData(@"[0-9]+")]
+    [InlineData(@"=+")]
+    [InlineData(@"\d{2}")]
+    public void IgnoreDiacritics_QuantifiedOrBareAtomWithoutLetters_IsRenderedUnchanged(string regex)
+    {
+        Pattern pattern = Pattern.FromRegex(regex).IgnoreDiacritics();
+
+        string rendered = pattern.ToString();
+
+        rendered.ShouldBe(regex);
+    }
+
+    [Fact]
+    public void IgnoreDiacritics_QuantifiedNonSpacingMark_AddsNothingBeyondTheMarkRun()
+    {
+        string withQuantifiedMark = Pattern.FromRegex("^cafe\u0301+$").IgnoreDiacritics().ToString();
+        string withoutMark = Pattern.FromRegex("^cafe$").IgnoreDiacritics().ToString();
+
+        withQuantifiedMark.ShouldBe(withoutMark);
+    }
+
+    [Theory]
+    [InlineData("1\u00E1", true)]
+    [InlineData("b\u0301c", true)]
+    [InlineData("\u00E7", true)]
+    [InlineData("x", false)]
+    public void IgnoreDiacritics_ClassWithShorthandAndRange_ExpandsOnlyTheRange(string input, bool expected)
+    {
+        Pattern pattern = Pattern.FromRegex(@"^[\da-c]+$").IgnoreDiacritics();
+
+        bool isMatch = pattern.IsMatch(input);
+
+        isMatch.ShouldBe(expected);
+    }
+
     // ------------------------------------------------------------------
     // Unicode digits in typed extraction
     // ------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("١٬٢٣٤", "", "1234")]
+    [InlineData("١٬٢٣٤٫٥", "de-DE", "1234.5")]
+    public void Extract_DecimalWithArabicThousandsSeparator_UsesTheProviderGroupSeparator(string input, string culture, string expected)
+    {
+        Pattern grouped = Pattern.With.NamedGroup("value", Pattern.With.AnyOf("0123456789٠١٢٣٤٥٦٧٨٩٫٬").Repeat.OneOrMore);
+
+        DecimalValue extracted = grouped.Extract<DecimalValue>(input, new CultureInfo(culture));
+
+        extracted.Value.ShouldBe(decimal.Parse(expected, CultureInfo.InvariantCulture));
+    }
 
     [Theory]
     [InlineData("٢٠٢٦", 2026)]

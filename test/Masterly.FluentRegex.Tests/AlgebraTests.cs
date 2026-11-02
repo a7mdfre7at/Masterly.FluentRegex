@@ -443,6 +443,262 @@ public class AlgebraTests
         ("Union", (p, o) => p.Union(o)),
     }.Select(x => new object[] { x.Name, x.Operation });
 
+    // ------------------------------------------------------------------
+    // PatternComparison.ToString
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public void ToString_Disjoint_ListsLeftThenRightCounterexample()
+    {
+        PatternComparison result = Pattern.Compare(Pattern.FromRegex("abc"), Pattern.FromRegex("xyz"));
+
+        result.ToString().ShouldBe(
+            "Not equivalent (no string matches both). Shortest counterexample: " +
+            "\"abc\" (left accepts it, right rejects it); also \"xyz\" (right accepts it, left rejects it).");
+    }
+
+    [Fact]
+    public void ToString_ProperSubset_ShowsRightOnlyExampleAndCommonExample()
+    {
+        PatternComparison result = Pattern.Compare(Pattern.FromRegex("a"), Pattern.FromRegex("a|bb"));
+
+        result.ToString().ShouldBe(
+            "Not equivalent (left is a proper subset of right). Shortest counterexample: " +
+            "\"bb\" (right accepts it, left rejects it). Both accept \"a\".");
+    }
+
+    [Fact]
+    public void ToString_OverlapWithShorterRightExample_ListsRightExampleFirst()
+    {
+        PatternComparison result = Pattern.Compare(Pattern.FromRegex("xx|a"), Pattern.FromRegex("y|a"));
+
+        result.ToString().ShouldBe(
+            "Not equivalent (the patterns overlap). Shortest counterexample: " +
+            "\"y\" (right accepts it, left rejects it); also \"xx\" (left accepts it, right rejects it). Both accept \"a\".");
+    }
+
+    [Fact]
+    public void ToString_OverlapWithEqualLengthExamples_ListsLeftExampleFirst()
+    {
+        PatternComparison result = Pattern.Compare(Pattern.FromRegex("[ab]+"), Pattern.FromRegex("[bc]+"));
+
+        result.ToString().ShouldBe(
+            "Not equivalent (the patterns overlap). Shortest counterexample: " +
+            "\"a\" (left accepts it, right rejects it); also \"c\" (right accepts it, left rejects it). Both accept \"b\".");
+    }
+
+    [Theory]
+    [InlineData("\"", "\\\"")]
+    [InlineData(@"\\", @"\\")]
+    [InlineData(@"\r", @"\r")]
+    [InlineData(@"\t", @"\t")]
+    [InlineData(@"\u0001", @"\u0001")]
+    [InlineData(@"\u00A0", @"\u00A0")]
+    [InlineData(@"\uD800", @"\uD800")]
+    [InlineData(@"\u00E9", "\u00E9")]
+    [InlineData("~", "~")]
+    public void ToString_CounterexampleCharacter_IsEscapedForDisplay(string regex, string expectedEscape)
+    {
+        PatternComparison result = Pattern.Compare(Pattern.FromRegex(regex), Pattern.FromRegex(@"[^\s\S]"));
+
+        result.ToString().ShouldBe(
+            "Not equivalent (left is a proper superset of right). Shortest counterexample: " +
+            $"\"{expectedEscape}\" (left accepts it, right rejects it).");
+    }
+
+    // ------------------------------------------------------------------
+    // Readable witnesses
+    // ------------------------------------------------------------------
+
+    [Theory]
+    [InlineData(@"[\uD800-\uDFFF]", 0xD800)]
+    [InlineData(@"[\uD800-\uFFFF]", 0xE000)]
+    [InlineData(@"[\u0100-\u0101]", 0x0100)]
+    [InlineData(@"[\uD800-\uDFFF]|\u00E9", 0x00E9)]
+    [InlineData(@"[\uD800-\uDFFF]|\u00E9|!", '!')]
+    public void ShortestMatch_NonAsciiSets_PrefersNonSurrogateCharacters(string regex, int expectedChar)
+    {
+        Pattern.FromRegex(regex).ShortestMatch().ShouldBe(((char)expectedChar).ToString());
+    }
+
+    [Fact]
+    public void ShortestMatch_GroupNamedLikeInternalEndMarker_KeepsDollarSemantics()
+    {
+        Pattern pattern = Pattern.FromRegex("(?<fluentRegexEnd>a)(?<fluentRegexEnd1>b)$");
+
+        pattern.ShortestMatch().ShouldBe("ab");
+        pattern.IsEquivalentTo(Pattern.FromRegex("ab\n?")).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Compare_GroupsNamedLikeInternalEndMarker_StillRequireEndOfInputWithoutDollar()
+    {
+        Pattern left = Pattern.FromRegex("(?<fluentRegexEnd>a)(?<fluentRegexEnd1>)(?:$|b)");
+
+        PatternComparison result = Pattern.Compare(left, Pattern.FromRegex("a\n?|abc"));
+
+        result.Relation.ShouldBe(PatternRelation.Overlapping);
+        result.OnlyLeftExample.ShouldBe("ab");
+        result.OnlyRightExample.ShouldBe("abc");
+    }
+
+    // ------------------------------------------------------------------
+    // Anchors and unsupported constructs
+    // ------------------------------------------------------------------
+
+    [Theory]
+    [InlineData(@"a$\z", "a")]
+    [InlineData(@"(?:a$|b)", "a\n?|b")]
+    [InlineData(@"a\z[^\s\S]|b", "b")]
+    [InlineData(@"(?:a\Z|b)", "a\n?|b")]
+    public void Compare_EndAnchorsBeforeOtherZeroWidthItems_AreResolved(string left, string right)
+    {
+        PatternComparison result = Pattern.Compare(Pattern.FromRegex(left), Pattern.FromRegex(right));
+
+        result.Relation.ShouldBe(PatternRelation.Equivalent, result.ToString());
+    }
+
+    [Fact]
+    public void ShortestMatch_DollarWithMultiline_ThrowsNotSupportedNamingOption()
+    {
+        Pattern pattern = Pattern.FromRegex("a$", RegexOptions.Multiline);
+
+        NotSupportedException ex = Should.Throw<NotSupportedException>(() => pattern.ShortestMatch());
+
+        ex.Message.ShouldContain("'$' with RegexOptions.Multiline (use \\z instead)");
+    }
+
+    [Fact]
+    public void ShortestMatch_LongUnsupportedConstruct_TruncatesSourceInMessage()
+    {
+        string body = new string('a', 50);
+        Pattern pattern = Pattern.FromRegex($"(?<={body})b");
+
+        NotSupportedException ex = Should.Throw<NotSupportedException>(() => pattern.ShortestMatch());
+
+        ex.Message.ShouldContain($"lookbehinds: '(?<={new string('a', 36)}...' at position 0.");
+    }
+
+    [Theory]
+    [InlineData(@"(?#note)(?=\d)\w", @"\d")]
+    [InlineData(@"(?i)(?!a)[ab]", "[bB]")]
+    [InlineData(@"\A(?=a)\w", "a")]
+    public void Compare_LookaheadAfterZeroWidthPrefix_IsModeledAsConstraint(string left, string right)
+    {
+        PatternComparison result = Pattern.Compare(Pattern.FromRegex(left), Pattern.FromRegex(right));
+
+        result.Relation.ShouldBe(PatternRelation.Equivalent, result.ToString());
+    }
+
+    // ------------------------------------------------------------------
+    // Synthesized regex text
+    // ------------------------------------------------------------------
+
+    [Theory]
+    [InlineData(@"\t", @"^\t\z")]
+    [InlineData(@"\n", @"^\n\z")]
+    [InlineData(@"\r", @"^\r\z")]
+    [InlineData(@"\f", @"^\f\z")]
+    [InlineData(@"\v", @"^\v\z")]
+    public void Intersect_SingleControlCharacter_WritesEscape(string regex, string expected)
+    {
+        Pattern result = Pattern.FromRegex(regex).Intersect(Pattern.FromRegex(@"\s"));
+
+        result.ToString().ShouldBe(expected);
+    }
+
+    [Fact]
+    public void Intersect_MetaCharacter_WritesEscapedLiteral()
+    {
+        Pattern result = Pattern.FromRegex(@"\.").Intersect(Pattern.FromRegex("."));
+
+        result.ToString().ShouldBe(@"^\.\z");
+    }
+
+    [Fact]
+    public void Intersect_EmptyOrFinalNewline_WritesBareDollar()
+    {
+        Pattern result = Pattern.FromRegex("^$").Intersect(Pattern.FromRegex("\n?"));
+
+        result.ToString().ShouldBe("^$");
+        result.IsMatch(string.Empty).ShouldBeTrue();
+        result.IsMatch("\n").ShouldBeTrue();
+        result.IsMatch("a").ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Intersect_UnboundedMinimumAboveOne_WritesOpenRangeQuantifier()
+    {
+        Pattern result = Pattern.FromRegex("a{3,}").Intersect(Pattern.FromRegex("a+"));
+
+        result.ToString().ShouldBe(@"^a{3,}\z");
+    }
+
+    [Fact]
+    public void Intersect_MultilineOptions_AnchorsWithStartAndEndOfInput()
+    {
+        Pattern result = Pattern.FromRegex("a+", RegexOptions.Multiline).Intersect(Pattern.FromRegex("a{2}"));
+
+        result.ToString().ShouldBe(@"\Aa{2}\z");
+        result.Options.ShouldBe(RegexOptions.Multiline);
+    }
+
+    [Fact]
+    public void Intersect_IgnoreCaseLeftWithUpperCaseOnlyRight_WritesCaseSensitiveGroup()
+    {
+        Pattern left = Pattern.FromRegex("[a-z]+", RegexOptions.IgnoreCase);
+
+        Pattern result = left.Intersect(Pattern.FromRegex("[A-Z]+"));
+
+        result.ToString().ShouldBe(@"^(?-i:[A-Z])+\z");
+        result.IsMatch("ABC").ShouldBeTrue();
+        result.IsMatch("abc").ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Intersect_EcmaScriptOptions_KeepsOptionsAndWritesRange()
+    {
+        Pattern left = Pattern.FromRegex("[a-z]+", RegexOptions.ECMAScript);
+
+        Pattern result = left.Intersect(Pattern.FromRegex("[a-c]{2}"));
+
+        result.ToString().ShouldBe(@"^[a-c]{2}\z");
+        result.Options.ShouldBe(RegexOptions.ECMAScript);
+    }
+
+    [Fact]
+    public void Intersect_SetWithManyRanges_WritesFullBracket()
+    {
+        Pattern result = Pattern.FromRegex($"[{ManyIsolatedChars}]").Intersect(Pattern.FromRegex("."));
+
+        result.ToString().ShouldBe($@"^[{ManyIsolatedChars}]\z");
+    }
+
+    [Theory]
+    [InlineData("ab", "cd", "ab|cd")]
+    [InlineData("a|b", "cd", "(?:a|b)|cd")]
+    [InlineData("", "cd", "(?:)|cd")]
+    [InlineData("a(?i)b", "cd", "(?:a(?i)b)|cd")]
+    public void Union_SameOptions_JoinsOriginalBranches(string left, string right, string expected)
+    {
+        Pattern result = Pattern.FromRegex(left).Union(Pattern.FromRegex(right));
+
+        result.ToString().ShouldBe(expected);
+    }
+
+    [Fact]
+    public void Union_LeadingLookaheadBranch_FallsBackToSynthesizedRegex()
+    {
+        Pattern left = Pattern.FromRegex(@"(?=a)\w");
+
+        Pattern result = left.Union(Pattern.FromRegex("b"));
+
+        result.ToString().ShouldBe(@"^[ab]\z");
+    }
+
+    private static readonly string ManyIsolatedChars =
+        string.Concat(Enumerable.Range(0, 70).Select(i => $"\\u{0x0100 + (2 * i):X4}"));
+
     private static bool FullMatch(Pattern pattern, string input) =>
         Regex.IsMatch(input, $@"\A(?:{pattern})\z", pattern.Options);
 

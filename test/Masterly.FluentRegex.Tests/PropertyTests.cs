@@ -185,7 +185,11 @@ public class PropertyTests
     {
         PropertyOptions options = new PropertyOptions();
 
-        Should.Throw<ArgumentOutOfRangeException>(() => options.Samples = 0);
+        ArgumentOutOfRangeException exception = Should.Throw<ArgumentOutOfRangeException>(() => options.Samples = 0);
+
+        exception.ParamName.ShouldBe("Samples");
+        exception.ActualValue.ShouldBe(0);
+        options.Samples.ShouldBe(100);
     }
 
     [Fact]
@@ -193,7 +197,11 @@ public class PropertyTests
     {
         PropertyOptions options = new PropertyOptions();
 
-        Should.Throw<ArgumentOutOfRangeException>(() => options.MaxShrinkSteps = -1);
+        ArgumentOutOfRangeException exception = Should.Throw<ArgumentOutOfRangeException>(() => options.MaxShrinkSteps = -1);
+
+        exception.ParamName.ShouldBe("MaxShrinkSteps");
+        exception.ActualValue.ShouldBe(-1);
+        options.MaxShrinkSteps.ShouldBe(1000);
     }
 
     [Fact]
@@ -216,6 +224,144 @@ public class PropertyTests
         exception.Message.ShouldBe("outer");
         exception.InnerException.ShouldBeSameAs(inner);
         exception.Result.ShouldBeNull();
-        new PropertyFailedException().Message.ShouldNotBeNullOrEmpty();
+    }
+
+    [Fact]
+    public void PropertyFailedException_DefaultConstructor_UsesDefaultMessage()
+    {
+        PropertyFailedException exception = new PropertyFailedException();
+
+        exception.Message.ShouldBe("The property failed.");
+        exception.InnerException.ShouldBeNull();
+        exception.Result.ShouldBeNull();
+    }
+
+    [Fact]
+    public void PropertyFailedException_MessageConstructor_SetsMessageWithoutInnerOrResult()
+    {
+        PropertyFailedException exception = new PropertyFailedException("custom");
+
+        exception.Message.ShouldBe("custom");
+        exception.InnerException.ShouldBeNull();
+        exception.Result.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ForMatching_NullProperty_ThrowsArgumentNull()
+    {
+        Should.Throw<ArgumentNullException>(() => PatternProperty.ForMatching(Digits, null!)).ParamName.ShouldBe("property");
+    }
+
+    [Fact]
+    public void ForNonMatching_NullPattern_ThrowsArgumentNull()
+    {
+        Should.Throw<ArgumentNullException>(() => PatternProperty.ForNonMatching(null!, s => true)).ParamName.ShouldBe("pattern");
+    }
+
+    [Fact]
+    public void ForMatching_PatternMatchesNothing_ThrowsWithQuotedPattern()
+    {
+        Pattern impossible = Pattern.FromRegex(@"^[a-[a]]\n$");
+
+        InvalidOperationException exception = Should.Throw<InvalidOperationException>(
+            () => PatternProperty.ForMatching(impossible, s => true));
+
+        exception.Message.ShouldBe("The pattern \"^[a-[a]]\\\\n$\" produced no matching samples, so the property cannot be tested.");
+    }
+
+    [Fact]
+    public void ToString_NonMatchingPropertyPassed_NamesNonMatchingSide()
+    {
+        Pattern digitsOnly = Pattern.FromRegex(@"^\d+$");
+
+        PropertyResult result = PatternProperty.ForNonMatching(digitsOnly, s => true, new PropertyOptions { Samples = 5, Seed = 4 });
+
+        result.ToString().ShouldBe("Property passed for 5 non-matching sample(s) (seed 4).");
+    }
+
+    [Fact]
+    public void ToString_NonMatchingPropertyFailed_ReproducesWithForNonMatching()
+    {
+        Pattern digitsOnly = Pattern.FromRegex(@"^\d+$");
+
+        PropertyResult result = PatternProperty.ForNonMatching(digitsOnly, s => false, new PropertyOptions { Samples = 5, Seed = 4 });
+
+        string report = result.ToString();
+        report.ShouldStartWith("Property failed for a non-matching sample of pattern \"^\\\\d+$\".");
+        report.ShouldContain("Counterexample:          \"\"");
+        report.ShouldEndWith("Reproduce with PatternProperty.ForNonMatching(pattern, property, new PropertyOptions { Seed = 4, Samples = 5 }), or call the property directly with \"\".");
+        report.ShouldNotContain("Exception:");
+    }
+
+    [Theory]
+    [InlineData(@"^\\$", "\"\\\\\"")]
+    [InlineData(@"^\n$", "\"\\n\"")]
+    [InlineData(@"^\r$", "\"\\r\"")]
+    [InlineData(@"^\t$", "\"\\t\"")]
+    [InlineData(@"^\0$", "\"\\0\"")]
+    [InlineData("^\"$", "\"\\\"\"")]
+    [InlineData(@"^\x01$", "\"\\u0001\"")]
+    [InlineData(@"^\x7F$", "\"\\u007F\"")]
+    [InlineData(@"^\u0085$", "\"\\u0085\"")]
+    [InlineData("^é$", "\"é\"")]
+    public void ToString_CounterexampleWithSpecialCharacter_ShowsItAsEscapedLiteral(string regex, string expectedLiteral)
+    {
+        PropertyResult result = PatternProperty.ForMatching(Pattern.FromRegex(regex), s => false, new PropertyOptions { Samples = 1 });
+
+        result.ToString().ShouldContain($"Counterexample:          {expectedLiteral}{Environment.NewLine}");
+        result.ToString().ShouldEndWith($"or call the property directly with {expectedLiteral}.");
+    }
+
+    [Theory]
+    [InlineData("^[éa]$", 10, "é", "a")]
+    [InlineData("^[!0]$", 1, "!", "0")]
+    public void ForMatching_CounterexampleOutsideAsciiLettersAndDigits_ShrinksToSimplerCharacter(
+        string regex, int seed, string original, string shrunk)
+    {
+        PropertyOptions options = new PropertyOptions { Samples = 1, Seed = seed };
+
+        PropertyResult result = PatternProperty.ForMatching(Pattern.FromRegex(regex), s => false, options);
+
+        result.OriginalCounterexample.ShouldBe(original);
+        result.Counterexample.ShouldBe(shrunk);
+    }
+
+    [Fact]
+    public void ForMatching_BudgetExhaustedWhileRemovingChunks_StopsWithOriginal()
+    {
+        PropertyOptions options = new PropertyOptions { Samples = 1, MaxShrinkSteps = 1 };
+
+        PropertyResult result = PatternProperty.ForMatching(Pattern.FromRegex("^[a-z]{8}$"), s => false, options);
+
+        result.ShrinkSteps.ShouldBe(1);
+        result.Counterexample.ShouldBe(result.OriginalCounterexample);
+        result.Counterexample!.Length.ShouldBe(8);
+    }
+
+    [Fact]
+    public void ForMatching_BudgetExhaustedWhileSimplifyingCharacter_StopsWithOriginal()
+    {
+        // Step 1 tries "" and step 2 tries "a"; both leave the pattern, and the budget then runs out.
+        PropertyOptions options = new PropertyOptions { Samples = 1, MaxShrinkSteps = 2 };
+
+        PropertyResult result = PatternProperty.ForMatching(Pattern.FromRegex("^z$"), s => false, options);
+
+        result.ShrinkSteps.ShouldBe(2);
+        result.Counterexample.ShouldBe("z");
+    }
+
+    [Fact]
+    public void ForMatching_ShrinkCandidateMembershipTimesOut_RejectsCandidateWithoutThrowing()
+    {
+        // Every shrink candidate is shorter and fails the length lookahead quickly, except replacing the
+        // first letter with 'a', which makes the negative lookahead backtrack past its one-second budget.
+        Pattern pattern = Pattern.FromRegex("^(?=.{30}$)(?!((a+)+)+b)[b-z]a{29}$");
+
+        PropertyResult result = PatternProperty.ForMatching(pattern, s => false, new PropertyOptions { Samples = 1 });
+
+        result.Passed.ShouldBeFalse();
+        result.Counterexample.ShouldBe(result.OriginalCounterexample);
+        result.Counterexample!.ShouldEndWith(new string('a', 29));
+        result.Counterexample.Length.ShouldBe(30);
     }
 }

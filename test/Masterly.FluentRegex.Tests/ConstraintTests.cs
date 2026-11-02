@@ -123,6 +123,46 @@ public class ConstraintTests
     }
 
     [Theory]
+    [InlineData("123", true)]
+    [InlineData("abc", true)]
+    [InlineData("abc1", false)]
+    [InlineData("1a", false)]
+    public void Check_TrailingWhitespaceModeCommentAfterAlternation_StillValidatesTheWholeInput(string input, bool expected)
+    {
+        ConstrainedPattern digitsOrLetters = Pattern.FromRegex(@"\d+|[a-z]+ # digits or letters", RegexOptions.IgnorePatternWhitespace).Must(_ => true);
+
+        bool result = digitsOrLetters.Check(input).IsValid;
+
+        result.ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("ABC")]
+    [InlineData("abc")]
+    public void Check_UppercaseInlineOptionLetter_AcceptsTheWholeInput(string input)
+    {
+        ConstrainedPattern letters = Pattern.FromRegex("(?I)abc").Must(_ => true);
+
+        bool result = letters.Check(input).IsValid;
+
+        result.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ToString_PatternMismatchWithoutFailureDetail_ReportsAGenericMismatch()
+    {
+        MatchTrace successfulTrace = Pattern.With.Literal("a").Trace("a");
+        ConstraintResult result = ConstraintResult.PatternMismatch(successfulTrace);
+
+        string summary = result.ToString();
+
+        summary.ShouldBe("Invalid: the value does not match the pattern");
+        result.IsValid.ShouldBeFalse();
+        result.PatternFailed.ShouldBeTrue();
+        result.FailedRule.ShouldBeNull();
+    }
+
+    [Theory]
     [InlineData("4111 1111 1111 1111", true)]
     [InlineData("4111 1111 1111 1112", false)]
     [InlineData("x4111 1111 1111 1111", false)]

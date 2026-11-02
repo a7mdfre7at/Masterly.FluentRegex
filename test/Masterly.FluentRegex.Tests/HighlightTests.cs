@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Masterly.FluentRegex.Highlighting;
 
 namespace Masterly.FluentRegex.Tests;
 
@@ -43,6 +44,9 @@ public class HighlightTests
     [InlineData(@"(x)?(y)", "y", "[[2:y]]")]
     [InlineData(@"(?=(\w+))\w", "ab", "[[1:a]][[1:b]]")]
     [InlineData(@"(?<=(a))b", "ab", "a[b]")]
+    [InlineData(@"(?<x>a)(?<x>)", "a", "[[x:a][x:]]")]
+    [InlineData(@"(?<a>)(?<b>)", "", "[[a:][b:]]")]
+    [InlineData(@"(?<y>(?<x>a))(?<x>b)", "ab", "[[y:[x:a]][x:b]]")]
     public void Brackets_GroupLayouts_NestAndOrderCorrectly(string regex, string input, string expected)
     {
         Pattern.FromRegex(regex).Highlight(input, HighlightFormat.Brackets).ShouldBe(expected);
@@ -151,5 +155,29 @@ public class HighlightTests
     public void Highlight_UndefinedFormat_ThrowsArgumentOutOfRange()
     {
         Should.Throw<ArgumentOutOfRangeException>(() => Phone.Highlight("x", (HighlightFormat)42));
+    }
+
+    [Theory]
+    [InlineData(@"((a))", "a", "[[1:[2:a]]]")]
+    [InlineData(@"(?<outer>(?<inner>b))", "b", "[[outer:[inner:b]]]")]
+    public void Build_WithoutParsedTree_NestsIdenticalSpansByGroupNumber(string regex, string input, string expected)
+    {
+        HighlightTreeBuilder builder = new HighlightTreeBuilder(new Regex(regex), null);
+        HighlightRenderer renderer = HighlightRenderer.Create(HighlightFormat.Brackets);
+
+        string rendered = renderer.Render(input, builder.Build(input), builder.Groups);
+
+        rendered.ShouldBe(expected);
+    }
+
+    [Fact]
+    public void Build_WithoutParsedTree_StillListsEveryCaptureGroup()
+    {
+        HighlightTreeBuilder builder = new HighlightTreeBuilder(new Regex(@"(?<year>\d{4})-(\d{2})"), null);
+
+        IReadOnlyList<HighlightGroup> groups = builder.Groups;
+
+        groups.Select(group => group.Label).ShouldBe(new[] { "1", "year" });
+        groups.Select(group => group.Number).ShouldBe(new[] { 1, 2 });
     }
 }

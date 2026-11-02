@@ -48,6 +48,14 @@ public class DigitModeTests
     }
 
     [Fact]
+    public void Rewrite_NullTree_ThrowsArgumentNullException()
+    {
+        ArgumentNullException exception = Should.Throw<ArgumentNullException>(() => Syntax.AsciiDigitRewriter.Rewrite(null!));
+
+        exception.ParamName.ShouldBe("tree");
+    }
+
+    [Fact]
     public void WithAsciiDigits_EmptyPattern_ReturnsSameInstance()
     {
         Pattern pattern = Pattern.With;

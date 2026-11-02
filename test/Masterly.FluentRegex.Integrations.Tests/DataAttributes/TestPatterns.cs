@@ -18,6 +18,22 @@ public static class TestPatterns
     public static Pattern RequiresArgument(int length) => Pattern.FromRegex($"^a{{{length}}}$");
 
     public static Pattern SingleValue => Pattern.FromRegex("^x$");
+
+    /// <summary>Matches nothing, so it has no matching samples.</summary>
+    public static Pattern NeverMatches => Pattern.FromRegex("(?!)");
+
+    public static string NotAPatternProperty => "not a pattern";
+
+    public static int NotAPatternMethod() => 42;
+
+    public static Pattern WriteOnly
+    {
+        set { _ = value; }
+    }
+
+    public static Pattern? NullPatternField = null;
+
+    public static Pattern? NullPatternMethod() => null;
 }
 
 /// <summary>Inherits its pattern members, to check that base-class members resolve.</summary>

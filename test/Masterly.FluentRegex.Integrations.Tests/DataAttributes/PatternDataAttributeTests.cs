@@ -9,12 +9,22 @@ public class PatternDataAttributeTests
 {
     private static readonly MethodInfo StringTheory = typeof(PatternDataAttributeTests).GetMethod(nameof(TakesString), BindingFlags.NonPublic | BindingFlags.Static)!;
     private static readonly MethodInfo IntTheory = typeof(PatternDataAttributeTests).GetMethod(nameof(TakesInt), BindingFlags.NonPublic | BindingFlags.Static)!;
+    private static readonly MethodInfo NoParameterTheory = typeof(PatternDataAttributeTests).GetMethod(nameof(TakesNothing), BindingFlags.NonPublic | BindingFlags.Static)!;
+    private static readonly MethodInfo ObjectTheory = typeof(PatternDataAttributeTests).GetMethod(nameof(TakesObject), BindingFlags.NonPublic | BindingFlags.Static)!;
 
     private static void TakesString(string value)
     {
     }
 
     private static void TakesInt(int value)
+    {
+    }
+
+    private static void TakesNothing()
+    {
+    }
+
+    private static void TakesObject(object value)
     {
     }
 
@@ -188,6 +198,141 @@ public class PatternDataAttributeTests
     public void Constructor_BlankMemberName_ThrowsArgument()
     {
         Should.Throw<ArgumentException>(() => new NonMatchingDataAttribute(typeof(TestPatterns), " "));
+    }
+
+    [Fact]
+    public async Task GetData_NoMatchingSamples_ThrowsDescribingAttributePatternAndTheory()
+    {
+        MatchingDataAttribute attribute = new MatchingDataAttribute(typeof(TestPatterns), nameof(TestPatterns.NeverMatches));
+
+        InvalidOperationException exception = await Should.ThrowAsync<InvalidOperationException>(() => ValuesOf(attribute));
+
+        exception.Message.ShouldBe("[MatchingData(TestPatterns.NeverMatches)] produced no matching samples for pattern '(?!)', so theory 'TakesString' has no data.");
+    }
+
+    [Fact]
+    public async Task GetData_TheoryWithoutParameters_Throws()
+    {
+        NonMatchingDataAttribute attribute = new NonMatchingDataAttribute(typeof(TestPatterns), nameof(TestPatterns.HexColor));
+
+        InvalidOperationException exception = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await attribute.GetData(NoParameterTheory, new DisposalTracker()));
+
+        exception.Message.ShouldBe("[NonMatchingData(TestPatterns.HexColor)] supplies one string per row, but theory 'TakesNothing' does not take a string as its first parameter.");
+    }
+
+    [Fact]
+    public async Task GetData_FirstParameterAcceptsString_ReturnsRows()
+    {
+        MatchingDataAttribute attribute = new MatchingDataAttribute(typeof(TestPatterns), nameof(TestPatterns.SingleValue));
+
+        IReadOnlyCollection<ITheoryDataRow> rows = await attribute.GetData(ObjectTheory, new DisposalTracker());
+
+        rows.Select(row => row.GetData()[0]).ShouldBe(new object?[] { "x" });
+    }
+
+    [Fact]
+    public async Task GetData_NullTestMethod_ThrowsArgumentNull()
+    {
+        MatchingDataAttribute attribute = new MatchingDataAttribute(typeof(TestPatterns), nameof(TestPatterns.HexColor));
+
+        ArgumentNullException exception = await Should.ThrowAsync<ArgumentNullException>(
+            async () => await attribute.GetData(null!, new DisposalTracker()));
+
+        exception.ParamName.ShouldBe("testMethod");
+    }
+
+    [Fact]
+    public async Task GetData_NegativeCount_ThrowsBeforeResolvingPattern()
+    {
+        NonMatchingDataAttribute attribute = new NonMatchingDataAttribute(typeof(TestPatterns), "DoesNotExist") { Count = -3 };
+
+        InvalidOperationException exception = await Should.ThrowAsync<InvalidOperationException>(() => ValuesOf(attribute));
+
+        exception.Message.ShouldBe("[NonMatchingData(TestPatterns.DoesNotExist)] has Count = -3; it must be at least 1.");
+    }
+
+    [Theory]
+    [InlineData(nameof(TestPatterns.NotAPatternProperty), "System.String")]
+    [InlineData(nameof(TestPatterns.NotAPatternMethod), "System.Int32")]
+    public async Task GetData_NonPatternPropertyOrMethod_ThrowsNamingActualType(string memberName, string actualType)
+    {
+        MatchingDataAttribute attribute = new MatchingDataAttribute(typeof(TestPatterns), memberName);
+
+        InvalidOperationException exception = await Should.ThrowAsync<InvalidOperationException>(() => ValuesOf(attribute));
+
+        exception.Message.ShouldBe(
+            $"[MatchingData(TestPatterns.{memberName})]: member '{typeof(TestPatterns).FullName}.{memberName}' is of type '{actualType}', not 'Masterly.FluentRegex.Pattern'.");
+    }
+
+    [Theory]
+    [InlineData(nameof(TestPatterns.NullPatternField))]
+    [InlineData(nameof(TestPatterns.NullPatternMethod))]
+    public async Task GetData_NullFieldOrMethod_ThrowsReturnedNull(string memberName)
+    {
+        MatchingDataAttribute attribute = new MatchingDataAttribute(typeof(TestPatterns), memberName);
+
+        InvalidOperationException exception = await Should.ThrowAsync<InvalidOperationException>(() => ValuesOf(attribute));
+
+        exception.Message.ShouldBe($"[MatchingData(TestPatterns.{memberName})]: member '{typeof(TestPatterns).FullName}.{memberName}' returned null.");
+    }
+
+    [Fact]
+    public async Task GetData_WriteOnlyProperty_IsNotResolved()
+    {
+        MatchingDataAttribute attribute = new MatchingDataAttribute(typeof(TestPatterns), nameof(TestPatterns.WriteOnly));
+
+        InvalidOperationException exception = await Should.ThrowAsync<InvalidOperationException>(() => ValuesOf(attribute));
+
+        exception.Message.ShouldBe(
+            $"[MatchingData(TestPatterns.WriteOnly)]: type '{typeof(TestPatterns).FullName}' has no public static property, field or parameterless method named 'WriteOnly'.");
+    }
+
+    [Fact]
+    public async Task GetData_NonMatchingWithSeed_ReturnsSeededNonMatchingSamples()
+    {
+        NonMatchingDataAttribute first = new NonMatchingDataAttribute(typeof(TestPatterns), nameof(TestPatterns.FiveDigitsField)) { Count = 8, Seed = 7 };
+        NonMatchingDataAttribute second = new NonMatchingDataAttribute(typeof(TestPatterns), nameof(TestPatterns.FiveDigitsField)) { Count = 8, Seed = 7 };
+
+        string[] firstValues = await ValuesOf(first);
+        string[] secondValues = await ValuesOf(second);
+
+        firstValues.ShouldBe(TestPatterns.FiveDigitsField.GenerateNonMatching(8, 7));
+        secondValues.ShouldBe(firstValues);
+        firstValues.ShouldAllBe(value => !TestPatterns.FiveDigitsField.IsMatch(value));
+    }
+
+    [Fact]
+    public void Constructor_StoresSourceAndMemberName()
+    {
+        NonMatchingDataAttribute attribute = new NonMatchingDataAttribute(typeof(TestPatterns), nameof(TestPatterns.HexColor));
+
+        attribute.PatternSource.ShouldBe(typeof(TestPatterns));
+        attribute.MemberName.ShouldBe(nameof(TestPatterns.HexColor));
+    }
+
+    [Fact]
+    public void Constructor_NullMemberName_ThrowsArgumentNull()
+    {
+        ArgumentNullException exception = Should.Throw<ArgumentNullException>(() => new MatchingDataAttribute(typeof(TestPatterns), null!));
+
+        exception.ParamName.ShouldBe("memberName");
+    }
+
+    [Fact]
+    public void Constructor_EmptyMemberName_ThrowsArgument()
+    {
+        ArgumentException exception = Should.Throw<ArgumentException>(() => new MatchingDataAttribute(typeof(TestPatterns), string.Empty));
+
+        exception.ParamName.ShouldBe("memberName");
+    }
+
+    [Fact]
+    public void Constructor_NullTypeOnNonMatching_ThrowsArgumentNull()
+    {
+        ArgumentNullException exception = Should.Throw<ArgumentNullException>(() => new NonMatchingDataAttribute(null!, "Member"));
+
+        exception.ParamName.ShouldBe("patternSource");
     }
 
     private static async Task<string[]> ValuesOf(DataAttribute attribute)

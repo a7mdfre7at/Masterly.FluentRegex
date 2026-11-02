@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace Masterly.FluentRegex.Tests;
 
 public class GroupTests
@@ -137,5 +139,99 @@ public class GroupTests
             );
 
         pattern.ToString().ShouldBe(@"((?<inner>\d+))");
+    }
+
+    [Fact]
+    public void AtomicGroup_GreedyContentFollowedBySameToken_DoesNotBacktrack()
+    {
+        Pattern atomic = Pattern.With.StartOfLine.AtomicGroup(Pattern.With.Digit.Repeat.OneOrMore).Digit.EndOfLine;
+        Pattern capturing = Pattern.With.StartOfLine.Group(Pattern.With.Digit.Repeat.OneOrMore).Digit.EndOfLine;
+
+        bool atomicMatches = atomic.IsMatch("123");
+        bool capturingMatches = capturing.IsMatch("123");
+
+        atomicMatches.ShouldBeFalse();
+        capturingMatches.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void NonCapturingGroup_Match_DoesNotCreateGroup()
+    {
+        Pattern pattern = Pattern.With.NonCapturingGroup(Pattern.With.Literal("ab")).Digit;
+
+        Match match = pattern.Match("ab1");
+
+        match.Success.ShouldBeTrue();
+        match.Groups.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public void NamedGroup_Match_CapturesValueByName()
+    {
+        Pattern pattern = Pattern.With.Literal("v").NamedGroup("version", Pattern.With.Digit.Repeat.OneOrMore);
+
+        Match match = pattern.Match("release v42");
+
+        match.Groups["version"].Value.ShouldBe("42");
+    }
+
+    [Theory]
+    [InlineData("<123>", true)]
+    [InlineData("123", true)]
+    [InlineData("<123", false)]
+    [InlineData("123>", false)]
+    public void Conditional_ByName_AppliesBranchBasedOnGroupCapture(string input, bool expected)
+    {
+        Pattern pattern = Pattern.With
+            .StartOfLine
+            .NamedGroup("open", Pattern.With.Literal("<")).Repeat.Optional
+            .Digit.Repeat.OneOrMore
+            .Conditional("open", Pattern.With.Literal(">"), Pattern.With)
+            .EndOfLine;
+
+        bool isMatch = pattern.IsMatch(input);
+
+        isMatch.ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("(42)", true)]
+    [InlineData("42", true)]
+    [InlineData("(42", false)]
+    [InlineData("42)", false)]
+    public void Conditional_ByNumber_AppliesBranchBasedOnGroupCapture(string input, bool expected)
+    {
+        Pattern pattern = Pattern.With
+            .StartOfLine
+            .Group(Pattern.With.Literal("(")).Repeat.Optional
+            .Digit.Repeat.OneOrMore
+            .Conditional(1, Pattern.With.Literal(")"), Pattern.With)
+            .EndOfLine;
+
+        bool isMatch = pattern.IsMatch(input);
+
+        isMatch.ShouldBe(expected);
+    }
+
+    [Fact]
+    public void Backreference_ByNumber_RequiresIdenticalRepeat()
+    {
+        Pattern pattern = Pattern.With.StartOfLine.Group(Pattern.With.Word).Backreference(1).EndOfLine;
+
+        bool matchesDouble = pattern.IsMatch("aa");
+        bool matchesDifferent = pattern.IsMatch("ab");
+
+        matchesDouble.ShouldBeTrue();
+        matchesDifferent.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Backreference_ToUndefinedGroup_ProducesInvalidPattern()
+    {
+        Pattern pattern = Pattern.With.Digit.Backreference("missing");
+
+        bool isValid = pattern.IsValid();
+
+        isValid.ShouldBeFalse();
     }
 }

@@ -46,6 +46,22 @@ public class ExportTests
     [InlineData("(?i)a(?-i:b)c", "[Aa](?:b)[Cc]")]
     [InlineData("(?n)(a)(?<x>b)", "(?:a)(?<x>b)")]
     [InlineData("a|b|", "a|b|")]
+    [InlineData(@"[ab-[b]]", "a")]
+    [InlineData(@"[a-a-[a]]", "[]")]
+    [InlineData(@"[\s\S-[a-[a]]]", @"[\s\S]")]
+    [InlineData("[\\x00-\\uFFFF-[a]]", "[^a]")]
+    [InlineData("[\\x00-\\uFFFF-[\\uE000]]", "[^\\uE000]")]
+    [InlineData("\\v\\f\\xA0\\u0100", "\\v\\f\\xA0\\u0100")]
+    [InlineData(@"[^\W\S]", @"(?:(?=[\p{L}\p{Mn}\p{Nd}\p{Pc}])[\t\n\v\f\r\x85\p{Z}])")]
+    [InlineData("[a\\p{IsGreek}]", "[a\\u0370-\\u03FF]")]
+    [InlineData(@"[a\p{Lu}\P{Ll}]", @"[a\p{Lu}\P{Ll}]")]
+    [InlineData(@"[a\D]", @"[a\P{Nd}]")]
+    [InlineData(@"[\W]", @"[^\p{L}\p{Mn}\p{Nd}\p{Pc}]")]
+    [InlineData(@"\B", @"(?:(?<=[\p{L}\p{Mn}\p{Nd}\p{Pc}\u{200C}\u{200D}])(?=[\p{L}\p{Mn}\p{Nd}\p{Pc}\u{200C}\u{200D}])|(?<![\p{L}\p{Mn}\p{Nd}\p{Pc}\u{200C}\u{200D}])(?![\p{L}\p{Mn}\p{Nd}\p{Pc}\u{200C}\u{200D}]))")]
+    [InlineData("^*a", "(?:^)*a")]
+    [InlineData("(?:)*a", "(?:)*a")]
+    [InlineData("(?i:[a-c])x", "(?:[A-Ca-c])x")]
+    [InlineData("\uD83D\uDE00", "\\uD83D\\uDE00")]
     public void ToFlavor_JavaScript_TranslatesEachConstruct(string regex, string expected)
     {
         FlavorConversion conversion = Pattern.FromRegex(regex).ToFlavor(RegexFlavor.JavaScript);
@@ -78,6 +94,11 @@ public class ExportTests
     [InlineData(RegexOptions.IgnorePatternWhitespace, "a b # comment\n c", "abc", "u")]
     [InlineData(RegexOptions.ExplicitCapture, "(a)", "(?:a)", "u")]
     [InlineData(RegexOptions.ECMAScript, @"\d\w\s", @"\d\w[ \f\n\r\t\v]", "u")]
+    [InlineData(RegexOptions.ECMAScript, @"\S\D\W", @"[^ \f\n\r\t\v]\D\W", "u")]
+    [InlineData(RegexOptions.ECMAScript, @"[\d\w\s]", @"[\d\w \f\n\r\t\v]", "u")]
+    [InlineData(RegexOptions.ECMAScript, @"[a\S]", @"(?:[a]|[^ \f\n\r\t\v])", "u")]
+    [InlineData(RegexOptions.ECMAScript, @"[a\W]", @"[a\W]", "u")]
+    [InlineData(RegexOptions.ECMAScript, @"\b\B", @"\b\B", "u")]
     public void ToFlavor_JavaScript_TranslatesOptions(RegexOptions options, string regex, string expectedPattern, string expectedFlags)
     {
         FlavorConversion conversion = Pattern.FromRegex(regex).WithOptions(options).ToFlavor(RegexFlavor.JavaScript);
@@ -123,6 +144,51 @@ public class ExportTests
     }
 
     [Fact]
+    public void ToFlavor_PreserveUnicodeSemanticsOff_NegatedShorthandsWarnOncePerKind()
+    {
+        FlavorOptions options = new FlavorOptions { PreserveUnicodeSemantics = false };
+
+        FlavorConversion conversion = Pattern.FromRegex(@"\D\W\S[\D\W\S]").ToFlavor(RegexFlavor.JavaScript, options);
+
+        conversion.Pattern.ShouldBe(@"\D\W\S[\D\W\S]");
+        conversion.Warnings.Count.ShouldBe(4);
+        conversion.Warnings.ShouldContain(w => w.Contains("ASCII digits"));
+        conversion.Warnings.ShouldContain(w => w.Contains("ASCII word characters"));
+        conversion.Warnings.ShouldContain(w => w.Contains("U+FEFF"));
+        conversion.Warnings.ShouldContain(w => w.StartsWith("Supplementary characters"));
+    }
+
+    [Fact]
+    public void ToFlavor_PreserveUnicodeSemanticsOff_NonWordBoundaryIsAsciiWithWarning()
+    {
+        FlavorOptions options = new FlavorOptions { PreserveUnicodeSemantics = false };
+
+        FlavorConversion conversion = Pattern.FromRegex(@"\B").ToFlavor(RegexFlavor.JavaScript, options);
+
+        conversion.Pattern.ShouldBe(@"\B");
+        conversion.Warnings.ShouldHaveSingleItem().ShouldContain("ASCII word characters");
+    }
+
+    [Fact]
+    public void ToFlavor_PreserveLineSemanticsOffWithMultilineFlag_WritesEndOfInputAsLookahead()
+    {
+        FlavorOptions options = new FlavorOptions { PreserveLineSemantics = false };
+
+        FlavorConversion conversion = Pattern.FromRegex(@"(?m)^a\z").ToFlavor(RegexFlavor.JavaScript, options);
+
+        conversion.ToLiteral().ShouldBe(@"/^a(?![\s\S])/mu");
+        conversion.Warnings.ShouldHaveSingleItem().ShouldContain("'m' flag");
+    }
+
+    [Fact]
+    public void ToFlavor_IgnoreCaseFlagWithUnicodeBlock_WritesTheBlockCaseSensitively()
+    {
+        FlavorConversion conversion = Pattern.FromRegex(@"(?i)a\p{IsBasicLatin}").ToFlavor(RegexFlavor.JavaScript);
+
+        conversion.ToLiteral().ShouldBe(@"/a[\x00-\x7F]/iu");
+    }
+
+    [Fact]
     public void FlavorOptions_DefaultToExactTranslation()
     {
         FlavorOptions options = new FlavorOptions();
@@ -142,6 +208,46 @@ public class ExportTests
 
         conversion.IsExact.ShouldBeFalse();
         conversion.Warnings.ShouldHaveSingleItem().ShouldContain("position 9");
+    }
+
+    [Theory]
+    [InlineData(@"\1(a)", 0)]
+    [InlineData(@"\k<x>(?<x>a)", 0)]
+    [InlineData(@"(a\1)", 2)]
+    [InlineData(@"(a)?\1", 4)]
+    [InlineData(@"(a)*\1", 4)]
+    [InlineData(@"(a)|\1", 4)]
+    [InlineData(@"(?!(a))\1", 7)]
+    [InlineData(@"(?<!(a))b\1", 9)]
+    public void ToFlavor_BackreferenceToGroupThatMayNotHaveParticipated_Warns(string regex, int position)
+    {
+        FlavorConversion conversion = Pattern.FromRegex(regex).ToFlavor(RegexFlavor.JavaScript);
+
+        conversion.Warnings.ShouldHaveSingleItem().ShouldStartWith($"The backreference at position {position} refers to a group that may not have participated");
+    }
+
+    [Theory]
+    [InlineData(@"(a){2}\1", @"(a){2}\1")]
+    [InlineData(@"(?:(a))\1", @"(?:(a))\1")]
+    [InlineData(@"((a))\2", @"((a))\2")]
+    [InlineData(@"(?:(a)b)\1", @"(?:(a)b)\1")]
+    [InlineData(@"(?:a)(?<n>b)\k<n>", @"(?:a)(?<n>b)\k<n>")]
+    [InlineData(@"(?=(a))\1", @"(?=(a))\1")]
+    public void ToFlavor_BackreferenceToGroupThatAlwaysParticipates_IsExact(string regex, string expected)
+    {
+        FlavorConversion conversion = Pattern.FromRegex(regex).ToFlavor(RegexFlavor.JavaScript);
+
+        conversion.Pattern.ShouldBe(expected);
+        conversion.IsExact.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ToFlavor_BackreferenceToOptionalGroup_JsonSchemaWarnsToo()
+    {
+        FlavorConversion conversion = Pattern.FromRegex(@"(a)?\1").ToFlavor(RegexFlavor.JsonSchema);
+
+        conversion.ToLiteral().ShouldBe(@"""(a)?\\1""");
+        conversion.Warnings.ShouldHaveSingleItem().ShouldContain("position 4");
     }
 
     [Fact]
@@ -165,6 +271,8 @@ public class ExportTests
     [InlineData("^.{1,3}$", "position 1")]
     [InlineData(@"\S+@\S+", "positions 0, 4")]
     [InlineData(@"\P{IsBasicLatin}", "position 0")]
+    [InlineData("\uD83D\uDE00", "positions 0, 1 match")]
+    [InlineData(".........", "positions 0, 1, 2, 3, 4, 5, 6, 7, ... match")]
     public void ToFlavor_ConstructThatCanMatchHalfASurrogatePair_WarnsAboutSupplementaryCharacters(string regex, string positions)
     {
         FlavorConversion conversion = Pattern.FromRegex(regex).ToFlavor(RegexFlavor.JavaScript);
@@ -200,6 +308,17 @@ public class ExportTests
 
         literal.ShouldBe(@"""^\\p{Nd}+\""(?=\\n?$)""");
         conversion.ToString().ShouldBe(literal);
+    }
+
+    [Fact]
+    public void ToLiteral_JsonSchemaPatternWithControlCharacters_EscapesThemAsUnicode()
+    {
+        FlavorConversion conversion = new FlavorConversion(
+            RegexFlavor.JsonSchema, "a\u0001\u001F ", string.Empty, Array.Empty<string>(), new Dictionary<string, int>());
+
+        string literal = conversion.ToLiteral();
+
+        literal.ShouldBe("\"a\\u0001\\u001f \"");
     }
 
     [Fact]
@@ -265,6 +384,40 @@ public class ExportTests
 
         javaScript.ToLiteral().ShouldBe(@"/(a)\1/iu");
         exception.Message.ShouldContain("case-insensitive backreference");
+    }
+
+    [Fact]
+    public void ToFlavor_CaseInsensitiveBackreferenceInMixedCasePattern_IsNotSupportedInJavaScript()
+    {
+        Pattern pattern = Pattern.FromRegex(@"(a)(?i:\1)b");
+
+        NotSupportedException exception = Should.Throw<NotSupportedException>(() => pattern.ToFlavor(RegexFlavor.JavaScript));
+
+        exception.Message.ShouldContain("case-insensitive backreference (cannot be expressed in a pattern that mixes case sensitivity) at position 7");
+    }
+
+    [Fact]
+    public void ToFlavor_GroupInsideConditional_ReportsOnlyTheConditional()
+    {
+        Pattern pattern = Pattern.FromRegex(@"(?<x>z)(?(x)(a)|b)\1");
+
+        NotSupportedException exception = Should.Throw<NotSupportedException>(() => pattern.ToFlavor(RegexFlavor.JavaScript));
+
+        exception.Message.ShouldBe(
+            "The pattern cannot be converted to JavaScript without changing its meaning:\n" +
+            "  - conditional '(?(x)...)' at position 7");
+    }
+
+    [Theory]
+    [InlineData(RegexFlavor.JavaScript)]
+    [InlineData(RegexFlavor.JsonSchema)]
+    public void ToFlavor_BackreferenceToGroupZero_IsNotSupported(RegexFlavor flavor)
+    {
+        Pattern pattern = Pattern.FromRegex(@"(a)\k<0>");
+
+        NotSupportedException exception = Should.Throw<NotSupportedException>(() => pattern.ToFlavor(flavor));
+
+        exception.Message.ShouldEndWith(":\n  - backreference to an undefined group at position 3");
     }
 
     [Fact]
@@ -429,6 +582,26 @@ public class ExportTests
     }
 
     [Fact]
+    public void ToTypeScript_HeaderWithWindowsLineEndings_WritesOneCommentPerLine()
+    {
+        Dictionary<string, Pattern> patterns = new Dictionary<string, Pattern> { ["digits"] = Pattern.FromRegex(@"\d") };
+
+        string module = PatternExport.ToTypeScript(patterns, "Shared rules\r\nv1");
+
+        module.ShouldStartWith("// Shared rules\n// v1\n\n/**");
+    }
+
+    [Fact]
+    public void ToTypeScript_NoPatterns_WritesOnlyTheHeader()
+    {
+        Dictionary<string, Pattern> patterns = new Dictionary<string, Pattern>();
+
+        string module = PatternExport.ToTypeScript(patterns);
+
+        module.ShouldBe("// Generated by Masterly.FluentRegex. Do not edit by hand.\n\n");
+    }
+
+    [Fact]
     public void ToTypeScript_SourceContainingCommentTerminator_IsEscaped()
     {
         Dictionary<string, Pattern> patterns = new Dictionary<string, Pattern> { ["stars"] = Pattern.FromRegex("a*/") };
@@ -451,6 +624,24 @@ public class ExportTests
         ArgumentException exception = Should.Throw<ArgumentException>(() => PatternExport.ToTypeScript(patterns));
 
         exception.Message.ShouldContain($"'{name}'");
+        exception.ParamName.ShouldBe("patterns");
+    }
+
+    [Theory]
+    [InlineData("$x")]
+    [InlineData("_x")]
+    [InlineData("\u216Bx")]
+    [InlineData("a\u0301")]
+    [InlineData("a\u093E")]
+    [InlineData("a\u203F")]
+    [InlineData("a1")]
+    public void ToTypeScript_ValidIdentifier_BecomesTheConstantName(string name)
+    {
+        Dictionary<string, Pattern> patterns = new Dictionary<string, Pattern> { [name] = Pattern.With.Digit };
+
+        string module = PatternExport.ToTypeScript(patterns, string.Empty);
+
+        module.ShouldContain($"export const {name} = /\\p{{Nd}}/u;");
     }
 
     [Fact]

@@ -91,4 +91,77 @@ public class CompositePatternTests
 
         pattern.ToString().ShouldBe(regex);
     }
+
+    [Theory]
+    [InlineData("cat", true)]
+    [InlineData("dog", true)]
+    [InlineData("bird", true)]
+    [InlineData("cow", false)]
+    public void Choice_Input_MatchesAnyAlternative(string input, bool expected)
+    {
+        Pattern pattern = Pattern.With.StartOfLine
+            .Choice(Pattern.With.Literal("cat"), Pattern.With.Literal("dog"), Pattern.With.Literal("bird"))
+            .EndOfLine;
+
+        bool isMatch = pattern.IsMatch(input);
+
+        isMatch.ShouldBe(expected);
+    }
+
+    [Fact]
+    public void Choice_Always_CreatesCapturingGroup()
+    {
+        Pattern pattern = Pattern.With.Choice(Pattern.With.Literal("a"), Pattern.With.Literal("b"));
+
+        int groupCount = pattern.GetGroupCount();
+
+        groupCount.ShouldBe(1);
+    }
+
+    [Theory]
+    [InlineData("a", true)]
+    [InlineData("5", true)]
+    [InlineData("-", false)]
+    public void Set_Input_MatchesAnyCharacterInClass(string input, bool expected)
+    {
+        Pattern pattern = Pattern.With.StartOfLine.Set(Pattern.With.Letter.Digit).EndOfLine;
+
+        bool isMatch = pattern.IsMatch(input);
+
+        isMatch.ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("a", false)]
+    [InlineData("5", false)]
+    [InlineData("-", true)]
+    public void NegatedSet_Input_MatchesCharactersOutsideClass(string input, bool expected)
+    {
+        Pattern pattern = Pattern.With.StartOfLine.NegatedSet(Pattern.With.Letter.Digit).EndOfLine;
+
+        bool isMatch = pattern.IsMatch(input);
+
+        isMatch.ShouldBe(expected);
+    }
+
+    [Fact]
+    public void Group_Input_CapturesInnerMatch()
+    {
+        Pattern pattern = Pattern.With.Literal("id=").Group(Pattern.With.Digit.Repeat.OneOrMore);
+
+        string captured = pattern.Match("user id=42;").Groups[1].Value;
+
+        captured.ShouldBe("42");
+    }
+
+    [Fact]
+    public void Group_InnerPatternModifiedAfterComposition_DoesNotAffectOuterPattern()
+    {
+        Pattern inner = Pattern.With.Digit;
+        Pattern outer = Pattern.With.Group(inner);
+
+        _ = inner.Word;
+
+        outer.ToString().ShouldBe(@"(\d)");
+    }
 }

@@ -125,7 +125,148 @@ public class GenerationTests
     [Fact]
     public void Count_IsValidated()
     {
-        Should.Throw<ArgumentOutOfRangeException>(() => Pattern.With.Digit.GenerateMatching(-1));
+        Should.Throw<ArgumentOutOfRangeException>(() => Pattern.With.Digit.GenerateMatching(-1)).ParamName.ShouldBe("count");
         Pattern.With.Digit.GenerateMatching(0).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GenerateNonMatching_NegativeCount_ThrowsArgumentOutOfRange()
+    {
+        ArgumentOutOfRangeException exception = Should.Throw<ArgumentOutOfRangeException>(() => Pattern.With.Digit.GenerateNonMatching(-1));
+
+        exception.ParamName.ShouldBe("count");
+    }
+
+    [Fact]
+    public void GenerateNonMatching_ZeroCount_ReturnsEmpty()
+    {
+        string[] samples = Pattern.With.Digit.GenerateNonMatching(0, seed: 1);
+
+        samples.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GenerateMatching_NoSeed_StillReturnsEveryDistinctMatchOfFiniteLanguage()
+    {
+        Pattern pattern = Pattern.FromRegex("^(?:a|b)$");
+
+        string[] samples = pattern.GenerateMatching(5);
+
+        samples.OrderBy(s => s, StringComparer.Ordinal).ShouldBe(new[] { "a", "b" });
+    }
+
+    [Fact]
+    public void GenerateNonMatching_NoSeed_ReturnsOnlyNonMatchingStrings()
+    {
+        Pattern pattern = Pattern.FromRegex("^a$");
+
+        string[] samples = pattern.GenerateNonMatching(3);
+
+        samples.Length.ShouldBe(3);
+        samples.ShouldAllBe(s => !pattern.IsMatch(s));
+    }
+
+    [Fact]
+    public void GenerateMatching_IgnoreCaseLiterals_ProducesEveryCaseVariant()
+    {
+        Pattern pattern = Pattern.FromRegex("(?i)^Ab$");
+
+        string[] samples = pattern.GenerateMatching(10, seed: 1);
+
+        samples.OrderBy(s => s, StringComparer.Ordinal).ShouldBe(new[] { "AB", "Ab", "aB", "ab" });
+    }
+
+    [Fact]
+    public void GenerateMatching_BranchWithEmptyCharacterClass_UsesOtherBranches()
+    {
+        Pattern pattern = Pattern.FromRegex("^(?:[a-[a]]|b)$");
+
+        string[] samples = pattern.GenerateMatching(5, seed: 1);
+
+        samples.ShouldBe(new[] { "b" });
+    }
+
+    [Fact]
+    public void GenerateMatching_BranchLongerThanSampleLimit_UsesOtherBranches()
+    {
+        Pattern pattern = Pattern.FromRegex("^(?:a{3000}|b)$");
+
+        string[] samples = pattern.GenerateMatching(3, seed: 1);
+
+        samples.ShouldBe(new[] { "b" });
+    }
+
+    [Fact]
+    public void GenerateMatching_OnlyMatchesLongerThanSampleLimit_ReturnsEmpty()
+    {
+        string[] samples = Pattern.FromRegex("^a{2001}$").GenerateMatching(1, seed: 1);
+
+        samples.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GenerateMatching_MatchExactlyAtSampleLimit_ReturnsIt()
+    {
+        string[] samples = Pattern.FromRegex("^a{2000}$").GenerateMatching(1, seed: 1);
+
+        samples.ShouldBe(new[] { new string('a', 2000) });
+    }
+
+    [Fact]
+    public void GenerateMatching_ExpressionConditionalWithoutNoBranch_ProducesBothOutcomes()
+    {
+        Pattern pattern = Pattern.FromRegex("^(?(?=x)xy)$");
+
+        string[] samples = pattern.GenerateMatching(5, seed: 1);
+
+        samples.OrderBy(s => s, StringComparer.Ordinal).ShouldBe(new[] { string.Empty, "xy" });
+    }
+
+    [Fact]
+    public void GenerateMatching_ExpressionConditionalWithNoBranch_ProducesBothBranches()
+    {
+        Pattern pattern = Pattern.FromRegex(@"^(?(\d)\dx|y)$");
+
+        string[] samples = pattern.GenerateMatching(5, seed: 1);
+
+        samples.ShouldContain("y");
+        samples.ShouldContain(s => s.Length == 2 && char.IsDigit(s[0]) && s[1] == 'x');
+        samples.ShouldAllBe(s => pattern.IsMatch(s));
+    }
+
+    [Fact]
+    public void GenerateMatching_ConditionalOnUndefinedName_ReturnsOnlyVerifiedMatches()
+    {
+        Pattern pattern = Pattern.FromRegex("^(?(foo)foo|b)$");
+
+        string[] samples = pattern.GenerateMatching(5, seed: 1);
+
+        samples.ShouldContain("b");
+        samples.ShouldAllBe(s => pattern.IsMatch(s));
+    }
+
+    [Fact]
+    public void GenerateMatching_VerificationTimesOut_SkipsUndecidableCandidateWithoutThrowing()
+    {
+        // The negative lookahead backtracks catastrophically on a run of a's, so verifying the only
+        // candidate exceeds the generator's one-second budget; the candidate is dropped, not returned.
+        Pattern pattern = Pattern.FromRegex("^(?!((a+)+)+b)a{30}$");
+
+        string[] samples = pattern.GenerateMatching(1, seed: 1);
+
+        samples.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GenerateNonMatching_VerificationTimesOut_SkipsUndecidableCandidate()
+    {
+        // With this seed the first near miss is thirty a's. Only on such all-a strings does the negative lookahead
+        // run, and it backtracks catastrophically past the generator's one-second budget, so that candidate's
+        // membership is unknown: it must be skipped rather than reported as non-matching.
+        Pattern pattern = Pattern.FromRegex("^(?:a{30}x|(?=a+$)(?!((a+)+)+b)a*y|q)$");
+
+        string[] samples = pattern.GenerateNonMatching(1, seed: 171);
+
+        samples.ShouldBe(new[] { new string('a', 29) + "x" });
     }
 }

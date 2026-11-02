@@ -114,6 +114,160 @@ public class TraceTests
     }
 
     [Fact]
+    public void Trace_NullInput_ThrowsArgumentNull()
+    {
+        ArgumentNullException error = Should.Throw<ArgumentNullException>(() => Date.Trace(null!));
+
+        error.ParamName.ShouldBe("input");
+    }
+
+    [Fact]
+    public void Trace_Failure_HasNoValueAndNoSteps()
+    {
+        MatchTrace trace = Date.Trace("nope");
+
+        trace.IsMatch.ShouldBeFalse();
+        trace.Value.ShouldBeNull();
+        trace.Index.ShouldBe(-1);
+        trace.Length.ShouldBe(0);
+        trace.Steps.ShouldBeEmpty();
+        trace.Input.ShouldBe("nope");
+        trace.Pattern.ShouldBe(Date.ToString());
+    }
+
+    [Fact]
+    public void TraceStep_ToString_ShowsConstructValueAndIndex()
+    {
+        TraceStep year = Date.Trace("2024-05-17").Steps[1];
+
+        year.ToString().ShouldBe("(?<year>\\d{4}) => \"2024\" at 0");
+    }
+
+    [Fact]
+    public void Trace_EmptyPattern_MatchesEmptyTextWithoutSteps()
+    {
+        MatchTrace trace = Pattern.FromRegex(string.Empty).Trace("abc");
+
+        trace.IsMatch.ShouldBeTrue();
+        trace.Index.ShouldBe(0);
+        trace.Value.ShouldBe(string.Empty);
+        trace.Steps.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Trace_EmptyAlternativeTaken_ReportsEmptyGroupStep()
+    {
+        MatchTrace trace = Pattern.FromRegex("(?:a|)b").Trace("b");
+
+        trace.Steps.Select(s => s.Construct).ShouldBe(new[] { "(?:a|)", "b" });
+        trace.Steps[0].Value.ShouldBe(string.Empty);
+        trace.Steps[0].Children.ShouldBeEmpty();
+        trace.Steps[1].Description.ShouldBe("the character 'b'");
+    }
+
+    [Fact]
+    public void Trace_Comment_IsReportedAsEmptyStep()
+    {
+        MatchTrace trace = Pattern.FromRegex("a(?#c)b").Trace("ab");
+
+        trace.Steps.Select(s => s.Construct).ShouldBe(new[] { "a", "(?#c)", "b" });
+        trace.Steps[1].Index.ShouldBe(1);
+        trace.Steps[1].Length.ShouldBe(0);
+        trace.Steps[1].Description.ShouldBe("a comment");
+    }
+
+    [Theory]
+    [InlineData("ab|(?:ac)")]
+    [InlineData("(?:ac)|ab")]
+    public void Failure_SeveralBranchesReachSamePosition_PrefersTheDeeperConstruct(string regex)
+    {
+        MatchTrace trace = Pattern.FromRegex(regex).Trace("ad");
+
+        trace.Failure!.Position.ShouldBe(1);
+        trace.Failure.Construct.ShouldBe("c");
+        trace.Failure.MatchedSoFar.ShouldBe("a");
+        trace.Failure.Found.ShouldBe("\"d\"");
+    }
+
+    [Theory]
+    [InlineData("abc|x")]
+    [InlineData("x|abc")]
+    public void Failure_SeveralBranches_BlamesTheBranchThatGotFurthest(string regex)
+    {
+        MatchTrace trace = Pattern.FromRegex(regex).Trace("abd");
+
+        trace.Failure!.Position.ShouldBe(2);
+        trace.Failure.Construct.ShouldBe("c");
+        trace.Failure.MatchedSoFar.ShouldBe("ab");
+        trace.Failure.MatchedSteps.Select(s => s.Value).ShouldBe(new[] { "ab" });
+    }
+
+    [Fact]
+    public void Failure_AtFirstConstruct_HasNoMatchedSteps()
+    {
+        MatchTrace trace = Pattern.FromRegex("x|y").Trace("z");
+
+        trace.Failure!.Position.ShouldBe(0);
+        trace.Failure.Construct.ShouldBe("x");
+        trace.Failure.MatchedSoFar.ShouldBe(string.Empty);
+        trace.Failure.MatchedSteps.ShouldBeEmpty();
+        trace.ToString().ShouldNotContain("Matched before the failure:");
+    }
+
+    [Fact]
+    public void Failure_LongRemainingInput_IsTruncatedInFound()
+    {
+        MatchTrace trace = Pattern.FromRegex("ab").Trace("a0123456789xbcdefghij");
+
+        trace.Failure!.Found.ShouldBe("\"0123456789xbcdef...\"");
+    }
+
+    [Theory]
+    [InlineData("a0123456789xyzuvw", "\"0123456789xyzuvw\"")]
+    [InlineData("a0123456789xyzuvwq", "\"0123456789xyzuvw...\"")]
+    public void Failure_RemainingInputAroundSixteenChars_IsTruncatedOnlyAboveSixteen(string input, string expectedFound)
+    {
+        MatchTrace trace = Pattern.FromRegex("ab").Trace(input);
+
+        trace.Failure!.Found.ShouldBe(expectedFound);
+    }
+
+    [Fact]
+    public void Failure_PrefixThatTimesOut_IsSkippedAndShorterPrefixIsBlamed()
+    {
+        // The full pattern fails instantly (the input is shorter than its minimum length),
+        // but the prefix ^(a+)+$ backtracks catastrophically and hits the timeout.
+        Pattern pattern = Pattern.FromRegex(@"^(a+)+$.{40}").WithTimeout(TimeSpan.FromMilliseconds(100));
+
+        MatchTrace trace = pattern.Trace(new string('a', 30) + "!");
+
+        trace.IsMatch.ShouldBeFalse();
+        trace.Failure!.Construct.ShouldBe("$");
+        trace.Failure.Position.ShouldBe(30);
+        trace.Failure.Found.ShouldBe("\"!\"");
+    }
+
+    [Fact]
+    public void ToString_ControlCharacters_AreEscapedAndCaretIsAligned()
+    {
+        string text = Pattern.FromRegex("a\tb").Trace("a\t\r\n\u0001c").ToString();
+
+        text.ShouldContain("Input:   \"a\\t\\r\\n\\u0001c\"");
+        text.ShouldContain("  a\\t\\r\\n\\u0001c" + Environment.NewLine + "     ^" + Environment.NewLine);
+    }
+
+    [Fact]
+    public void ToString_LongConstruct_IsTruncated()
+    {
+        const string Text = "abcdefghijklmnopqrstuvwxyz0123456789";
+
+        string report = Pattern.FromRegex("(" + Text + ")").Trace(Text).ToString();
+
+        report.ShouldContain("(abcdefghijklmnopqrstuvwxyz01... ");
+        report.ShouldNotContain("(" + Text + ")  ");
+    }
+
+    [Fact]
     public void Trace_OfCommonPatterns_DoesNotThrow()
     {
         foreach (Pattern pattern in new[] { CommonPatterns.Email(), CommonPatterns.Url(), CommonPatterns.IPv4(), CommonPatterns.StrongPassword(), CommonPatterns.HtmlTag() })

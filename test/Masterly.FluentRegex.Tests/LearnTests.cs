@@ -1,3 +1,5 @@
+using Masterly.FluentRegex.Learning;
+
 namespace Masterly.FluentRegex.Tests;
 
 public class LearnTests
@@ -20,7 +22,8 @@ public class LearnTests
         { new[] { "A-1", "B-2" }, new[] { "A-2" }, "^(?:A-1|B-2)$" },
         { new[] { "2024-01-02", "2024-03-04" }, Array.Empty<string>(), @"^2024-\d{2}-\d{2}$" },
         { new[] { "hello" }, Array.Empty<string>(), "^hello$" },
-        { new[] { string.Empty }, Array.Empty<string>(), "^$" }
+        { new[] { string.Empty }, Array.Empty<string>(), "^$" },
+        { new[] { "-^", "]\\" }, Array.Empty<string>(), @"^[\-\]][\\\^]$" }
     };
 
     [Fact]
@@ -167,5 +170,91 @@ public class LearnTests
         Pattern pattern = Pattern.Learn(new[] { "12", "345" }, null);
 
         pattern.ToString().ShouldBe(@"^\d{2,3}$");
+    }
+
+    [Fact]
+    public void Learn_RejectNeedingSeveralSteps_RelaxesPositionsThatDidNotNeedSpecializing()
+    {
+        // No single step rejects "ab14", so the letters are specialized first only to make progress;
+        // once the digits are enumerated exactly, the letters relax back to the general class.
+        Pattern pattern = Pattern.Learn(new[] { "ab12", "cd34" }, new[] { "ab14" });
+
+        pattern.ToString().ShouldBe("^[a-z]{2}(?:12|34)$");
+    }
+
+    [Fact]
+    public void Learn_RejectThatSeveralPositionsCouldExclude_SpecializesTheLeftmostPosition()
+    {
+        // Narrowing either the letter to [ab] or the digit to [12] rejects "c3"; ties go to the leftmost position.
+        Pattern pattern = Pattern.Learn(new[] { "a1", "b2" }, new[] { "c3" });
+
+        pattern.ToString().ShouldBe(@"^[ab]\d$");
+    }
+
+    [Fact]
+    public void Learn_SurrogatePairs_AlignsUtf16CodeUnits()
+    {
+        // Kept out of theory data: serializing the expected text would mangle its lone surrogates.
+        Pattern pattern = Pattern.Learn("😀", "😁");
+
+        pattern.ToString().ShouldBe("^\uD83D[\uDE00\uDE01]$");
+        pattern.IsMatch("😁").ShouldBeTrue();
+        pattern.IsMatch("😂").ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Learn_EmptyRejectExample_KeepsEndOfLineAnchor()
+    {
+        Pattern pattern = Pattern.Learn(new[] { "a" }, new[] { string.Empty });
+
+        pattern.ToString().ShouldBe("^a$");
+        pattern.IsMatch(string.Empty).ShouldBeFalse();
+        pattern.IsMatch("a\n").ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData("12", "Digit")]
+    [InlineData("AB", "Upper")]
+    [InlineData("ab", "Lower")]
+    [InlineData("aB", "Letter")]
+    [InlineData("a1_", "Word")]
+    [InlineData(" \t\n", "Space")]
+    public void LearnedClasses_TryCover_CoveredCharacters_ReturnsNarrowestClass(string text, string expectedClass)
+    {
+        bool covered = LearnedClasses.TryCover(new[] { text }, out LearnedClass covering);
+
+        covered.ShouldBeTrue();
+        covering.ShouldBe(Enum.Parse<LearnedClass>(expectedClass));
+    }
+
+    [Theory]
+    [InlineData("a-")]
+    [InlineData("a b")]
+    [InlineData("é")]
+    public void LearnedClasses_TryCover_CharactersNoClassCovers_ReturnsFalse(string text)
+    {
+        bool covered = LearnedClasses.TryCover(new[] { text }, out _);
+
+        covered.ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData("Digit", '7', true)]
+    [InlineData("Digit", 'a', false)]
+    [InlineData("Upper", 'Q', true)]
+    [InlineData("Upper", 'q', false)]
+    [InlineData("Lower", 'q', true)]
+    [InlineData("Lower", 'Q', false)]
+    [InlineData("Letter", 'Z', true)]
+    [InlineData("Letter", '1', false)]
+    [InlineData("Word", '_', true)]
+    [InlineData("Word", '-', false)]
+    [InlineData("Space", '\t', true)]
+    [InlineData("Space", 'a', false)]
+    public void LearnedClasses_Contains_ReportsMembership(string learnedClass, char character, bool expected)
+    {
+        bool contains = LearnedClasses.Contains(Enum.Parse<LearnedClass>(learnedClass), character);
+
+        contains.ShouldBe(expected);
     }
 }
