@@ -265,8 +265,9 @@ superset under any case- or accent-insensitive collation.
   for them. Group names are rewritten for PostgreSQL (none) and SQL Server 2025 (`(?P<name>...)`) and mapped to
   numbers for `Group` and `${name}` replacements.
 - `RegexOptions.CultureInvariant`, `RightToLeft`, `ECMAScript` and `NonBacktracking` throw `NotSupportedException`.
-- MySQL and MariaDB semantics were verified against MySQL 8.4 and MariaDB 11.4 through the EF Core container
-  tests; the core flavor's broader construct-by-construct cross-check ran against PostgreSQL and SQL Server only.
+- Exactness covers text in the Basic Multilingual Plane. For input containing supplementary characters, such as
+  emoji, the engines count code points where .NET counts UTF-16 units, so `.` or `{n}` can differ there; see
+  [SQL flavors](sql-flavors.md#verification) for the live verification against every supported engine.
 - `Group` needs PostgreSQL 15+ (`regexp_substr`) or SQL Server 2025; `Replace` is unavailable on SQLite.
 - EF Core 10 keeps `EF.Constant(pattern)` as a parameter during translation (see the table above).
 - Relational providers only; the package detects Npgsql, Pomelo, SQL Server and SQLite, other providers need
