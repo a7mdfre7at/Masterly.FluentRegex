@@ -117,6 +117,62 @@ public class SqlFlavorTests
         conversion.IsExact.ShouldBeTrue();
     }
 
+    [Fact]
+    public void ToFlavor_MySql_LargestIcuRepeatCount_IsKept()
+    {
+        FlavorConversion conversion = Pattern.FromRegex("a{0,16777215}").ToFlavor(RegexFlavor.MySql);
+
+        conversion.Pattern.ShouldBe(CaseSensitivePrefix + "a{0,16777215}");
+        conversion.IsExact.ShouldBeTrue();
+    }
+
+    // ------------------------------------------------------------------
+    // Supplementary characters and surrogates (found by the live MySQL/MariaDB harness)
+    // ------------------------------------------------------------------
+
+    [Theory]
+    [InlineData(RegexFlavor.MySql, "(?-i)x\\x{1F600}y")]
+    [InlineData(RegexFlavor.MariaDb, "(?-i)x\\x{1F600}y")]
+    [InlineData(RegexFlavor.SqlServer, "x\\x{1F600}y")]
+    [InlineData(RegexFlavor.PostgreSql, "x\\U0001F600y")]
+    public void ToFlavor_LiteralSurrogatePair_IsWrittenAsOneCodePoint(RegexFlavor flavor, string expected)
+    {
+        Pattern pattern = Pattern.FromRegex("x\\uD83D\\uDE00y");
+
+        FlavorConversion conversion = pattern.ToFlavor(flavor);
+
+        conversion.Pattern.ShouldBe(expected);
+        conversion.IsExact.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ToFlavor_MariaDb_SurrogatePairInLookbehind_CountsAsOneCharacter()
+    {
+        Pattern pattern = Pattern.FromRegex("(?<=a(?:\\uD83D\\uDE00|b))x");
+
+        FlavorConversion conversion = pattern.ToFlavor(RegexFlavor.MariaDb);
+
+        conversion.Pattern.ShouldBe(CaseSensitivePrefix + "(?<=a(?:\\x{1F600}|b))x");
+    }
+
+    [Theory]
+    [InlineData(RegexFlavor.MySql, "^[\\x00-\\uFFFF]+$", "(?-i)\\A(?s:.)+(?=\\n?\\z)")]
+    [InlineData(RegexFlavor.MariaDb, "^[a\\uD83D\\uDE00]$", "(?-i)\\A[a](?=\\n?\\z)")]
+    public void ToFlavor_ClassRangeTouchingSurrogates_IsWrittenFromTheExactSet(RegexFlavor flavor, string regex, string expected)
+    {
+        FlavorConversion conversion = Pattern.FromRegex(regex).ToFlavor(flavor);
+
+        conversion.Pattern.ShouldBe(expected);
+    }
+
+    [Fact]
+    public void ToFlavor_MariaDb_NegatedSurrogateRange_NeverNamesASurrogate()
+    {
+        FlavorConversion conversion = Pattern.FromRegex("[^\\uD800-\\uDFFF]").ToFlavor(RegexFlavor.MariaDb);
+
+        conversion.Pattern.ShouldNotMatch(@"\{D[89A-F][0-9A-F]{2}\}");
+    }
+
     [Theory]
     [InlineData(@"^[0-9]+$", @"\A[0-9]+\n?\z")]
     [InlineData(@"^\d{4}\z", @"\A\p{Nd}{4}\z")]
@@ -251,6 +307,12 @@ public class SqlFlavorTests
     [InlineData(RegexFlavor.PostgreSql, "(?<x>a)(?<x>b)", "duplicate group name", 7)]
     [InlineData(RegexFlavor.MySql, "(?<=a+)b", "bounded lookbehind", 0)]
     [InlineData(RegexFlavor.MySql, "(?(a)b|c)", "conditional", 0)]
+    [InlineData(RegexFlavor.MySql, "a{16777216}", "bounds above 16777215", 0)]
+    [InlineData(RegexFlavor.MySql, "a{1,2147483647}", "bounds above 16777215", 0)]
+    [InlineData(RegexFlavor.MySql, "a\\uD83D", "lone surrogate", 1)]
+    [InlineData(RegexFlavor.MariaDb, "\\uD83D\\uDE00+", "lone surrogate", 0)]
+    [InlineData(RegexFlavor.MariaDb, "[\\uD83D]", "matches nothing (or only lone surrogates)", 0)]
+    [InlineData(RegexFlavor.SqlServer, "\\uDE00", "lone surrogate", 0)]
     [InlineData(RegexFlavor.MariaDb, "(?<=a{1,2})b", "fixed length", 0)]
     [InlineData(RegexFlavor.MariaDb, "a{65536}", "bounds above 65535", 0)]
     [InlineData(RegexFlavor.MariaDb, "(?<o>a)(?<c-o>b)", "balancing group", 7)]

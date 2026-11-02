@@ -7,9 +7,12 @@ namespace Masterly.FluentRegex.Export;
 /// <summary>
 /// MariaDB regular expressions, which are PCRE2 (https://mariadb.com/kb/en/pcre/,
 /// https://mariadb.com/kb/en/regexp/, https://www.pcre.org/current/doc/html/pcre2syntax.html).
-/// Facts this translation relies on: "REGEXP is not case sensitive, except when used with a binary
-/// string", and the MariaDB documentation recommends starting the pattern with <c>(?-i)</c> to force
-/// case sensitivity; by default <c>\d</c>, <c>\s</c> and <c>\w</c> match only ASCII characters and
+/// Verified against a mariadb:11.4 container (PCRE2 10.42). Facts this translation relies on: "REGEXP
+/// is not case sensitive, except when used with a binary string" (under <c>utf8mb4_uca1400_ai_ci</c> "E"
+/// matches "e" and the Kelvin sign matches "k"), and the MariaDB documentation recommends starting the
+/// pattern with <c>(?-i)</c> to force case sensitivity, which works; accent-insensitivity of the
+/// collation never reaches REGEXP ("é" does not match "e"); <c>\x{..}</c> naming a surrogate is a
+/// compile error, so a literal surrogate pair is written as one code point; by default <c>\d</c>, <c>\s</c> and <c>\w</c> match only ASCII characters and
 /// <c>\b</c> is defined in terms of <c>\w</c>, so they are spelled out with <c>\p{..}</c> classes;
 /// <c>$</c> also matches before a final newline and the newline convention defaults to "any Unicode
 /// newline", so <c>\z</c> and explicit <c>\n</c> are used instead; <c>\u</c> escapes are not

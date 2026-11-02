@@ -33,6 +33,7 @@ internal sealed class SqlCharWriter
     private const char FirstSurrogate = '\uD800';
     private const char LastSurrogate = '\uDFFF';
     private const string HexFormat = "X4";
+    private const string LongHexFormat = "X8";
 
     // Aggregates first, then every general category except Cs (surrogates are never written) and Cn
     // (unassigned code points are the category most likely to differ between the engine's and .NET's
@@ -67,6 +68,20 @@ internal sealed class SqlCharWriter
     {
         string digits = ((int)c).ToString(HexFormat, CultureInfo.InvariantCulture);
         return _style == HexEscapeStyle.Unicode4 ? $"\\u{digits}" : $"\\x{{{digits}}}";
+    }
+
+    /// <summary>
+    /// Writes a supplementary code point (above U+FFFF): <c>\x{1F600}</c>, or <c>\U0001F600</c> in the
+    /// PostgreSQL form, which takes exactly eight hex digits after <c>\U</c>.
+    /// </summary>
+    public string CodePoint(int codePoint)
+    {
+        if (_style == HexEscapeStyle.Unicode4)
+        {
+            return $"\\U{codePoint.ToString(LongHexFormat, CultureInfo.InvariantCulture)}";
+        }
+
+        return $"\\x{{{codePoint.ToString(HexFormat, CultureInfo.InvariantCulture)}}}";
     }
 
     /// <summary>Escapes a character for use outside a bracket expression.</summary>
@@ -118,7 +133,7 @@ internal sealed class SqlCharWriter
 
         if (SingleMember(set, out char single))
         {
-            return Literal(single);
+            return IsSurrogate(single) ? null : Literal(single);
         }
 
         string members = Members(set);
@@ -147,6 +162,9 @@ internal sealed class SqlCharWriter
 
         return sb.Append(Ranges(remaining)).ToString();
     }
+
+    /// <summary>Gets a value indicating whether the range from <paramref name="low"/> to <paramref name="high"/> includes a surrogate.</summary>
+    public static bool OverlapsSurrogates(char low, char high) => low <= LastSurrogate && high >= FirstSurrogate;
 
     /// <summary>Gets a value indicating whether <paramref name="set"/> contains every code unit.</summary>
     public static bool IsEverything(CharSet set) => set.Count == BmpSize;
