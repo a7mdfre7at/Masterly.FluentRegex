@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text.RegularExpressions;
 using Masterly.FluentRegex.Syntax;
 
@@ -151,6 +152,15 @@ internal sealed class TranslationPlan
 
         return false;
     }
+
+    /// <summary>
+    /// Finds the first repeat that can run more than once and whose body can match empty text, or null.
+    /// .NET ends such a repeat at the first empty iteration, while RE2 and ECMAScript refuse the empty
+    /// iteration and try the body's other ways: on <c>ab</c>, <c>(?:a?|b)*</c> matches <c>a</c> in .NET
+    /// and <c>ab</c> in those engines.
+    /// </summary>
+    public QuantifierNode? FirstNullableRepeat() =>
+        _nodes.OfType<QuantifierNode>().FirstOrDefault(q => (q.IsUnbounded || q.Max > 1) && MatchShape.IsNullable(q.Body));
 
     /// <summary>Gets a value indicating whether a match can pass <paramref name="node"/> without matching all of its children.</summary>
     public static bool MayBeSkipped(RegexNode node)

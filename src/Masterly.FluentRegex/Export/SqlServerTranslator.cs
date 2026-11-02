@@ -66,11 +66,21 @@ internal sealed class SqlServerTranslator : SqlRegexTranslator
 
     /// <summary>
     /// RE2 is leftmost-first with .NET's preferences (verified on SQL Server 2025: <c>(a|ab)</c> matches
-    /// <c>a</c>, a group skipped by a later iteration keeps its capture), but it never runs an empty
-    /// iteration after a non-empty one, so a group in a repeat whose body can match empty text can capture
-    /// differently. The <c>$</c> rewrite is reported where it is emitted.
+    /// <c>a</c>, a group skipped by a later iteration keeps its capture), but it refuses empty iterations,
+    /// so a repeat whose body can match empty text can match and capture differently (on <c>ab</c>,
+    /// <c>(?:a?|b{1,2})*</c> matches <c>a</c> in .NET and <c>ab</c> in RE2; on <c>aa</c>, <c>(a?)+</c>
+    /// leaves the group empty in .NET and at <c>a</c> in RE2). The <c>$</c> rewrite is reported where it is emitted.
     /// </summary>
-    protected override void AddMatchExtentWarnings() => WarnCapturesInNullableRepeats();
+    protected override void AddMatchExtentWarnings()
+    {
+        QuantifierNode? repeat = Plan.FirstNullableRepeat();
+        if (repeat != null)
+        {
+            WarnExtent($"The repeat {At(repeat)} can run an iteration that matches empty text: .NET stops the repeat " +
+                       "there, while RE2 refuses empty iterations and tries the body's other ways, so the match and " +
+                       "the captures can differ.");
+        }
+    }
 
     protected override string MultilineStart(AnchorNode anchor) => "(?m:^)";
 

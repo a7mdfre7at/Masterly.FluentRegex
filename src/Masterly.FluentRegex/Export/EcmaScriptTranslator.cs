@@ -73,12 +73,14 @@ internal sealed partial class EcmaScriptTranslator
                 warnings.Add($"The group {At(group)} can be skipped by an iteration of an enclosing repeat: .NET keeps its " +
                              "capture from an earlier iteration, JavaScript resets it on every iteration.");
             }
+        }
 
-            if (_plan.MayCaptureInEmptyIteration(group))
-            {
-                warnings.Add($"The group {At(group)} is in a repeat whose body can match empty text: .NET ends with an " +
-                             "extra empty iteration that captures empty text, JavaScript refuses empty iterations.");
-            }
+        QuantifierNode? repeat = _plan.FirstNullableRepeat();
+        if (repeat != null)
+        {
+            warnings.Add($"The repeat {At(repeat)} can run an iteration that matches empty text: .NET stops the repeat " +
+                         "there, while JavaScript refuses empty iterations and tries the body's other ways, so the match " +
+                         "and the captures can differ.");
         }
 
         return warnings;

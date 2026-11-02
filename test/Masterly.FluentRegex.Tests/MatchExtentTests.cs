@@ -107,8 +107,9 @@ public class MatchExtentTests
     [Theory]
     [InlineData("a$", "consumes a final newline")]
     [InlineData(@"^\d+\Z", "consumes a final newline")]
-    [InlineData("(a?)+", "SQL Server can keep an earlier capture")]
-    [InlineData("(a*)*", "SQL Server can keep an earlier capture")]
+    [InlineData("(a?)+", "RE2 refuses empty iterations")]
+    [InlineData("(a*)*", "RE2 refuses empty iterations")]
+    [InlineData("(?:a?|b{1,2})*", "RE2 refuses empty iterations")]
     public void ToFlavor_SqlServer_PatternWithAnExtentDifference_ReportsIt(string regex, string expected)
     {
         FlavorConversion conversion = Pattern.FromRegex(regex).ToFlavor(RegexFlavor.SqlServer);
@@ -148,6 +149,7 @@ public class MatchExtentTests
     [Theory]
     [InlineData(RegexFlavor.JavaScript, "(?:(a)|b)+", "resets it on every iteration")]
     [InlineData(RegexFlavor.JavaScript, "(a?)+", "refuses empty iterations")]
+    [InlineData(RegexFlavor.JavaScript, "(?:a?|b{1,2})*", "refuses empty iterations")]
     [InlineData(RegexFlavor.JsonSchema, "(?:(a)?b)+", "resets it on every iteration")]
     public void ToFlavor_EcmaScript_GroupInARepeat_ReportsTheCaptureDifference(RegexFlavor flavor, string regex, string expected)
     {
