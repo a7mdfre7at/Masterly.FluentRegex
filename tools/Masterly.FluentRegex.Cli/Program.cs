@@ -35,8 +35,15 @@ namespace Masterly.FluentRegex.Cli
               fluentregex highlight <regex> <file|-> [--format ansi|html|brackets] [--options <list>]
                                                                         Show matches and groups inside a text file
               fluentregex coverage <regex> <file|-> [--options <list>]  Report which branches and limits the lines of a file exercise
-              fluentregex export   <regex> [--to js|json-schema|typescript] [--name <identifier>] [--options <list>]
-                                                                        Translate to JavaScript, JSON Schema or a TypeScript constant
+              fluentregex export   <regex> [--to js|json-schema|typescript|postgresql|mysql|mariadb|sqlserver|sqlite]
+                                           [--column <sql>] [--name <identifier>] [--options <list>]
+                                                                        Translate to JavaScript, JSON Schema, a TypeScript constant
+                                                                        or a database's regex dialect (with --column, a full WHERE condition)
+              fluentregex export   <regex> --to like [--dialect standard|sqlserver|postgresql|mysql|sqlite]
+                                           [--scope substring|full] [--case-insensitive] [--column <sql>] [--options <list>]
+                                                                        Compile to SQL LIKE and prove whether it is exact or a superset
+              fluentregex facts    <regex> [--scope full|substring] [--options <list>]
+                                                                        Prove length bounds and the required prefix and suffix of every match
 
             Options:
               --options <list>   Comma-separated RegexOptions, e.g. IgnoreCase,Multiline
@@ -82,6 +89,7 @@ namespace Masterly.FluentRegex.Cli
                     "highlight" => Highlight(arguments),
                     "coverage" => Coverage(arguments),
                     "export" => Export(arguments),
+                    "facts" => Facts(arguments),
                     _ => Fail("Unknown command '" + args[0] + "'. Run 'fluentregex --help'.")
                 };
             }
@@ -326,19 +334,93 @@ namespace Masterly.FluentRegex.Cli
                 return Ok;
             }
 
-            RegexFlavor flavor = target switch
+            if (target == "like")
             {
-                "js" or "javascript" => RegexFlavor.JavaScript,
-                "json-schema" or "jsonschema" => RegexFlavor.JsonSchema,
-                _ => throw new ArgumentException($"Unknown --to '{target}'. Use js, json-schema or typescript.")
-            };
+                return ExportLike(pattern, args);
+            }
+
+            RegexFlavor flavor = ParseFlavor(target);
             FlavorConversion conversion = pattern.ToFlavor(flavor);
-            Console.WriteLine(flavor == RegexFlavor.JavaScript ? conversion.ToLiteral() : conversion.Pattern);
-            foreach (string warning in conversion.Warnings)
+            Console.WriteLine(ExportOutput(pattern, conversion, args.Option("column")));
+            WriteWarnings(conversion.Warnings);
+            return Ok;
+        }
+
+        private static RegexFlavor ParseFlavor(string target) => target switch
+        {
+            "js" or "javascript" => RegexFlavor.JavaScript,
+            "json-schema" or "jsonschema" => RegexFlavor.JsonSchema,
+            "postgresql" or "postgres" or "pg" => RegexFlavor.PostgreSql,
+            "mysql" => RegexFlavor.MySql,
+            "mariadb" => RegexFlavor.MariaDb,
+            "sqlserver" or "mssql" => RegexFlavor.SqlServer,
+            "sqlite" => RegexFlavor.Sqlite,
+            _ => throw new ArgumentException($"Unknown --to '{target}'. Use js, json-schema, typescript, postgresql, mysql, mariadb, sqlserver, sqlite or like.")
+        };
+
+        /// <summary>The literal for JavaScript and SQL, the bare pattern for JSON Schema, or a WHERE condition when a column is given.</summary>
+        private static string ExportOutput(Pattern pattern, FlavorConversion conversion, string? column)
+        {
+            if (conversion.IsSql)
+            {
+                return column == null ? conversion.ToLiteral() : pattern.ToSqlCondition(column, conversion.Flavor);
+            }
+
+            return conversion.Flavor == RegexFlavor.JavaScript ? conversion.ToLiteral() : conversion.Pattern;
+        }
+
+        private static int ExportLike(Pattern pattern, Arguments args)
+        {
+            LikeDialect dialect = ParseLikeDialect((args.Option("dialect") ?? "standard").ToLowerInvariant());
+            MatchScope scope = ParseScope(args.Option("scope"), MatchScope.Substring);
+            LikeCollation collation = args.Flag("case-insensitive") ? LikeCollation.CaseInsensitive : LikeCollation.Binary;
+            LikeConversion like = pattern.ToLike(dialect, scope, collation);
+            string? column = args.Option("column");
+            Console.WriteLine(column == null ? like.Expression : like.ToSql(column));
+            if (like.IsExact)
+            {
+                WriteColored("exact: LIKE accepts exactly the strings the pattern accepts (proven)", ConsoleColor.Green);
+            }
+            else
+            {
+                WriteColored("superset: LIKE accepts every string the pattern accepts and possibly more; keep the regex check", ConsoleColor.Yellow);
+            }
+            WriteWarnings(like.Warnings);
+            return Ok;
+        }
+
+        private static LikeDialect ParseLikeDialect(string dialect) => dialect switch
+        {
+            "standard" or "ansi" => LikeDialect.Standard,
+            "sqlserver" or "mssql" => LikeDialect.SqlServer,
+            "postgresql" or "postgres" or "pg" => LikeDialect.PostgreSql,
+            "mysql" or "mariadb" => LikeDialect.MySql,
+            "sqlite" => LikeDialect.Sqlite,
+            _ => throw new ArgumentException($"Unknown --dialect '{dialect}'. Use standard, sqlserver, postgresql, mysql or sqlite.")
+        };
+
+        private static int Facts(Arguments args)
+        {
+            Pattern pattern = Load(args);
+            MatchScope scope = ParseScope(args.Option("scope"), MatchScope.FullString);
+            Console.WriteLine(pattern.GetLanguageFacts(scope).ToString());
+            return Ok;
+        }
+
+        private static MatchScope ParseScope(string? scope, MatchScope defaultScope) => scope?.ToLowerInvariant() switch
+        {
+            null => defaultScope,
+            "full" or "fullstring" or "full-string" => MatchScope.FullString,
+            "substring" or "search" => MatchScope.Substring,
+            _ => throw new ArgumentException($"Unknown --scope '{scope}'. Use full or substring.")
+        };
+
+        private static void WriteWarnings(IReadOnlyList<string> warnings)
+        {
+            foreach (string warning in warnings)
             {
                 WriteColored($"warning: {warning}", ConsoleColor.Yellow);
             }
-            return Ok;
         }
 
         // ------------------------------------------------------------------
@@ -402,7 +484,7 @@ namespace Masterly.FluentRegex.Cli
     /// <summary>Minimal argument parser: positional values, --name value options and --flag switches.</summary>
     internal sealed class Arguments
     {
-        private static readonly HashSet<string> Flags = new(StringComparer.Ordinal) { "confirm", "non-matching", "ascii-digits" };
+        private static readonly HashSet<string> Flags = new(StringComparer.Ordinal) { "confirm", "non-matching", "ascii-digits", "case-insensitive" };
 
         private readonly List<string> _positional = new();
         private readonly Dictionary<string, string?> _options = new(StringComparer.OrdinalIgnoreCase);

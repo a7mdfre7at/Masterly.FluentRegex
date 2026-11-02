@@ -16,6 +16,11 @@ public sealed record GroupView(string Name, int Index, string Value);
 /// <param name="Groups">The groups that participated in the match.</param>
 public sealed record MatchView(int Index, string Value, IReadOnlyList<GroupView> Groups);
 
+/// <summary>A regex condition for one database, as shown in the export panel.</summary>
+/// <param name="Condition">The WHERE condition over the sample column.</param>
+/// <param name="Warnings">Every behavior that differs from .NET; empty when the translation is exact.</param>
+public sealed record SqlView(string Condition, IReadOnlyList<string> Warnings);
+
 /// <summary>The outcome of computing a panel: a value, or the error that prevented it.</summary>
 /// <typeparam name="T">The panel's value type.</typeparam>
 /// <param name="Value">The computed value, when successful.</param>
@@ -32,6 +37,9 @@ public sealed record PanelResult<T>(T? Value, string? Error)
 /// </summary>
 public sealed class PatternWorkbench
 {
+    /// <summary>The column name used in SQL previews.</summary>
+    public const string SampleColumn = "value";
+
     private const int MaxMatchesShown = 500;
     private const int SampleCount = 10;
     private const int SampleSeed = 1;
@@ -80,6 +88,21 @@ public sealed class PatternWorkbench
     /// <summary>Gets the JSON Schema (OpenAPI) translation.</summary>
     public PanelResult<FlavorConversion> JsonSchema => Panel(nameof(JsonSchema), p => p.ToFlavor(RegexFlavor.JsonSchema));
 
+    /// <summary>Gets the regex WHERE condition for a database, keeping the exact .NET meaning.</summary>
+    /// <param name="flavor">The database's regex flavor.</param>
+    /// <returns>The condition and its warnings, or the error that prevented the translation.</returns>
+    public PanelResult<SqlView> Sql(RegexFlavor flavor) =>
+        Panel($"{nameof(Sql)}:{flavor}", p => new SqlView(p.ToSqlCondition(SampleColumn, flavor), p.ToFlavor(flavor).Warnings));
+
+    /// <summary>Gets the LIKE compilation for the database that owns the given regex flavor.</summary>
+    /// <param name="flavor">The database's regex flavor.</param>
+    /// <returns>The LIKE pattern with its proof, or the error that prevented it.</returns>
+    public PanelResult<LikeConversion> Like(RegexFlavor flavor) =>
+        Panel($"{nameof(Like)}:{flavor}", p => p.ToLike(LikeDialectOf(flavor)));
+
+    /// <summary>Gets what every string the pattern finds a match in has in common.</summary>
+    public PanelResult<LanguageFacts> Facts => Panel(nameof(Facts), p => p.GetLanguageFacts(MatchScope.Substring));
+
     /// <summary>Gets which branches and repetition limits the lines of the test text exercise.</summary>
     public PanelResult<CoverageReport> Coverage => Panel(nameof(Coverage), p => p.MeasureCoverage(TestLines()));
 
@@ -121,6 +144,15 @@ public sealed class PatternWorkbench
         Panel($"{nameof(Compare)}:{otherRegex}", p => Masterly.FluentRegex.Pattern.Compare(p, Masterly.FluentRegex.Pattern.FromRegex(otherRegex, State.Options).WithDigits(Digits)));
 
     private DigitMode Digits => State.AsciiDigits ? DigitMode.Ascii : DigitMode.Unicode;
+
+    private static LikeDialect LikeDialectOf(RegexFlavor flavor) => flavor switch
+    {
+        RegexFlavor.PostgreSql => LikeDialect.PostgreSql,
+        RegexFlavor.MySql or RegexFlavor.MariaDb => LikeDialect.MySql,
+        RegexFlavor.SqlServer => LikeDialect.SqlServer,
+        RegexFlavor.Sqlite => LikeDialect.Sqlite,
+        _ => LikeDialect.Standard
+    };
 
     private string[] TestLines() => State.TestText.Replace("\r\n", "\n").Split('\n');
 

@@ -183,6 +183,30 @@
                         <pre>@schema.Pattern</pre>
                         @foreach (string warning in schema.Warnings) { <div class="muted">⚠ @warning</div> }
                     </PanelView>
+                    <h3>SQL</h3>
+                    <label class="field-label" for="sql-flavor">Database</label>
+                    <select id="sql-flavor" class="code-input" @bind="_sqlFlavor">
+                        <option value="@RegexFlavor.PostgreSql">PostgreSQL</option>
+                        <option value="@RegexFlavor.MySql">MySQL</option>
+                        <option value="@RegexFlavor.MariaDb">MariaDB</option>
+                        <option value="@RegexFlavor.SqlServer">SQL Server 2025</option>
+                        <option value="@RegexFlavor.Sqlite">SQLite (EF Core)</option>
+                    </select>
+                    <p class="hint">Regex condition with the exact .NET meaning, for raw SQL, Dapper or EF Core.</p>
+                    <PanelView Result="_bench.Sql(_sqlFlavor)" Context="sql">
+                        <pre>@sql.Condition</pre>
+                        @foreach (string warning in sql.Warnings) { <div class="muted">⚠ @warning</div> }
+                    </PanelView>
+                    <p class="hint">LIKE, for databases without regex or as an index-friendly prefilter. Exactness is proven by language algebra.</p>
+                    <PanelView Result="_bench.Like(_sqlFlavor)" Context="like">
+                        <p class="verdict @(like.IsExact ? "ok" : "")">@(like.IsExact ? "Proven exact" : "Proven superset: keeps every match, may keep more")</p>
+                        <pre>@like.ToSql(PatternWorkbench.SampleColumn)</pre>
+                        @foreach (string warning in like.Warnings) { <div class="muted">⚠ @warning</div> }
+                    </PanelView>
+                    <p class="hint">What every matching string has in common.</p>
+                    <PanelView Result="_bench.Facts" Context="facts">
+                        <pre>@facts.ToString()</pre>
+                    </PanelView>
                     break;
             }
         </div>
@@ -207,6 +231,7 @@
     private PatternWorkbench _bench = null!; // assigned in OnInitialized before the first render
     private string _traceInput = string.Empty;
     private string _compareRegex = @"^[\w.+-]+@[\w-]+\.[\w.-]+$";
+    private RegexFlavor _sqlFlavor = RegexFlavor.PostgreSql;
     private bool _copied;
 
     protected override void OnInitialized()
