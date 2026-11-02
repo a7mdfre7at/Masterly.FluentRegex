@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <GeneratePackageOnBuild>False</GeneratePackageOnBuild>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsPackable>true</IsPackable>
+    <PackageId>Masterly.FluentRegex.EntityFrameworkCore</PackageId>
+    <Authors>Ahmad Al-Freihat</Authors>
+    <Description>Entity Framework Core integration for Masterly.FluentRegex: run fluent patterns inside LINQ queries translated to PostgreSQL, MySQL, MariaDB, SQL Server 2025 and SQLite regex SQL, with proven index-friendly prefilters, a hybrid SQL-then-.NET matcher for every database, and CHECK constraints generated from the same pattern.</Description>
+    <PackageProjectUrl>https://github.com/a7mdfre7at/Masterly.FluentRegex</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/a7mdfre7at/Masterly.FluentRegex</RepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>repo_image.png</PackageIcon>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>Regex;Fluent;FluentRegex;EntityFrameworkCore;EFCore;LINQ;PostgreSQL;MySQL;MariaDB;SqlServer;Sqlite;CheckConstraint</PackageTags>
+    <PackageReleaseNotes>See https://github.com/a7mdfre7at/Masterly.FluentRegex/blob/master/CHANGELOG.md</PackageReleaseNotes>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <AssemblyVersion>3.1.0</AssemblyVersion>
+    <FileVersion>3.1.0</FileVersion>
+    <Version>3.1.0</Version>
+  </PropertyGroup>
+
+  <!-- Each target rides the EF Core release that ships with its framework; no database provider is referenced. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.33" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.14" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Masterly.FluentRegex\Masterly.FluentRegex.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Masterly.FluentRegex.EntityFrameworkCore.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\repo_image.png" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="..\..\LICENSE.txt" Pack="true" PackagePath="$(PackageLicenseFile)" Visible="false" />
+  </ItemGroup>
+
+</Project>
