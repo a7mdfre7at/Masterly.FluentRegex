@@ -19,6 +19,44 @@ bool isMatch = pattern.IsMatch("123-abc");   // true
 string regex = pattern.ToString();           // ^\d+-\w{3,5}$
 ```
 
+## New in 3.1
+
+```csharp
+// Prove two patterns differ, with the shortest string that shows it
+Pattern.Compare(Pattern.FromRegex(@"\d{3}"), Pattern.FromRegex(@"[0-9]{3}"));
+// Not equivalent (left is a proper superset of right). Shortest counterexample: "00٠"
+
+// Optimize with proof
+Pattern.FromRegex("cat|car|cab").Optimize().Optimized.ToString();   // "ca[trb]"
+
+// String interpolation in reverse
+LogLine line = Template.Of<LogLine>("{Date:yyyy-MM-dd} [{Level}] {User}: {Message}")
+    .Parse("2026-11-02 [WARN] ahmad: disk at 91%");
+
+// Learn from examples
+Pattern.Learn(match: new[] { "INV-2024-0001", "INV-2025-0420" }, reject: new[] { "INV-24-1" });
+
+// Regex coverage, property testing and a backtracking profiler
+pattern.MeasureCoverage(testInputs);
+PatternProperty.ForMatching(pattern, s => int.TryParse(s, out _)).ThrowIfFailed();
+Console.WriteLine(Pattern.FromRegex(@"(a+)+$").Profile("aaaaaaaaaaaaaaaaaaaaaaaa!"));
+
+// Rules a regex can't express, and PII redaction
+CommonPatterns.CreditCard().Must(Validators.Luhn, "Luhn checksum");
+Redactor.For(CommonPatterns.Email(), CommonPatterns.PhoneNumberE164()).Mask(text);
+
+// One rule for .NET, the browser and OpenAPI
+CommonPatterns.ZipCode().ToJavaScript();   // /^\p{Nd}{5}(?:-\p{Nd}{4})?(?=\n?$)/u
+
+// Unicode scripts and diacritic-insensitive matching
+Pattern.With.Literal("محمد").IgnoreDiacritics().IsMatch("مُحَمَّد");   // true
+```
+
+Also new: streaming matches over `Stream`/`TextReader`, `Highlight` for terminals and HTML,
+`[MatchesPattern]` for DataAnnotations, and the companion packages
+`Masterly.FluentRegex.AspNetCore` (route constraints), `Masterly.FluentRegex.Xunit` (theory data)
+and `Masterly.FluentRegex.AI` (verified AI drafting).
+
 ## Highlights in 3.0
 
 ```csharp
@@ -67,6 +105,8 @@ The package ships a source generator, analyzers and a code fix. No extra install
 ```bash
 dotnet tool install --global Masterly.FluentRegex.Tool
 fluentregex scan src --fail-on high     # find ReDoS-prone regexes in any C# codebase
+fluentregex compare '\d+' '[0-9]+'      # prove equivalence or show a counterexample
+fluentregex export '^\d{5}$' --to js    # translate for JavaScript or JSON Schema
 ```
 
 ## Upgrading from 2.x

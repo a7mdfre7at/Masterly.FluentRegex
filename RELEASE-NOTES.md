@@ -1,8 +1,8 @@
-Masterly.FluentRegex 3.0.0
+Masterly.FluentRegex 3.1.0
 
-Immutable patterns, typed extraction, regex-to-fluent conversion, verified test data generation,
-ReDoS analysis with proof, match tracing, railroad and Mermaid diagrams, and a compile-time
-source generator with analyzers. Targets .NET 9, .NET 8 (AOT compatible) and .NET Standard 2.1.
-
-Breaking: patterns are immutable, Literal inside a Set escapes '-', Letter outside a Set renders
-a character class, and AtMost renders {0,n}. See CHANGELOG.md and the migration guide in README.md.
+Prove patterns equivalent or get the shortest counterexample, optimize with proof, learn patterns
+from examples, parse and format typed templates, measure regex coverage, property-test with shrinking,
+profile backtracking, match streams, redact PII, add semantic rules such as Luhn checks, export to
+JavaScript, JSON Schema and TypeScript, and match by Unicode script or without diacritics.
+New packages: Masterly.FluentRegex.AspNetCore, Masterly.FluentRegex.Xunit and Masterly.FluentRegex.AI.
+No breaking changes and no new dependencies in the core package. See CHANGELOG.md.

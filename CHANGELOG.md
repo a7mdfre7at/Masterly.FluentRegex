@@ -1,3 +1,54 @@
+# What's New in 3.1.0
+
+FluentRegex 3.1 proves things about patterns, learns them from examples, and takes them into
+browsers, APIs, test suites and logs. There are no breaking changes to the 3.0 API, and the core
+package has no new dependencies.
+
+## Added
+
+### Proving and Improving
+- **Pattern algebra:** `Pattern.Compare`, `IsEquivalentTo`, `IsSubsetOf`, `Overlaps`, `MatchesNothing`, `ShortestMatch`, `Intersect`, `Except` and `Union`. Patterns are compiled to minimized automata over exact Unicode character sets; every counterexample is verified with the .NET engine. Lookaheads at the start of a pattern are supported; other non-regular constructs throw `NotSupportedException` naming the construct.
+- **Verified optimizer:** `Optimize()` merges alternations into classes, factors common prefixes, removes duplicate branches, normalizes quantifiers, merges repeated atoms and unwraps redundant groups. Each rewrite is checked match-by-match and, for regular patterns, proven equivalent.
+- **Learn from examples:** `Pattern.Learn(match, reject)` infers a readable, anchored pattern.
+
+### Testing
+- **Regex coverage:** `MeasureCoverage(inputs)` and the thread-safe `TrackCoverage()` recorder report alternation branches, optional parts and upper bounds that inputs never exercise.
+- **Property testing:** `PatternProperty.ForMatching` and `ForNonMatching` run a property over generated samples and shrink failures to a minimal counterexample.
+- **Backtracking profiler:** `Profile(input)` counts steps and backtracks per construct with a step budget, cross-checks the result with the .NET engine and prints a heatmap.
+- **Highlighting:** `Highlight(text, HighlightFormat.Ansi | Html | Brackets)`; HTML output is fully encoded.
+- **Debugger view:** `Pattern` shows its regex in the debugger, with options, groups, explanation and safety verdict in the expanded view.
+
+### Parsing and Validation
+- **Typed templates:** `Template.Of<T>("{Date:yyyy-MM-dd} [{Level}] {Message}")` with `Parse`, `TryParse`, `ParseAll` and a round-tripping `Format`. Placeholders are typed by member: numbers, enums, Guids, booleans, dates and times with custom formats, and `re:` regex formats.
+- **Semantic rules:** `Must(rule)` and `Must(group, rule)` return a `ConstrainedPattern` with `IsMatch`, `Matches`, `IsValid` and a diagnostic `Check`. `Validators.Luhn`, `IbanChecksum`, `IsoDate` and `IPv4` are included.
+- **DataAnnotations:** `[MatchesPattern(typeof(Patterns), nameof(Patterns.Sku))]` (.NET 8 and 9).
+- **Redaction:** `Redactor` with `Mask`, `Email`, `KeepFirst`, `KeepLast`, `Label` and `Custom` styles. Reports list redacted spans without the original values.
+- **Streaming:** `Matches(TextReader)`, `MatchesAsync(TextReader)` and `MatchesAsync(Stream)` return the same matches as the whole text within documented length limits, in bounded memory.
+
+### Unicode
+- `Script(UnicodeScript)`, `LetterIn`, `DigitIn`, `AsciiDigit`, `CodePoint`, an approximate `Grapheme` and `IgnoreDiacritics()` (for example, "محمد" matches "مُحَمَّد" and "cafe" matches "café").
+
+### Export
+- `ToFlavor(RegexFlavor.JavaScript | JsonSchema)`, `ToJavaScript()` and `PatternExport.ToTypeScript`. Translations keep the .NET meaning of `\d`, `\w`, `\s`, `\b`, `$` and `.`, expand class subtraction and Unicode blocks, and report every remaining difference as a warning. Constructs JavaScript cannot express, such as atomic groups, throw `NotSupportedException` listing each one.
+
+### New Packages
+- **Masterly.FluentRegex.AspNetCore:** `AddFluentPatterns(...)` and the `pattern(name)` route constraint.
+- **Masterly.FluentRegex.Xunit:** `[MatchingData]` and `[NonMatchingData]` theory data for xUnit v3.
+- **Masterly.FluentRegex.AI:** `PatternAssistant` drafts a pattern from a description with Claude, verifies syntax, safety and your examples locally, and retries with precise feedback.
+
+### Tooling
+- New CLI commands: `compare`, `optimize`, `learn`, `profile`, `highlight`, `coverage` and `export`. The CLI now writes UTF-8 output.
+- A browser playground (`playground/`) running the library in WebAssembly, with shareable links and a GitHub Pages workflow.
+
+## Fixed
+- `Extract<T>` and templates parse numbers written with any Unicode decimal digits, such as Arabic-Indic "٢٠٢٦", which `\d` already matched.
+
+## Upgrade Notes
+- The new public `Masterly.FluentRegex.Validators` class can clash with a `Validators` type in your own code when both namespaces are imported. Use a using alias to resolve it.
+- `\d` matches every Unicode decimal digit, and so do the `CommonPatterns` built on it. Use `AsciiDigit` or `[0-9]` when only ASCII digits are valid.
+
+---
+
 # What's New in 3.0.0
 
 FluentRegex 3.0 goes beyond building patterns: it now helps you understand, test, secure and ship them.

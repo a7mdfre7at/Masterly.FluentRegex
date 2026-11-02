@@ -14,6 +14,7 @@ If you like or are using this project please give it a star. Thanks!
 
 - [Introduction](#introduction)
 - [Why FluentRegex?](#why-fluentregex)
+- [What's New in 3.1](#whats-new-in-31)
 - [What's New in 3.0](#whats-new-in-30)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
@@ -164,6 +165,76 @@ Pattern password = Pattern.With
 
 ---
 
+## What's New in 3.1
+
+FluentRegex 3.1 can prove things about your patterns, learn them from examples, and take them beyond
+.NET into browsers, APIs, tests and logs. Every feature has a detailed guide in [`docs/features`](docs/features).
+
+| Feature | One line | Guide |
+|---------|----------|-------|
+| Pattern algebra | `Pattern.Compare(a, b)` proves equivalence or returns the shortest counterexample | [algebra](docs/features/algebra.md) |
+| Verified optimizer | `Optimize()` rewrites `cat\|car\|cab` to `ca[trb]` and proves nothing changed | [optimizer](docs/features/optimizer.md) |
+| Typed templates | `Template.Of<LogLine>("{Date:yyyy-MM-dd} [{Level}] {Message}")` parses and formats | [templates](docs/features/templates.md) |
+| Learn from examples | `Pattern.Learn(match, reject)` infers a readable, anchored pattern | [learn](docs/features/learn.md) |
+| Regex coverage | `MeasureCoverage(inputs)` shows which branches and limits your tests never hit | [coverage](docs/features/coverage.md) |
+| Property testing | `PatternProperty.ForMatching(p, property)` finds and shrinks counterexamples | [property testing](docs/features/property-testing.md) |
+| Semantic rules | `CreditCard().Must(Validators.Luhn)` adds checks a regex can't express | [rules and redaction](docs/features/rules-and-redaction.md) |
+| PII redaction | `Redactor.For(Email, Phone).Mask(text)` with mask, label, keep-last and email styles | [rules and redaction](docs/features/rules-and-redaction.md) |
+| Export | `ToJavaScript()`, JSON Schema and TypeScript output that keeps the .NET meaning | [export](docs/features/export.md) |
+| Backtracking profiler | `Profile(input)` counts steps per construct and shows a heatmap | [profiler](docs/features/profiler.md) |
+| Streaming | `MatchesAsync(stream)` matches multi-GB input in constant memory | [streaming](docs/features/streaming.md) |
+| Highlighting | `Highlight(text)` for terminals, HTML pages and readable test assertions | [highlighting](docs/features/highlighting.md) |
+| Unicode scripts | `Script(UnicodeScript.Arabic)`, `DigitIn(...)`, `Grapheme`, `IgnoreDiacritics()` | [unicode](docs/features/unicode.md) |
+| DataAnnotations | `[MatchesPattern(typeof(Patterns), nameof(Patterns.Sku))]` | [rules and redaction](docs/features/rules-and-redaction.md) |
+| ASP.NET Core | Route constraints such as `{id:pattern(sku)}` from a pattern registry | [aspnetcore](docs/features/aspnetcore.md) |
+| xUnit | `[MatchingData]` and `[NonMatchingData]` theory data from any pattern | [xunit](docs/features/xunit.md) |
+| AI drafting | Describe a pattern in English; the draft is verified locally before you get it | [ai](docs/features/ai.md) |
+| Playground | Try every feature in the browser, with shareable links | [playground](playground/README.md) |
+
+### A quick tour
+
+```csharp
+// Prove two patterns differ, with the shortest string that shows it
+Pattern.Compare(Pattern.FromRegex(@"\d{3}"), Pattern.FromRegex(@"[0-9]{3}"));
+// Not equivalent (left is a proper superset of right). Shortest counterexample: "00٠"
+
+// Optimize with proof
+Pattern.FromRegex("cat|car|cab").Optimize().Optimized.ToString();   // "ca[trb]"
+
+// String interpolation in reverse
+Template<LogLine> log = Template.Of<LogLine>("{Date:yyyy-MM-dd} [{Level}] {User}: {Message}");
+LogLine line = log.Parse("2026-11-02 [WARN] ahmad: disk at 91%");
+
+// Learn a pattern from examples
+Pattern.Learn(match: new[] { "INV-2024-0001", "INV-2025-0420" },
+              reject: new[] { "INV-24-1", "inv-2024-0001" });               // ^INV-\d{4}-\d{4}$
+
+// Find what your tests never exercise
+Pattern.FromRegex(@"^(?:Mr|Ms)\.\s\w+$").MeasureCoverage(new[] { "Mr. Smith" });
+// Coverage for ^(?:Mr|Ms)\.\s\w+$: 50% (1/2) ... ✗ branch "Ms" was never matched
+
+// Rules a regex can't express
+CommonPatterns.CreditCard().Must(Validators.Luhn, "Luhn checksum").IsMatch("4111 1111 1111 1112");  // false
+
+// One rule, every platform
+CommonPatterns.ZipCode().ToJavaScript();   // /^\p{Nd}{5}(?:-\p{Nd}{4})?(?=\n?$)/u
+
+// Arabic with or without harakat
+Pattern.With.Literal("محمد").IgnoreDiacritics().IsMatch("مُحَمَّد");   // true
+```
+
+### New packages
+
+| Package | Adds |
+|---------|------|
+| `Masterly.FluentRegex.AspNetCore` | `AddFluentPatterns(...)` and the `pattern(name)` route constraint |
+| `Masterly.FluentRegex.Xunit` | `[MatchingData]` and `[NonMatchingData]` for xUnit v3 theories |
+| `Masterly.FluentRegex.AI` | `PatternAssistant`, which drafts patterns with Claude and verifies them locally |
+
+All three target .NET 8 and .NET 9. The core package has no new dependencies.
+
+---
+
 ## What's New in 3.0
 
 FluentRegex 3.0 goes beyond building patterns. It helps you understand, test, secure and ship them.
@@ -198,7 +269,7 @@ dotnet add package Masterly.FluentRegex
 
 ### PackageReference
 ```xml
-<PackageReference Include="Masterly.FluentRegex" Version="3.0.0" />
+<PackageReference Include="Masterly.FluentRegex" Version="3.1.0" />
 ```
 
 The package includes the source generator and analyzers. No extra install is needed for compile-time checks.
@@ -1640,6 +1711,13 @@ dotnet tool install --global Masterly.FluentRegex.Tool
 | `fluentregex generate <regex> [--count N] [--non-matching]` | Generates matching or near-miss test strings |
 | `fluentregex trace <regex> <input>` | Shows which part matched what, or where it failed |
 | `fluentregex diagram <regex> [--format svg\|mermaid] [--output file]` | Draws a railroad diagram or Mermaid flowchart |
+| `fluentregex compare <regexA> <regexB>` | Proves equivalence or prints the shortest counterexample; exits with 1 when they differ |
+| `fluentregex optimize <regex>` | Simplifies the regex with verified rewrites |
+| `fluentregex learn <example>... [--not <example>...]` | Infers a regex from examples (or `--from-file <path>`) |
+| `fluentregex profile <regex> <input>` | Counts backtracking steps and shows the hotspots; exits with 1 when the budget runs out |
+| `fluentregex highlight <regex> <file\|->` | Shows matches and groups in a file (`--format ansi\|html\|brackets`) |
+| `fluentregex coverage <regex> <file\|->` | Reports which branches and limits the lines of a file exercise |
+| `fluentregex export <regex> [--to js\|json-schema\|typescript]` | Translates the regex for JavaScript, JSON Schema or TypeScript |
 
 `scan` finds regexes in `new Regex(...)`, the static `Regex` methods, `[GeneratedRegex]` and
 `[RegularExpression]`. It works on any C# codebase, whether or not it uses FluentRegex:
