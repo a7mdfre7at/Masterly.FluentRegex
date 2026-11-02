@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Masterly.FluentRegex;
 using Masterly.FluentRegex.Showcase;
+using Validators = Masterly.FluentRegex.Showcase.Validators;
 
 // A tour of Masterly.FluentRegex 3.0. Run with: dotnet run --project samples/Masterly.FluentRegex.Showcase
 
