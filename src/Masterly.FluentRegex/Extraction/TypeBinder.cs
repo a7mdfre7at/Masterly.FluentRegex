@@ -5,6 +5,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Reflection;
 using System.Text.RegularExpressions;
+using Masterly.FluentRegex.Unicode;
 
 namespace Masterly.FluentRegex
 {
@@ -73,7 +74,13 @@ namespace Masterly.FluentRegex
             public List<KeyValuePair<PropertyInfo, string>> Properties;
         }
 
-        public static T Bind(Match match, Regex regex, IFormatProvider provider)
+        public static T Bind(Match match, Regex regex, IFormatProvider provider) => Bind(match, regex, provider, null);
+
+        /// <summary>
+        /// Binds like <see cref="Bind(Match, Regex, IFormatProvider)"/>, but converts group text with
+        /// <paramref name="converter"/> when it is given (used by templates for per-placeholder formats).
+        /// </summary>
+        public static T Bind(Match match, Regex regex, IFormatProvider provider, GroupConverter converter)
         {
             Plan plan = Plans.GetOrAdd(regex.ToString() + "\u0000" + ((int)regex.Options).ToString(CultureInfo.InvariantCulture), _ => CreatePlan(regex));
             provider = provider ?? CultureInfo.InvariantCulture;
@@ -84,7 +91,7 @@ namespace Masterly.FluentRegex
                 ParameterInfo parameter = plan.Parameters[i];
                 string groupName = plan.ParameterGroups[i];
                 if (groupName != null && match.Groups[groupName].Success)
-                    arguments[i] = Convert(match.Groups[groupName].Value, parameter.ParameterType, groupName, provider);
+                    arguments[i] = Convert(match.Groups[groupName].Value, parameter.ParameterType, groupName, provider, converter);
                 else
                     arguments[i] = parameter.HasDefaultValue ? parameter.DefaultValue : DefaultOf(parameter.ParameterType);
             }
@@ -93,7 +100,7 @@ namespace Masterly.FluentRegex
             foreach (KeyValuePair<PropertyInfo, string> property in plan.Properties)
             {
                 Group group = match.Groups[property.Value];
-                if (group.Success) property.Key.SetValue(instance, Convert(group.Value, property.Key.PropertyType, property.Value, provider));
+                if (group.Success) property.Key.SetValue(instance, Convert(group.Value, property.Key.PropertyType, property.Value, provider, converter));
             }
             return instance;
         }
@@ -111,11 +118,7 @@ namespace Masterly.FluentRegex
             if (constructors.Length == 0 && !type.IsValueType)
                 throw new InvalidOperationException("Type '" + type.FullName + "' has no public constructor.");
 
-            ConstructorInfo constructor = null;
-            foreach (ConstructorInfo candidate in constructors)
-            {
-                if (constructor == null || candidate.GetParameters().Length > constructor.GetParameters().Length) constructor = candidate;
-            }
+            ConstructorInfo constructor = SelectConstructor(constructors);
 
             ParameterInfo[] parameters = constructor?.GetParameters() ?? Array.Empty<ParameterInfo>();
             var parameterGroups = new string[parameters.Length];
@@ -125,9 +128,7 @@ namespace Masterly.FluentRegex
             for (int i = 0; i < parameters.Length; i++)
             {
                 ParameterInfo parameter = parameters[i];
-                string wanted = parameter.GetCustomAttribute<RegexGroupAttribute>()?.Name
-                                ?? FindProperty(type, parameter.Name)?.GetCustomAttribute<RegexGroupAttribute>()?.Name
-                                ?? parameter.Name;
+                string wanted = GroupNameOf(type, parameter);
                 boundNames.Add(parameter.Name);
                 if (groups.TryGetValue(wanted, out string actual)) parameterGroups[i] = actual;
                 else if (!parameter.HasDefaultValue && !IsNullable(parameter.ParameterType)) missing.Add(parameter.Name + " (group '" + wanted + "')");
@@ -144,8 +145,8 @@ namespace Masterly.FluentRegex
             var properties = new List<KeyValuePair<PropertyInfo, string>>();
             foreach (PropertyInfo property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
             {
-                if (boundNames.Contains(property.Name) || property.SetMethod == null || !property.SetMethod.IsPublic || property.GetIndexParameters().Length > 0) continue;
-                string wanted = property.GetCustomAttribute<RegexGroupAttribute>()?.Name ?? property.Name;
+                if (boundNames.Contains(property.Name) || !IsSettable(property)) continue;
+                string wanted = GroupNameOf(property);
                 if (groups.TryGetValue(wanted, out string actual)) properties.Add(new KeyValuePair<PropertyInfo, string>(property, actual));
             }
 
@@ -154,6 +155,51 @@ namespace Masterly.FluentRegex
 
             return new Plan { Constructor = constructor, Parameters = parameters, ParameterGroups = parameterGroups, Properties = properties };
         }
+
+        /// <summary>
+        /// Describes the members a match can bind to, using the same constructor selection and
+        /// group naming rules as <see cref="Bind(Match, Regex, IFormatProvider)"/>.
+        /// </summary>
+        public static IReadOnlyList<BindableMember> GetMembers()
+        {
+            Type type = typeof(T);
+            var members = new List<BindableMember>();
+            var boundNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            ConstructorInfo constructor = SelectConstructor(type.GetConstructors());
+            foreach (ParameterInfo parameter in constructor?.GetParameters() ?? Array.Empty<ParameterInfo>())
+            {
+                boundNames.Add(parameter.Name);
+                bool required = !parameter.HasDefaultValue && !IsNullable(parameter.ParameterType);
+                members.Add(new BindableMember(GroupNameOf(type, parameter), parameter.ParameterType, FindProperty(type, parameter.Name), required));
+            }
+
+            foreach (PropertyInfo property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (boundNames.Contains(property.Name) || !IsSettable(property)) continue;
+                members.Add(new BindableMember(GroupNameOf(property), property.PropertyType, property, false));
+            }
+            return members;
+        }
+
+        private static ConstructorInfo SelectConstructor(ConstructorInfo[] constructors)
+        {
+            ConstructorInfo constructor = null;
+            foreach (ConstructorInfo candidate in constructors)
+            {
+                if (constructor == null || candidate.GetParameters().Length > constructor.GetParameters().Length) constructor = candidate;
+            }
+            return constructor;
+        }
+
+        private static string GroupNameOf([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] Type type, ParameterInfo parameter) =>
+            parameter.GetCustomAttribute<RegexGroupAttribute>()?.Name
+            ?? FindProperty(type, parameter.Name)?.GetCustomAttribute<RegexGroupAttribute>()?.Name
+            ?? parameter.Name;
+
+        private static string GroupNameOf(PropertyInfo property) => property.GetCustomAttribute<RegexGroupAttribute>()?.Name ?? property.Name;
+
+        private static bool IsSettable(PropertyInfo property) =>
+            property.SetMethod != null && property.SetMethod.IsPublic && property.GetIndexParameters().Length == 0;
 
         private static PropertyInfo FindProperty([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] Type type, string name)
         {
@@ -171,11 +217,11 @@ namespace Masterly.FluentRegex
         [UnconditionalSuppressMessage("Trimming", "IL2067", Justification = "Value-type defaults never need trimmed members.")]
         private static object CreateDefault(Type type) => Activator.CreateInstance(type);
 
-        internal static object Convert(string text, Type type, string groupName, IFormatProvider provider)
+        internal static object Convert(string text, Type type, string groupName, IFormatProvider provider, GroupConverter converter = null)
         {
             try
             {
-                return ValueConverter.Convert(text, type, provider);
+                return converter != null ? converter(groupName, text, type, provider) : ValueConverter.Convert(text, type, provider);
             }
             catch (Exception ex) when (ex is FormatException || ex is OverflowException || ex is ArgumentException)
             {
@@ -184,8 +230,39 @@ namespace Masterly.FluentRegex
         }
     }
 
+    /// <summary>Converts the text of a named group to a member value.</summary>
+    internal delegate object GroupConverter(string groupName, string text, Type type, IFormatProvider provider);
+
+    /// <summary>A constructor parameter or settable property that a named group can bind to.</summary>
+    internal sealed class BindableMember
+    {
+        public BindableMember(string groupName, Type type, PropertyInfo property, bool isRequired)
+        {
+            GroupName = groupName;
+            Type = type;
+            Property = property;
+            IsRequired = isRequired;
+        }
+
+        /// <summary>Gets the group name the member binds to (after <see cref="RegexGroupAttribute"/>).</summary>
+        public string GroupName { get; }
+
+        /// <summary>Gets the member type.</summary>
+        public Type Type { get; }
+
+        /// <summary>Gets the public property that exposes the member's value, or null.</summary>
+        public PropertyInfo Property { get; }
+
+        /// <summary>Gets a value indicating whether a constructor parameter has no default and is not nullable.</summary>
+        public bool IsRequired { get; }
+    }
+
     internal static class ValueConverter
     {
+        /// <summary>
+        /// Converts group text to <paramref name="type"/>. Integer and floating-point parsing first maps
+        /// Unicode decimal digits (which <c>\d</c> matches) to ASCII, so "٢٠٢٦" converts to 2026.
+        /// </summary>
         public static object Convert(string text, Type type, IFormatProvider provider)
         {
             if (ExtractionConverters.TryGet(type, out Func<string, IFormatProvider, object> custom)) return custom(text, provider);
@@ -200,17 +277,17 @@ namespace Masterly.FluentRegex
 
             if (type == typeof(string) || type == typeof(object)) return text;
             if (type.IsEnum) return Enum.Parse(type, text.Trim(), ignoreCase: true);
-            if (type == typeof(int)) return int.Parse(text, NumberStyles.Integer, provider);
-            if (type == typeof(long)) return long.Parse(text, NumberStyles.Integer, provider);
-            if (type == typeof(short)) return short.Parse(text, NumberStyles.Integer, provider);
-            if (type == typeof(byte)) return byte.Parse(text, NumberStyles.Integer, provider);
-            if (type == typeof(sbyte)) return sbyte.Parse(text, NumberStyles.Integer, provider);
-            if (type == typeof(uint)) return uint.Parse(text, NumberStyles.Integer, provider);
-            if (type == typeof(ulong)) return ulong.Parse(text, NumberStyles.Integer, provider);
-            if (type == typeof(ushort)) return ushort.Parse(text, NumberStyles.Integer, provider);
-            if (type == typeof(decimal)) return decimal.Parse(text, NumberStyles.Number, provider);
-            if (type == typeof(double)) return double.Parse(text, NumberStyles.Float | NumberStyles.AllowThousands, provider);
-            if (type == typeof(float)) return float.Parse(text, NumberStyles.Float | NumberStyles.AllowThousands, provider);
+            if (type == typeof(int)) return int.Parse(UnicodeDigits.ToAscii(text), NumberStyles.Integer, provider);
+            if (type == typeof(long)) return long.Parse(UnicodeDigits.ToAscii(text), NumberStyles.Integer, provider);
+            if (type == typeof(short)) return short.Parse(UnicodeDigits.ToAscii(text), NumberStyles.Integer, provider);
+            if (type == typeof(byte)) return byte.Parse(UnicodeDigits.ToAscii(text), NumberStyles.Integer, provider);
+            if (type == typeof(sbyte)) return sbyte.Parse(UnicodeDigits.ToAscii(text), NumberStyles.Integer, provider);
+            if (type == typeof(uint)) return uint.Parse(UnicodeDigits.ToAscii(text), NumberStyles.Integer, provider);
+            if (type == typeof(ulong)) return ulong.Parse(UnicodeDigits.ToAscii(text), NumberStyles.Integer, provider);
+            if (type == typeof(ushort)) return ushort.Parse(UnicodeDigits.ToAscii(text), NumberStyles.Integer, provider);
+            if (type == typeof(decimal)) return decimal.Parse(UnicodeDigits.ToAsciiNumber(text, provider), NumberStyles.Number, provider);
+            if (type == typeof(double)) return double.Parse(UnicodeDigits.ToAsciiNumber(text, provider), NumberStyles.Float | NumberStyles.AllowThousands, provider);
+            if (type == typeof(float)) return float.Parse(UnicodeDigits.ToAsciiNumber(text, provider), NumberStyles.Float | NumberStyles.AllowThousands, provider);
             if (type == typeof(bool)) return ParseBool(text);
             if (type == typeof(char))
             {
