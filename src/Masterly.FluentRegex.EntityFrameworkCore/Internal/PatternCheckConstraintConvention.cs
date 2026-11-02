@@ -82,6 +82,9 @@ internal sealed class PatternCheckConstraintConvention : IModelFinalizingConvent
         string columnSql = _sqlGenerationHelper.DelimitIdentifier(columnName);
         try
         {
+            // The constraint is written into migrations once, so it must not depend on the culture of the machine
+            // that generates them.
+            CoreDialectAdapter.RequireCultureIndependent(pattern);
             return SqlConditionBuilder.Build(columnSql, pattern, _options.Dialect, _options.LikeCollation);
         }
         catch (Exception ex) when (ex is InvalidOperationException || ex is NotSupportedException)

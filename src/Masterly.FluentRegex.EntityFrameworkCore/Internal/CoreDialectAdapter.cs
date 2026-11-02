@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace Masterly.FluentRegex.EntityFrameworkCore.Infrastructure;
 
@@ -9,7 +11,20 @@ namespace Masterly.FluentRegex.EntityFrameworkCore.Infrastructure;
 /// <param name="IsExact">True when the dialect accepts exactly the strings the .NET pattern accepts.</param>
 /// <param name="Warnings">Behaviors that differ from .NET; empty when <paramref name="IsExact"/> is true.</param>
 /// <param name="GroupNumbers">Capture group names (and numbers as text) mapped to their numbers in the dialect regex.</param>
-internal sealed record DialectRegex(string RegexText, bool IsExact, IReadOnlyList<string> Warnings, IReadOnlyDictionary<string, int> GroupNumbers);
+/// <param name="MatchExtentWarnings">
+/// Differences in which substring is matched or what a group captures; empty when they equal .NET's, which
+/// <c>Group</c> and <c>Replace</c> require.
+/// </param>
+internal sealed record DialectRegex(
+    string RegexText,
+    bool IsExact,
+    IReadOnlyList<string> Warnings,
+    IReadOnlyDictionary<string, int> GroupNumbers,
+    IReadOnlyList<string> MatchExtentWarnings)
+{
+    /// <summary>Gets a value indicating whether matched substrings and captures equal .NET's.</summary>
+    public bool PreservesMatchExtent => MatchExtentWarnings.Count == 0;
+}
 
 /// <summary>A pattern translated to a SQL <c>LIKE</c> expression.</summary>
 /// <param name="Expression">The <c>LIKE</c> pattern, without quotes.</param>
@@ -36,10 +51,25 @@ internal sealed record DialectFacts(int MinLength, int? MaxLength, string Requir
 internal static class CoreDialectAdapter
 {
     private const int CacheCapacity = 512;
+    private const string AnyCulture = "";
 
-    private static readonly ConcurrentDictionary<(Pattern Pattern, SqlDialect Dialect), DialectRegex> RegexCache = new();
-    private static readonly ConcurrentDictionary<(Pattern Pattern, LikeDialect Dialect, MatchScope Scope, LikeCollation Collation), DialectLike> LikeCache = new();
-    private static readonly ConcurrentDictionary<(Pattern Pattern, MatchScope Scope), DialectFacts> FactsCache = new();
+    /// <summary>
+    /// One culture per case table .NET's regex engine uses for <see cref="RegexOptions.IgnoreCase"/>: invariant,
+    /// Turkish and Azerbaijani (dotted and dotless i), and every other culture.
+    /// </summary>
+    private static readonly CultureInfo[] CaseTableCultures =
+    {
+        CultureInfo.InvariantCulture,
+        CultureInfo.GetCultureInfo("tr-TR"),
+        CultureInfo.GetCultureInfo("en-US")
+    };
+
+    private static readonly RegexFlavor[] ProbeFlavors = { RegexFlavor.PostgreSql, RegexFlavor.MySql, RegexFlavor.SqlServer };
+
+    private static readonly ConcurrentDictionary<(Pattern Pattern, SqlDialect Dialect, string Culture), DialectRegex> RegexCache = new();
+    private static readonly ConcurrentDictionary<(Pattern Pattern, LikeDialect Dialect, MatchScope Scope, LikeCollation Collation, string Culture), DialectLike> LikeCache = new();
+    private static readonly ConcurrentDictionary<(Pattern Pattern, MatchScope Scope, string Culture), DialectFacts> FactsCache = new();
+    private static readonly ConcurrentDictionary<Pattern, bool> CultureDependenceCache = new();
 
     /// <summary>
     /// Translates <paramref name="pattern"/> to the regex syntax of <paramref name="dialect"/> with the exact
@@ -58,7 +88,10 @@ internal static class CoreDialectAdapter
                 "SQL Server before 2025 has no regular expression support. Use the LIKE translation instead.");
         }
 
-        return Cached(RegexCache, (Pattern: pattern, Dialect: dialect), key => Translate(key.Pattern, RegexFlavorOf(key.Dialect)));
+        return Cached(
+            RegexCache,
+            (Pattern: pattern, Dialect: dialect, Culture: CultureOf(pattern)),
+            key => Translate(key.Pattern, RegexFlavorOf(key.Dialect)));
     }
 
     /// <summary>
@@ -76,7 +109,7 @@ internal static class CoreDialectAdapter
         LikeCollation collation = caseInsensitiveCollation ? LikeCollation.CaseInsensitive : LikeCollation.Binary;
         return Cached(
             LikeCache,
-            (Pattern: pattern, Dialect: LikeDialectOf(dialect), Scope: ScopeOf(substring), Collation: collation),
+            (Pattern: pattern, Dialect: LikeDialectOf(dialect), Scope: ScopeOf(substring), Collation: collation, Culture: CultureOf(pattern)),
             key => Compile(key.Pattern, key.Dialect, key.Scope, key.Collation));
     }
 
@@ -88,13 +121,109 @@ internal static class CoreDialectAdapter
     public static DialectFacts GetFacts(Pattern pattern, bool substring)
     {
         ArgumentNullException.ThrowIfNull(pattern);
-        return Cached(FactsCache, (Pattern: pattern, Scope: ScopeOf(substring)), key => Facts(key.Pattern, key.Scope));
+        return Cached(
+            FactsCache,
+            (Pattern: pattern, Scope: ScopeOf(substring), Culture: CultureOf(pattern)),
+            key => Facts(key.Pattern, key.Scope));
     }
+
+    /// <summary>
+    /// Throws when the SQL for <paramref name="pattern"/> would depend on the culture of the thread that translates
+    /// it. EF Core compiles a query once and reuses its SQL on every thread, so a constant pattern must translate the
+    /// same way under every culture: a case-insensitive <c>i</c> matches <c>I</c> in most cultures but U+0130 in
+    /// Turkish.
+    /// </summary>
+    /// <exception cref="NotSupportedException">The translation differs between cultures.</exception>
+    public static void RequireCultureIndependent(Pattern pattern)
+    {
+        if (TranslationDependsOnCulture(pattern))
+        {
+            throw new NotSupportedException(
+                $"The case-insensitive pattern '{pattern}' matches differently in Turkish and Azerbaijani cultures (dotted " +
+                "and dotless i), so its SQL would depend on the culture of the thread that first runs the query. Add " +
+                "RegexOptions.CultureInvariant to the pattern, or hold it in a variable so that it is translated on every execution.");
+        }
+    }
+
+    /// <summary>
+    /// Gets a value indicating whether the SQL for <paramref name="pattern"/> differs between cultures, so that a
+    /// cached translation must not be reused on a thread with another culture.
+    /// </summary>
+    public static bool TranslationDependsOnCulture(Pattern pattern)
+    {
+        ArgumentNullException.ThrowIfNull(pattern);
+        return CultureDependenceCache.GetOrAdd(pattern, DependsOnCulture);
+    }
+
+    /// <summary>
+    /// Compares the pattern's case-insensitive expansion under each case table. Every IgnoreCase expansion in the
+    /// core library (regex flavors, LIKE and facts) uses the same case tables, so one flavor is a faithful probe.
+    /// A pattern no flavor can express is treated as culture-dependent, because nothing proves otherwise.
+    /// </summary>
+    private static bool DependsOnCulture(Pattern pattern)
+    {
+        if (!IsCultureSensitive(pattern))
+        {
+            return false;
+        }
+
+        HashSet<string> translations = new HashSet<string>(StringComparer.Ordinal);
+        foreach (CultureInfo culture in CaseTableCultures)
+        {
+            string? translation = ProbeUnder(culture, pattern);
+            if (translation == null)
+            {
+                return true;
+            }
+
+            translations.Add(translation);
+        }
+
+        return translations.Count > 1;
+    }
+
+    private static string? ProbeUnder(CultureInfo culture, Pattern pattern)
+    {
+        CultureInfo previous = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = culture;
+            return FirstExpressibleTranslation(pattern);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
+    }
+
+    private static string? FirstExpressibleTranslation(Pattern pattern)
+    {
+        foreach (RegexFlavor flavor in ProbeFlavors)
+        {
+            try
+            {
+                return pattern.ToFlavor(flavor).Pattern;
+            }
+            catch (NotSupportedException)
+            {
+                // This flavor cannot express the pattern; the next one may.
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsCultureSensitive(Pattern pattern) =>
+        (pattern.Options & RegexOptions.IgnoreCase) != 0 && (pattern.Options & RegexOptions.CultureInvariant) == 0;
+
+    /// <summary>The cache key part for the culture: culture-sensitive patterns translate per thread culture.</summary>
+    private static string CultureOf(Pattern pattern) => IsCultureSensitive(pattern) ? CultureInfo.CurrentCulture.Name : AnyCulture;
 
     private static DialectRegex Translate(Pattern pattern, RegexFlavor flavor)
     {
         FlavorConversion conversion = pattern.ToFlavor(flavor);
-        return new DialectRegex(conversion.Pattern, conversion.IsExact, conversion.Warnings, conversion.GroupNumbers);
+        return new DialectRegex(
+            conversion.Pattern, conversion.IsExact, conversion.Warnings, conversion.GroupNumbers, conversion.MatchExtentWarnings);
     }
 
     private static DialectLike Compile(Pattern pattern, LikeDialect dialect, MatchScope scope, LikeCollation collation)

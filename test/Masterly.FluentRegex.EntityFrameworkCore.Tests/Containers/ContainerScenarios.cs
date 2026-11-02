@@ -78,8 +78,8 @@ internal static class ContainerScenarios
     {
         await using ConstrainedCatalogContext context = new ConstrainedCatalogContext(options);
 
-        List<string?> numbers = await context.Products.OrderBy(product => product.Id).Select(product => PatternFunctions.Group(product.Sku, TestPatterns.SkuParts, 2)).ToListAsync(cancellationToken);
-        List<string?> letters = await context.Products.OrderBy(product => product.Id).Select(product => EF.Functions.Group(product.Sku, TestPatterns.SkuParts, 1)).ToListAsync(cancellationToken);
+        List<string?> numbers = await context.Products.OrderBy(product => product.Id).Select(product => PatternFunctions.Group(product.Sku, TestPatterns.StrictSkuParts, 2)).ToListAsync(cancellationToken);
+        List<string?> letters = await context.Products.OrderBy(product => product.Id).Select(product => EF.Functions.Group(product.Sku, TestPatterns.StrictSkuParts, 1)).ToListAsync(cancellationToken);
 
         numbers.ShouldBe(new[] { "1234", "0001", null, "0007" });
         letters.ShouldBe(new[] { "ABC", "XYZ", null, "ABC" });
@@ -105,7 +105,7 @@ internal static class ContainerScenarios
     {
         await using ConstrainedCatalogContext context = new ConstrainedCatalogContext(options);
 
-        List<string?> replaced = await context.Products.OrderBy(product => product.Id).Select(product => PatternFunctions.Replace(product.Sku, TestPatterns.SkuParts, Replacement)).ToListAsync(cancellationToken);
+        List<string?> replaced = await context.Products.OrderBy(product => product.Id).Select(product => PatternFunctions.Replace(product.Sku, TestPatterns.StrictSkuParts, Replacement)).ToListAsync(cancellationToken);
         List<string?> digitsMasked = await context.Products.OrderBy(product => product.Id).Select(product => PatternFunctions.Replace(product.Name, TestPatterns.Digits, "#")).ToListAsync(cancellationToken);
 
         replaced.ShouldBe(new[] { "1234/ABC", "0001/XYZ", null, "0007/ABC" });

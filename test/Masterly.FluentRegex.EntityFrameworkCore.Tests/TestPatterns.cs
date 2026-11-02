@@ -31,8 +31,16 @@ public static class TestPatterns
     public static readonly Pattern AbcSku = Pattern.FromRegex("^ABC-[0-9]{4}$");
 
     /// <summary>.NET numbers the unnamed group 1 and "year" 2; every database numbers them the other way round.</summary>
+    /// <summary>
+    /// Ends with \z: Group and Replace refuse '$' on SQL Server 2025, whose translation consumes the final newline that
+    /// .NET leaves outside the match.
+    /// </summary>
+    public static readonly Pattern StrictSkuParts = Pattern.FromRegex(@"^([A-Z]{3})-([0-9]{4})\z");
+
+    public static readonly Pattern StrictNamedSkuParts = Pattern.FromRegex(@"^(?<letters>[A-Z]{3})-(?<number>[0-9]{4})\z");
+
     /// <summary>.NET group 1 is the unnamed digits; the databases number the named letters 1 and the digits 2.</summary>
-    public static readonly Pattern NamedLettersUnnamedDigits = Pattern.FromRegex("^(?<letters>[A-Z]{3})-([0-9]{4})$");
+    public static readonly Pattern NamedLettersUnnamedDigits = Pattern.FromRegex(@"^(?<letters>[A-Z]{3})-([0-9]{4})\z");
 
     public static readonly Pattern YearMonth = Pattern.FromRegex("(?<year>[0-9]{4})-([0-9]{2})");
 

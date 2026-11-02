@@ -93,9 +93,29 @@ Groups above 9 are only supported on MySQL. The replacement must be a literal st
 Group numbers are .NET's, and they are mapped to the database's own numbering, which often differs: .NET numbers
 unnamed groups before named ones, every engine numbers left to right, and PostgreSQL drops groups inside
 lookarounds. For `(?<year>\d{4})-(\d{2})`, `Group(col, pattern, 1)` returns the month on every database, as in
-.NET, even though PostgreSQL calls that group 2. The mapping needs the pattern at query compile time, so a group
-reference into a pattern held in a variable throws (except group 0, the whole match). A group number held in a
-variable is accepted only when the pattern numbers its groups the same way in .NET and in the database.
+.NET, even though PostgreSQL calls that group 2. A group number held in a variable is accepted only when the
+pattern numbers its groups the same way in .NET and in the database.
+
+`Group` and `Replace` depend on *which* text matches, not only on *whether* a string matches, and engines can
+differ there even when they accept exactly the same strings:
+- **PostgreSQL** prefers the longest match: `(a|ab)` matches `ab` where .NET matches `a`.
+- **SQL Server 2025** has no lookahead, so `$` is written `\n?\z`, which consumes the final newline that .NET leaves
+  outside the match.
+- **MariaDB** never replaces an empty match.
+
+The core library reports these as `FlavorConversion.MatchExtentWarnings`. `Group` and `Replace` are translated only
+when there are none, and otherwise throw `NotSupportedException` with the reason and the .NET alternative.
+Because that check needs the pattern, both require a pattern known at query compile time, such as a static readonly
+field or an inline `Pattern.FromRegex(...)`. End anchored patterns with `\z` rather than `$` for SQL Server.
+
+### Culture
+
+Like .NET, a pattern with `RegexOptions.IgnoreCase` folds case under the current culture, and in Turkish and
+Azerbaijani `i` pairs with `İ` instead of `I`. EF Core compiles a query once and reuses its SQL on every thread,
+so a constant case-insensitive pattern whose translation differs between cultures throws `NotSupportedException`.
+Add `RegexOptions.CultureInvariant`, or hold the pattern in a variable, which is translated on every execution
+under the caller's culture. Patterns without `i`, `I`, `İ` or `ı` are unaffected. `MatchingAsync` never throws for
+this reason: its SQL prefilter keeps only culture-free checks, and .NET applies the pattern under the caller's culture.
 
 ### Index hints
 

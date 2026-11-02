@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using Masterly.FluentRegex.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -120,7 +121,7 @@ public sealed class SqlGenerationTests
 
         Should.Throw<InvalidOperationException>(
             () => context.Products.Select(product => PatternFunctions.Group(product.Sku, TestPatterns.YearMonth, group)).ToQueryString())
-            .Message.ShouldContain("numbers its groups exactly as .NET does");
+            .Message.ShouldContain("numbers the pattern's groups exactly as .NET does");
     }
 
     [Fact]
@@ -244,7 +245,7 @@ public sealed class SqlGenerationTests
     {
         using CatalogContext context = SqlServer(configure: fluent => fluent.UseDialect(SqlDialect.SqlServer2025));
 
-        string sql = GroupByName(context);
+        string sql = context.Products.Select(product => PatternFunctions.Group(product.Sku, TestPatterns.StrictNamedSkuParts, "number")).ToQueryString();
 
         sql.ShouldContain("REGEXP_SUBSTR(");
         sql.ShouldContain(", 1, 1, 'c', 2)");
@@ -255,10 +256,77 @@ public sealed class SqlGenerationTests
     {
         using CatalogContext context = SqlServer(configure: fluent => fluent.UseDialect(SqlDialect.SqlServer2025));
 
-        string sql = Replace(context);
+        string sql = context.Products.Select(product => EF.Functions.Replace(product.Sku, TestPatterns.StrictSkuParts, Replacement)).ToQueryString();
 
         sql.ShouldContain("REGEXP_REPLACE(");
         sql.ShouldContain(@"N'\2/\1')");
+    }
+
+    [Fact]
+    public void SqlServer2025_ReplaceWithDollar_ThrowsBecauseTheNewlineWouldBeConsumed()
+    {
+        using CatalogContext context = SqlServer(configure: fluent => fluent.UseDialect(SqlDialect.SqlServer2025));
+
+        NotSupportedException ex = Should.Throw<NotSupportedException>(() => Replace(context));
+
+        ex.Message.ShouldContain("final newline");
+    }
+
+    [Fact]
+    public void Npgsql_GroupOfAnAmbiguousAlternation_ThrowsBecausePostgreSqlPrefersTheLongestMatch()
+    {
+        using CatalogContext context = Npgsql();
+
+        NotSupportedException ex = Should.Throw<NotSupportedException>(
+            () => context.Products.Select(product => PatternFunctions.Group(product.Sku, Pattern.FromRegex("(a|ab)"), 1)).ToQueryString());
+
+        ex.Message.ShouldContain("Pattern.Match");
+    }
+
+    [Fact]
+    public void Npgsql_CultureDependentIgnoreCasePattern_ThrowsAndSuggestsCultureInvariant()
+    {
+        using CatalogContext context = Npgsql();
+        Pattern dotlessI = Pattern.FromRegex("^id$", RegexOptions.IgnoreCase);
+
+        NotSupportedException ex = Should.Throw<NotSupportedException>(
+            () => context.Products.WhereMatches(product => product.Sku, dotlessI).ToQueryString());
+
+        ex.Message.ShouldContain("CultureInvariant");
+    }
+
+    [Fact]
+    public void Npgsql_CultureInvariantIgnoreCasePattern_IsTranslated()
+    {
+        using CatalogContext context = Npgsql();
+        Pattern invariant = Pattern.FromRegex("^id$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        string sql = context.Products.WhereMatches(product => product.Sku, invariant).ToQueryString();
+
+        sql.ShouldContain(" ~ '");
+    }
+
+    [Fact]
+    public void Npgsql_IgnoreCasePatternWithoutDottedLetters_IsTranslated()
+    {
+        using CatalogContext context = Npgsql();
+        Pattern noI = Pattern.FromRegex("^abc$", RegexOptions.IgnoreCase);
+
+        string sql = context.Products.WhereMatches(product => product.Sku, noI).ToQueryString();
+
+        sql.ShouldContain(" ~ '");
+    }
+
+    [Fact]
+    public void Npgsql_MatchingAsyncPrefilterForACultureDependentPattern_UsesOnlyCultureFreeChecks()
+    {
+        using CatalogContext context = Npgsql();
+
+        string sql = Prefilter(context, Pattern.FromRegex("^id$", RegexOptions.IgnoreCase));
+
+        sql.ShouldNotContain(" ~ ", customMessage: sql);
+        sql.ShouldContain("IS NOT NULL");
+        sql.ShouldContain("length(");
     }
 
     [Fact]

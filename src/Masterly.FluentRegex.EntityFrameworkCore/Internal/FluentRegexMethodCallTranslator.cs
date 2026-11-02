@@ -193,6 +193,7 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
 
     private SqlExpression TranslateConstantMatches(SqlExpression value, Pattern pattern, IDiagnosticsLogger<DbLoggerCategory.Query> logger)
     {
+        CoreDialectAdapter.RequireCultureIndependent(pattern);
         SqlDialect dialect = _options.Dialect;
         if (dialect == SqlDialect.SqlServer)
         {
@@ -254,6 +255,13 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
             return notNull;
         }
 
+        if (CoreDialectAdapter.TranslationDependsOnCulture(pattern))
+        {
+            // The compiled SQL is reused on threads of every culture, so only culture-free facts may narrow the rows;
+            // the .NET check that follows applies the pattern under the caller's culture.
+            return WithMaxLength(notNull, value, pattern);
+        }
+
         SqlDialect dialect = _options.Dialect;
         DialectRegex? regex = dialect == SqlDialect.SqlServer ? null : TryDialectRegex(pattern, dialect);
         if (regex != null && regex.IsExact)
@@ -276,13 +284,17 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
             }
         }
 
-        DialectFacts facts = CoreDialectAdapter.GetFacts(pattern, substring: true);
-        if (facts.MaxLength is int maxLength)
-        {
-            result = _sql.AndAlso(result, MaxLengthPredicate(value, maxLength));
-        }
+        return WithMaxLength(result, value, pattern);
+    }
 
-        return result;
+    /// <summary>
+    /// Adds the proven upper length bound, when there is one. It holds under every culture (case variants of a
+    /// letter have the same UTF-16 length) and every SQL length function (none counts more units than .NET).
+    /// </summary>
+    private SqlExpression WithMaxLength(SqlExpression predicate, SqlExpression value, Pattern pattern)
+    {
+        DialectFacts facts = CoreDialectAdapter.GetFacts(pattern, substring: true);
+        return facts.MaxLength is int maxLength ? _sql.AndAlso(predicate, MaxLengthPredicate(value, maxLength)) : predicate;
     }
 
     /// <summary>
@@ -329,9 +341,9 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
                 "and SQL Server 2025 (REGEXP_SUBSTR) only; load the value and use Pattern.Match in .NET instead.");
         }
 
-        DialectRegex? regex = ResolveRegex(operand, dialect, logger);
-        SqlExpression regexSql = regex == null ? RegexParameter(operand.RequireParameter()) : RegexConstant(regex.RegexText);
-        SqlExpression groupNumber = GroupNumber(groupExpression, regex, operand.Constant as Pattern);
+        DialectRegex regex = ResolveExtentPreservingRegex(operand, dialect, nameof(PatternFunctions.Group), logger);
+        SqlExpression regexSql = RegexConstant(regex.RegexText);
+        SqlExpression groupNumber = GroupNumber(groupExpression, regex, (Pattern)operand.Constant!); // ResolveExtentPreservingRegex requires a constant pattern
         RelationalTypeMapping resultMapping = value.TypeMapping ?? _stringMapping;
         SqlExpression[] arguments =
         {
@@ -352,7 +364,7 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
     /// before named ones, every engine numbers left to right, and PostgreSQL drops groups inside lookarounds.
     /// Group 0, the whole match, is the same everywhere.
     /// </summary>
-    private SqlExpression GroupNumber(SqlExpression groupExpression, DialectRegex? regex, Pattern? pattern)
+    private SqlExpression GroupNumber(SqlExpression groupExpression, DialectRegex regex, Pattern pattern)
     {
         switch (groupExpression)
         {
@@ -369,19 +381,11 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
         }
     }
 
-    private static int DialectGroupNumber(string group, DialectRegex? regex)
+    private static int DialectGroupNumber(string group, DialectRegex regex)
     {
         if (string.Equals(group, WholeMatchGroup, StringComparison.Ordinal))
         {
             return WholeMatchNumber;
-        }
-
-        if (regex == null)
-        {
-            throw new InvalidOperationException(
-                $"The group '{group}' can only be translated when the pattern is known at query compile time, because the " +
-                "database numbers groups differently from .NET. Reference the pattern through a static readonly field or " +
-                "build it inline in the query.");
         }
 
         if (!regex.GroupNumbers.TryGetValue(group, out int number))
@@ -398,16 +402,16 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
     /// A group number held in a variable is only known when the query runs, so it can only be passed through when
     /// every .NET group keeps its number in the dialect.
     /// </summary>
-    private static void RequireUnchangedNumbering(DialectRegex? regex, Pattern? pattern)
+    private static void RequireUnchangedNumbering(DialectRegex regex, Pattern pattern)
     {
-        if (regex != null && pattern != null && KeepsGroupNumbers(regex, pattern))
+        if (KeepsGroupNumbers(regex, pattern))
         {
             return;
         }
 
         throw new InvalidOperationException(
-            "A group number held in a variable can only be translated when the pattern is known at query compile time " +
-            "and the database numbers its groups exactly as .NET does. Use a literal group number or name, or a pattern " +
+            "A group number held in a variable can only be translated when the database numbers the pattern's groups " +
+            "exactly as .NET does. Use a literal group number or name, or a pattern " +
             "without named groups and without groups inside lookarounds.");
     }
 
@@ -453,9 +457,9 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
                 "to the database's replacement syntax.");
         }
 
-        DialectRegex? regex = ResolveRegex(operand, dialect, logger);
-        string converted = ReplacementConverter.Convert(replacement, dialect, regex?.GroupNumbers);
-        SqlExpression regexSql = regex == null ? RegexParameter(operand.RequireParameter()) : RegexConstant(regex.RegexText);
+        DialectRegex regex = ResolveExtentPreservingRegex(operand, dialect, nameof(PatternFunctions.Replace), logger);
+        string converted = ReplacementConverter.Convert(replacement, dialect, regex.GroupNumbers);
+        SqlExpression regexSql = RegexConstant(regex.RegexText);
         SqlExpression replacementSql = _sql.Constant(converted, _stringMapping);
         RelationalTypeMapping resultMapping = value.TypeMapping ?? _stringMapping;
         if (dialect == SqlDialect.PostgreSql)
@@ -472,15 +476,32 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
     // Building blocks
     // ------------------------------------------------------------------
 
-    private DialectRegex? ResolveRegex(PatternOperand operand, SqlDialect dialect, IDiagnosticsLogger<DbLoggerCategory.Query> logger)
+    /// <summary>
+    /// Translates the pattern of a <c>Group</c> or <c>Replace</c> call. Both depend on which substring the database
+    /// matches and what each group captures, not only on whether a string matches, so the pattern must be known at
+    /// query compile time and its translation must preserve the match extent.
+    /// </summary>
+    private DialectRegex ResolveExtentPreservingRegex(PatternOperand operand, SqlDialect dialect, string function, IDiagnosticsLogger<DbLoggerCategory.Query> logger)
     {
         if (operand.Constant is not Pattern pattern)
         {
-            return null;
+            throw new InvalidOperationException(
+                $"{function} can only be translated when the pattern is known at query compile time, because some patterns " +
+                "match a different substring in the database than in .NET, and only a known pattern can be checked. Reference " +
+                "the pattern through a static readonly field or build it inline in the query.");
         }
 
+        CoreDialectAdapter.RequireCultureIndependent(pattern);
         DialectRegex regex = CoreDialectAdapter.ToDialectRegex(pattern, dialect);
         _logger.TranslationWarnings(logger, pattern, dialect, regex);
+        if (!regex.PreservesMatchExtent)
+        {
+            throw new NotSupportedException(
+                $"{function} cannot be translated for the pattern '{pattern}' on {dialect}, because the database would match " +
+                $"a different substring or capture different text than .NET: {string.Join(" ", regex.MatchExtentWarnings)} " +
+                $"Load the values and use Pattern.{(function == nameof(PatternFunctions.Group) ? "Match" : "Replace")} in .NET instead.");
+        }
+
         return regex;
     }
 
