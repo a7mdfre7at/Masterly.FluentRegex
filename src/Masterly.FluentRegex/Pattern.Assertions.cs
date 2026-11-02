@@ -37,8 +37,7 @@ namespace Masterly.FluentRegex
         /// </example>
         public Pattern PositiveLookahead(Pattern pattern)
         {
-            _regexStringBuilder.AppendFormat("(?={0})", pattern);
-            return this;
+            return Append(new WrapToken("(?=", Require(pattern, nameof(pattern)), ")"));
         }
 
         /// <summary>
@@ -67,8 +66,7 @@ namespace Masterly.FluentRegex
         /// </example>
         public Pattern NegativeLookahead(Pattern pattern)
         {
-            _regexStringBuilder.AppendFormat("(?!{0})", pattern);
-            return this;
+            return Append(new WrapToken("(?!", Require(pattern, nameof(pattern)), ")"));
         }
 
         /// <summary>
@@ -99,8 +97,7 @@ namespace Masterly.FluentRegex
         /// </example>
         public Pattern PositiveLookbehind(Pattern pattern)
         {
-            _regexStringBuilder.AppendFormat("(?<={0})", pattern);
-            return this;
+            return Append(new WrapToken("(?<=", Require(pattern, nameof(pattern)), ")"));
         }
 
         /// <summary>
@@ -129,8 +126,7 @@ namespace Masterly.FluentRegex
         /// </example>
         public Pattern NegativeLookbehind(Pattern pattern)
         {
-            _regexStringBuilder.AppendFormat("(?<!{0})", pattern);
-            return this;
+            return Append(new WrapToken("(?<!", Require(pattern, nameof(pattern)), ")"));
         }
     }
 }

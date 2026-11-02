@@ -56,7 +56,7 @@ public class CompositePatternTests
     [Fact]
     public void Email()
     {
-        string regex = @"^[a-zA-Z\d\.-_]+@[a-zA-Z\d\.-]+\.[a-zA-Z]{2,4}$";
+        string regex = @"^[a-zA-Z\d\.\-_]+@[a-zA-Z\d\.\-]+\.[a-zA-Z]{2,4}$";
 
         Pattern pattern = Pattern.With
                            .StartOfLine
@@ -68,6 +68,11 @@ public class CompositePatternTests
                            .EndOfLine;
 
         pattern.ToString().ShouldBe(regex);
+
+        // In 2.x the hyphen formed the range '.' to '_', which wrongly accepted '@' and '/'.
+        pattern.IsMatch("first.last-name_1@example.com").ShouldBeTrue();
+        pattern.IsMatch("a@b@example.com").ShouldBeFalse();
+        pattern.IsMatch("a/b@example.com").ShouldBeFalse();
     }
 
     [Fact]

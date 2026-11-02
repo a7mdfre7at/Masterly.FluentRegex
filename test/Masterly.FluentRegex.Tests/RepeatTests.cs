@@ -55,6 +55,8 @@ public class RepeatTests
     {
         Pattern pattern = Pattern.With.Literal("a").Repeat.AtMost(3);
 
-        pattern.ToString().ShouldBe("a{,3}");
+        pattern.ToString().ShouldBe("a{0,3}");
+        pattern.Match("aaaaa").Value.ShouldBe("aaa");
+        pattern.IsMatch("a{,3}").ShouldBeTrue(); // matches the empty string, no longer only the literal text
     }
 }

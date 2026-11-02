@@ -240,14 +240,28 @@ public class MatchingTests
     }
 
     [Fact]
-    public void WithOptions_InvalidatesCache()
+    public void WithOptions_ReturnsNewPattern_AndLeavesOriginalUnchanged()
     {
         Pattern pattern = Pattern.With.Literal("abc");
 
         pattern.IsMatch("ABC").ShouldBeFalse();
 
-        pattern.WithOptions(RegexOptions.IgnoreCase);
+        Pattern ignoreCase = pattern.WithOptions(RegexOptions.IgnoreCase);
 
-        pattern.IsMatch("ABC").ShouldBeTrue();
+        ignoreCase.IsMatch("ABC").ShouldBeTrue();
+        pattern.IsMatch("ABC").ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Cache_NeverGoesStale_BecausePatternsAreImmutable()
+    {
+        Pattern digit = Pattern.With.Digit;
+        digit.IsMatch("1").ShouldBeTrue();
+
+        Pattern extended = digit.Literal("x");
+
+        extended.IsMatch("1").ShouldBeFalse();
+        extended.IsMatch("1x").ShouldBeTrue();
+        digit.ToString().ShouldBe(@"\d");
     }
 }

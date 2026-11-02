@@ -70,21 +70,23 @@ public class SimplePatternTests
     public void Letter()
     {
         Pattern pattern = Pattern.With.Letter;
-        pattern.ToString().ShouldBe("a-zA-Z");
+        pattern.ToString().ShouldBe("[a-zA-Z]");
+        pattern.IsMatch("q").ShouldBeTrue();
+        pattern.IsMatch("5").ShouldBeFalse();
     }
 
     [Fact]
     public void LowercaseLetter()
     {
         Pattern pattern = Pattern.With.LowercaseLetter;
-        pattern.ToString().ShouldBe("a-z");
+        pattern.ToString().ShouldBe("[a-z]");
     }
 
     [Fact]
     public void UppercaseLetter()
     {
         Pattern pattern = Pattern.With.UppercaseLetter;
-        pattern.ToString().ShouldBe("A-Z");
+        pattern.ToString().ShouldBe("[A-Z]");
     }
 
     [Fact]
