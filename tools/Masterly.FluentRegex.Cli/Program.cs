@@ -1,0 +1,299 @@
+using System.Text.RegularExpressions;
+using Masterly.FluentRegex;
+using Masterly.FluentRegex.Cli;
+
+return Cli.Run(args);
+
+namespace Masterly.FluentRegex.Cli
+{
+    internal static class Cli
+    {
+        private const int Ok = 0;
+        private const int Findings = 1;
+        private const int UsageError = 2;
+
+        private const string Usage = """
+            fluentregex - companion tool for Masterly.FluentRegex
+
+            Usage:
+              fluentregex convert  <regex> [--options <list>]           Print fluent C# that builds the regex
+              fluentregex convert  --file <path>                        Convert every regex literal in C# files
+              fluentregex analyze  <regex> [--options <list>] [--confirm]
+                                                                        Report catastrophic backtracking (ReDoS) risks
+              fluentregex scan     <path> [--fail-on high|medium|none] [--confirm]
+                                                                        Scan C# files for risky regex literals (CI friendly)
+              fluentregex explain  <regex> [--options <list>]           Explain a regex in plain English
+              fluentregex generate <regex> [--count N] [--seed N] [--non-matching] [--options <list>]
+                                                                        Generate matching (or near-miss) test strings
+              fluentregex trace    <regex> <input> [--options <list>]   Show which part matched what, or where it failed
+              fluentregex diagram  <regex> [--format svg|mermaid] [--output <file>] [--options <list>]
+                                                                        Draw a railroad diagram or Mermaid flowchart
+
+            Options:
+              --options <list>   Comma-separated RegexOptions, e.g. IgnoreCase,Multiline
+              --help, -h         Show this help
+              --version          Show the version
+
+            Exit codes: 0 success, 1 findings at or above --fail-on (analyze/scan), 2 usage or input error.
+            """;
+
+        public static int Run(string[] args)
+        {
+            try
+            {
+                if (args.Length == 0 || args[0] is "--help" or "-h" or "help")
+                {
+                    Console.WriteLine(Usage);
+                    return args.Length == 0 ? UsageError : Ok;
+                }
+
+                if (args[0] == "--version")
+                {
+                    Console.WriteLine(typeof(Pattern).Assembly.GetName().Version?.ToString(3));
+                    return Ok;
+                }
+
+                var arguments = new Arguments(args.Skip(1).ToArray());
+                return args[0] switch
+                {
+                    "convert" => Convert(arguments),
+                    "analyze" => Analyze(arguments),
+                    "scan" => Scan(arguments),
+                    "explain" => Explain(arguments),
+                    "generate" => Generate(arguments),
+                    "trace" => Trace(arguments),
+                    "diagram" => Diagram(arguments),
+                    _ => Fail("Unknown command '" + args[0] + "'. Run 'fluentregex --help'.")
+                };
+            }
+            catch (Exception ex) when (ex is ArgumentException or FileNotFoundException or InvalidOperationException or FormatException)
+            {
+                return Fail(ex.Message);
+            }
+        }
+
+        private static int Convert(Arguments args)
+        {
+            string? file = args.Option("file");
+            if (file == null)
+            {
+                Console.WriteLine(Load(args).ToFluentCode());
+                return Ok;
+            }
+
+            int count = 0;
+            foreach (string path in RegexLiteralFinder.CSharpFiles(file))
+            {
+                foreach (RegexLiteral literal in RegexLiteralFinder.Find(path))
+                {
+                    count++;
+                    Console.WriteLine($"// {Relative(literal.File)}({literal.Line},{literal.Column}) {literal.Kind}: {literal.Pattern}");
+                    try
+                    {
+                        Console.WriteLine(Pattern.FromRegex(literal.Pattern, literal.Options).ToFluentCode() + ";");
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        Console.WriteLine("// skipped: " + ex.Message);
+                    }
+                    Console.WriteLine();
+                }
+            }
+            Console.Error.WriteLine($"{count} regex literal(s) converted.");
+            return Ok;
+        }
+
+        private static int Analyze(Arguments args)
+        {
+            SafetyReport report = Load(args).AnalyzeSafety(confirm: args.Flag("confirm"));
+            WriteColored(report.ToString(), RiskColor(report.Risk));
+            return report.Risk >= RiskLevel.High ? Findings : Ok;
+        }
+
+        private static int Scan(Arguments args)
+        {
+            string path = args.Positional(0, "path");
+            RiskLevel failOn = (args.Option("fail-on") ?? "high").ToLowerInvariant() switch
+            {
+                "high" => RiskLevel.High,
+                "medium" => RiskLevel.Medium,
+                "none" => (RiskLevel)int.MaxValue,
+                var other => throw new ArgumentException("Unknown --fail-on value '" + other + "'. Use high, medium or none.")
+            };
+            bool confirm = args.Flag("confirm");
+
+            int scanned = 0;
+            var counts = new Dictionary<RiskLevel, int>();
+            foreach (string file in RegexLiteralFinder.CSharpFiles(path))
+            {
+                foreach (RegexLiteral literal in RegexLiteralFinder.Find(file))
+                {
+                    scanned++;
+                    SafetyReport report;
+                    try
+                    {
+                        report = Pattern.FromRegex(literal.Pattern, literal.Options).AnalyzeSafety(confirm);
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        WriteColored($"{Relative(literal.File)}({literal.Line},{literal.Column}): error: invalid regex: {ex.Message}", ConsoleColor.Red);
+                        counts[RiskLevel.High] = counts.GetValueOrDefault(RiskLevel.High) + 1;
+                        continue;
+                    }
+
+                    foreach (SafetyIssue issue in report.Issues.Where(i => i.Risk >= RiskLevel.Medium))
+                    {
+                        counts[issue.Risk] = counts.GetValueOrDefault(issue.Risk) + 1;
+                        string severity = issue.Risk == RiskLevel.High ? "warning" : "info";
+                        string confirmed = issue.Confirmed == true ? " [CONFIRMED by timeout]" : string.Empty;
+                        WriteColored($"{Relative(literal.File)}({literal.Line},{literal.Column}): {severity} FRX-{issue.Kind}: {literal.Kind} \"{literal.Pattern}\"{confirmed}", RiskColor(issue.Risk));
+                        Console.WriteLine("    " + issue.Description);
+                        Console.WriteLine("    Fix: " + issue.Suggestion);
+                    }
+                }
+            }
+
+            int high = counts.GetValueOrDefault(RiskLevel.High);
+            int medium = counts.GetValueOrDefault(RiskLevel.Medium);
+            Console.WriteLine();
+            Console.WriteLine($"Scanned {scanned} regex literal(s): {high} high, {medium} medium risk finding(s).");
+            bool failed = (failOn <= RiskLevel.High && high > 0) || (failOn <= RiskLevel.Medium && medium > 0);
+            return failed ? Findings : Ok;
+        }
+
+        private static int Explain(Arguments args)
+        {
+            Console.WriteLine(Load(args).Explain());
+            return Ok;
+        }
+
+        private static int Generate(Arguments args)
+        {
+            Pattern pattern = Load(args);
+            int count = int.Parse(args.Option("count") ?? "10", System.Globalization.CultureInfo.InvariantCulture);
+            int? seed = args.Option("seed") is { } s ? int.Parse(s, System.Globalization.CultureInfo.InvariantCulture) : null;
+            string[] samples = args.Flag("non-matching") ? pattern.GenerateNonMatching(count, seed) : pattern.GenerateMatching(count, seed);
+            foreach (string sample in samples) Console.WriteLine(sample);
+            return Ok;
+        }
+
+        private static int Trace(Arguments args)
+        {
+            Pattern pattern = Load(args);
+            MatchTrace trace = pattern.Trace(args.Positional(1, "input"));
+            WriteColored(trace.ToString(), trace.IsMatch ? ConsoleColor.Green : ConsoleColor.Yellow);
+            return Ok;
+        }
+
+        private static int Diagram(Arguments args)
+        {
+            Pattern pattern = Load(args);
+            string format = (args.Option("format") ?? "svg").ToLowerInvariant();
+            string output = format switch
+            {
+                "svg" => pattern.ToRailroadSvg(),
+                "mermaid" => pattern.ToMermaid(),
+                _ => throw new ArgumentException("Unknown --format '" + format + "'. Use svg or mermaid.")
+            };
+
+            string? file = args.Option("output");
+            if (file == null)
+            {
+                Console.WriteLine(output);
+            }
+            else
+            {
+                File.WriteAllText(file, output);
+                Console.Error.WriteLine("Wrote " + file);
+            }
+            return Ok;
+        }
+
+        // ------------------------------------------------------------------
+        // Helpers
+        // ------------------------------------------------------------------
+
+        private static Pattern Load(Arguments args)
+        {
+            string regex = args.Positional(0, "regex");
+            RegexOptions options = RegexOptions.None;
+            if (args.Option("options") is { } list)
+            {
+                foreach (string name in list.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    if (!Enum.TryParse(name, ignoreCase: true, out RegexOptions flag))
+                        throw new ArgumentException("Unknown regex option '" + name + "'.");
+                    options |= flag;
+                }
+            }
+            return Pattern.FromRegex(regex, options);
+        }
+
+        private static string Relative(string path)
+        {
+            string relative = Path.GetRelativePath(Environment.CurrentDirectory, path);
+            return relative.StartsWith("..", StringComparison.Ordinal) ? path : relative;
+        }
+
+        private static ConsoleColor RiskColor(RiskLevel risk) => risk switch
+        {
+            RiskLevel.High => ConsoleColor.Red,
+            RiskLevel.Medium => ConsoleColor.Yellow,
+            _ => ConsoleColor.Green
+        };
+
+        private static void WriteColored(string text, ConsoleColor color)
+        {
+            if (Console.IsOutputRedirected)
+            {
+                Console.WriteLine(text);
+                return;
+            }
+            ConsoleColor previous = Console.ForegroundColor;
+            Console.ForegroundColor = color;
+            Console.WriteLine(text);
+            Console.ForegroundColor = previous;
+        }
+
+        private static int Fail(string message)
+        {
+            Console.Error.WriteLine("error: " + message);
+            return UsageError;
+        }
+    }
+
+    /// <summary>Minimal argument parser: positional values, --name value options and --flag switches.</summary>
+    internal sealed class Arguments
+    {
+        private static readonly HashSet<string> Flags = new(StringComparer.Ordinal) { "confirm", "non-matching" };
+
+        private readonly List<string> _positional = new();
+        private readonly Dictionary<string, string?> _options = new(StringComparer.OrdinalIgnoreCase);
+
+        public Arguments(string[] args)
+        {
+            for (int i = 0; i < args.Length; i++)
+            {
+                string arg = args[i];
+                if (arg.StartsWith("--", StringComparison.Ordinal) && arg.Length > 2)
+                {
+                    string name = arg[2..];
+                    if (Flags.Contains(name)) _options[name] = null;
+                    else if (i + 1 < args.Length) _options[name] = args[++i];
+                    else throw new ArgumentException("Option '" + arg + "' needs a value.");
+                }
+                else
+                {
+                    _positional.Add(arg);
+                }
+            }
+        }
+
+        public string Positional(int index, string name) =>
+            index < _positional.Count ? _positional[index] : throw new ArgumentException("Missing <" + name + "> argument. Run 'fluentregex --help'.");
+
+        public string? Option(string name) => _options.TryGetValue(name, out string? value) ? value : null;
+
+        public bool Flag(string name) => _options.ContainsKey(name);
+    }
+}

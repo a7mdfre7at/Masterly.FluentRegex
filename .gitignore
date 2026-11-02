@@ -362,3 +362,9 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 /CLAUDE.md
+
+# crew plugin — per-developer state
+.claude/state/
+.claude/worktrees/
+docs/runs/runs.jsonl
+docs/runs/.pending/

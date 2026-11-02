@@ -20,7 +20,7 @@ namespace Masterly.FluentRegex
     /// var urlPattern = Pattern.With.RegEx(CommonPatterns.Url().ToString().Trim('^', '$'));
     /// var matches = urlPattern.Matches(text);
     /// </example>
-    public static class CommonPatterns
+    public static partial class CommonPatterns
     {
         /// <summary>
         /// Matches a basic email address format.
@@ -69,7 +69,7 @@ namespace Masterly.FluentRegex
             .Literal("http")
             .Literal("s").Repeat.Optional
             .Literal("://")
-            .Set(Pattern.With.Letter.Digit.Literal(".-")).Repeat.OneOrMore
+            .Set(Pattern.With.Letter.Digit.Literal("-")).Repeat.OneOrMore  // first host label (no dots, so it cannot compete with the labels below)
             .NonCapturingGroup(
                 Pattern.With.Literal(".")
                 .Set(Pattern.With.Letter.Digit.Literal("-")).Repeat.OneOrMore
@@ -130,8 +130,8 @@ namespace Masterly.FluentRegex
         {
             // Matches 0-255
             var octet = Pattern.With.Choice(
-                Pattern.With.Literal("25").Set(Pattern.With.Literal("0-5")),                    // 250-255
-                Pattern.With.Literal("2").Set(Pattern.With.Literal("0-4")).Digit,               // 200-249
+                Pattern.With.Literal("25").Set(Pattern.With.Range('0', '5')),                    // 250-255
+                Pattern.With.Literal("2").Set(Pattern.With.Range('0', '4')).Digit,               // 200-249
                 Pattern.With.Set(Pattern.With.Literal("01")).Repeat.Optional.Digit.Digit.Repeat.Optional  // 0-199
             );
 
@@ -158,7 +158,7 @@ namespace Masterly.FluentRegex
         /// </example>
         public static Pattern IPv6()
         {
-            var hexGroup = Pattern.With.Set(Pattern.With.Digit.Literal("a-fA-F")).Repeat.Times(1, 4);
+            var hexGroup = Pattern.With.Set(Pattern.With.Digit.Range('a', 'f').Range('A', 'F')).Repeat.Times(1, 4);
 
             return Pattern.With
                 .StartOfLine
@@ -183,7 +183,7 @@ namespace Masterly.FluentRegex
         /// </example>
         public static Pattern Guid()
         {
-            var hex = Pattern.With.Digit.Literal("a-fA-F");
+            var hex = Pattern.With.Digit.Range('a', 'f').Range('A', 'F');
 
             return Pattern.With
                 .StartOfLine
@@ -220,7 +220,7 @@ namespace Masterly.FluentRegex
         /// </example>
         public static Pattern HexColor()
         {
-            var hex = Pattern.With.Digit.Literal("a-fA-F");
+            var hex = Pattern.With.Digit.Range('a', 'f').Range('A', 'F');
 
             return Pattern.With
                 .StartOfLine
@@ -251,9 +251,9 @@ namespace Masterly.FluentRegex
             .StartOfLine
             .Digit.Repeat.Times(4)  // Year
             .Literal("-")
-            .Set(Pattern.With.Literal("0-1")).Digit  // Month
+            .Set(Pattern.With.Range('0', '1')).Digit  // Month
             .Literal("-")
-            .Set(Pattern.With.Literal("0-3")).Digit  // Day
+            .Set(Pattern.With.Range('0', '3')).Digit  // Day
             .EndOfLine;
 
         /// <summary>
@@ -302,13 +302,13 @@ namespace Masterly.FluentRegex
             .StartOfLine
             .Choice(
                 Pattern.With.Set(Pattern.With.Literal("01")).Digit,  // 00-19
-                Pattern.With.Literal("2").Set(Pattern.With.Literal("0-3"))  // 20-23
+                Pattern.With.Literal("2").Set(Pattern.With.Range('0', '3'))  // 20-23
             )
             .Literal(":")
-            .Set(Pattern.With.Literal("0-5")).Digit  // Minutes 00-59
+            .Set(Pattern.With.Range('0', '5')).Digit  // Minutes 00-59
             .NonCapturingGroup(
                 Pattern.With.Literal(":")
-                .Set(Pattern.With.Literal("0-5")).Digit  // Seconds 00-59
+                .Set(Pattern.With.Range('0', '5')).Digit  // Seconds 00-59
             ).Repeat.Optional
             .EndOfLine;
 
@@ -330,12 +330,12 @@ namespace Masterly.FluentRegex
         /// </example>
         public static Pattern Time12() => Pattern.With
             .StartOfLine
-            .Set(Pattern.With.Literal("0-1")).Repeat.Optional.Digit  // Hours 1-12
+            .Set(Pattern.With.Range('0', '1')).Repeat.Optional.Digit  // Hours 1-12
             .Literal(":")
-            .Set(Pattern.With.Literal("0-5")).Digit  // Minutes 00-59
+            .Set(Pattern.With.Range('0', '5')).Digit  // Minutes 00-59
             .NonCapturingGroup(
                 Pattern.With.Literal(":")
-                .Set(Pattern.With.Literal("0-5")).Digit  // Seconds 00-59
+                .Set(Pattern.With.Range('0', '5')).Digit  // Seconds 00-59
             ).Repeat.Optional
             .Whitespace.Repeat.Optional
             .Choice(
@@ -450,7 +450,7 @@ namespace Masterly.FluentRegex
         /// <example>
         /// CommonPatterns.StrongPassword().IsMatch("Password1!");  // true
         /// CommonPatterns.StrongPassword().IsMatch("weakpass");    // false
-        /// CommonPatterns.StrongPassword().IsMatch("Short1!");     // false (< 8 chars)
+        /// CommonPatterns.StrongPassword().IsMatch("Short1!");     // false (fewer than 8 chars)
         /// </example>
         public static Pattern StrongPassword() => Pattern.With
             .StartOfLine

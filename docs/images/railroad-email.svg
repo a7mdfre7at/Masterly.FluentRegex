@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1062.4" height="108" viewBox="0 0 1062.4 108">
+<title>^[a-zA-Z\d\._\-]+@[a-zA-Z\d\.\-]+\.[a-zA-Z]{2,}$</title>
+<style>
+  .track { fill: none; stroke: #4b5563; stroke-width: 2; }
+  .literal rect { fill: #e8f1fd; stroke: #3b6fc4; stroke-width: 1.5; }
+  .charclass rect { fill: #fdf1e3; stroke: #c4802b; stroke-width: 1.5; }
+  .anchor rect { fill: #f1f1f1; stroke: #888888; stroke-width: 1.5; }
+  .group > rect { fill: none; stroke: #7c8796; stroke-width: 1; stroke-dasharray: 4 3; }
+  text { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #1f2937; }
+  .label { font-size: 11px; fill: #4b5563; }
+  .marker { fill: #4b5563; }
+</style>
+<circle class="marker" cx="25" cy="32" r="5"/>
+<path class="track" d="M25 32 h15"/>
+<g class="anchor"><rect x="40" y="20" width="123.6" height="24" rx="3" ry="3"/><text x="101.8" y="36" text-anchor="middle">start of input</text></g>
+<path class="track" d="M163.6 32 h12"/>
+<path class="track" d="M175.6 32 H185.6"/>
+<g class="charclass"><rect x="185.6" y="20" width="205" height="24" rx="3" ry="3"/><text x="288.1" y="36" text-anchor="middle">one of [a-z A-Z \d . _ -]</text></g>
+<path class="track" d="M390.6 32 H400.6"/>
+<path class="track" d="M390.6 32 a10 10 0 0 1 10 10 V54 a10 10 0 0 1 -10 10 H185.6 a10 10 0 0 1 -10 -10 V42 a10 10 0 0 1 10 -10"/>
+<path class="track" d="M400.6 32 h12"/>
+<g class="literal"><rect x="412.6" y="20" width="42.2" height="24" rx="10" ry="10"/><text x="433.7" y="36" text-anchor="middle">&quot;@&quot;</text></g>
+<path class="track" d="M454.8 32 h12"/>
+<path class="track" d="M466.8 32 H476.8"/>
+<g class="charclass"><rect x="476.8" y="20" width="190.2" height="24" rx="3" ry="3"/><text x="571.9" y="36" text-anchor="middle">one of [a-z A-Z \d . -]</text></g>
+<path class="track" d="M667 32 H677"/>
+<path class="track" d="M667 32 a10 10 0 0 1 10 10 V54 a10 10 0 0 1 -10 10 H476.8 a10 10 0 0 1 -10 -10 V42 a10 10 0 0 1 10 -10"/>
+<path class="track" d="M677 32 h12"/>
+<g class="literal"><rect x="689" y="20" width="42.2" height="24" rx="10" ry="10"/><text x="710.1" y="36" text-anchor="middle">&quot;.&quot;</text></g>
+<path class="track" d="M731.2 32 h12"/>
+<path class="track" d="M743.2 32 H753.2"/>
+<g class="charclass"><rect x="753.2" y="20" width="138.4" height="24" rx="3" ry="3"/><text x="822.4" y="36" text-anchor="middle">one of [a-z A-Z]</text></g>
+<path class="track" d="M891.6 32 H901.6"/>
+<path class="track" d="M891.6 32 a10 10 0 0 1 10 10 V54 a10 10 0 0 1 -10 10 H753.2 a10 10 0 0 1 -10 -10 V42 a10 10 0 0 1 10 -10"/>
+<text class="label" x="822.4" y="78" text-anchor="middle">at least 2</text>
+<path class="track" d="M901.6 32 h12"/>
+<g class="anchor"><rect x="913.6" y="20" width="108.8" height="24" rx="3" ry="3"/><text x="968" y="36" text-anchor="middle">end of input</text></g>
+<path class="track" d="M1022.4 32 h15"/>
+<circle class="marker" cx="1037.4" cy="32" r="5"/>
+</svg>

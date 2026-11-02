@@ -14,6 +14,7 @@ If you like or are using this project please give it a star. Thanks!
 
 - [Introduction](#introduction)
 - [Why FluentRegex?](#why-fluentregex)
+- [What's New in 3.0](#whats-new-in-30)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Core Concepts](#core-concepts)
@@ -27,12 +28,15 @@ If you like or are using this project please give it a star. Thanks!
   - [Raw Regex](#raw-regex)
 - [Character Classes](#character-classes)
   - [Character Sets](#character-sets)
+  - [Ranges, Character Lists and Unicode](#ranges-character-lists-and-unicode)
   - [Negated Sets](#negated-sets)
   - [Alternation (OR)](#alternation-or)
+  - [Inline Options](#inline-options)
 - [Quantifiers (Repeat)](#quantifiers-repeat)
   - [Basic Quantifiers](#basic-quantifiers)
   - [Bounded Quantifiers](#bounded-quantifiers)
   - [Lazy (Non-Greedy) Matching](#lazy-non-greedy-matching)
+  - [Possessive Matching](#possessive-matching)
 - [Groups](#groups)
   - [Capturing Groups](#capturing-groups)
   - [Named Groups](#named-groups)
@@ -53,6 +57,8 @@ If you like or are using this project please give it a star. Thanks!
   - [Replace Operations](#replace-operations)
   - [Split Operations](#split-operations)
   - [Regex Options](#regex-options)
+  - [Timeouts and the Non-Backtracking Engine](#timeouts-and-the-non-backtracking-engine)
+  - [Modern .NET APIs](#modern-net-apis)
 - [Common Patterns Library](#common-patterns-library)
   - [Contact Information](#contact-information)
   - [Network and System](#network-and-system)
@@ -61,10 +67,23 @@ If you like or are using this project please give it a star. Thanks!
   - [User Input](#user-input)
   - [Numbers](#numbers)
   - [Markup](#markup)
+  - [More Patterns in 3.0](#more-patterns-in-30)
 - [Validation and Debugging](#validation-and-debugging)
   - [Pattern Validation](#pattern-validation)
   - [Group Information](#group-information)
   - [Pattern Explanation](#pattern-explanation)
+- [Typed Extraction](#typed-extraction)
+- [Fluent Replacements](#fluent-replacements)
+- [Regex to Fluent Code](#regex-to-fluent-code)
+- [Test Data Generation](#test-data-generation)
+- [ReDoS Safety Analysis](#redos-safety-analysis)
+- [Match Tracing](#match-tracing)
+- [Diagrams](#diagrams)
+- [Compile-Time Checks](#compile-time-checks)
+  - [Source Generator](#source-generator-generatepattern)
+  - [Analyzers](#analyzers)
+  - [Code Fix](#code-fix-use-generatedregex)
+- [Command-Line Tool](#command-line-tool)
 - [Complete Examples](#complete-examples)
   - [Email Validation](#email-validation)
   - [Phone Number Parser](#phone-number-parser)
@@ -81,6 +100,7 @@ If you like or are using this project please give it a star. Thanks!
 - [Best Practices](#best-practices)
 - [Performance Considerations](#performance-considerations)
 - [Migration Guide](#migration-guide)
+  - [Migrating from 2.x to 3.0](#migrating-from-2x-to-30)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -144,6 +164,26 @@ Pattern password = Pattern.With
 
 ---
 
+## What's New in 3.0
+
+FluentRegex 3.0 goes beyond building patterns. It helps you understand, test, secure and ship them.
+
+| Feature | One line |
+|---------|----------|
+| [Typed extraction](#typed-extraction) | `pattern.Extract<LogEntry>(line)` binds named groups straight onto records |
+| [Regex to fluent code](#regex-to-fluent-code) | `Pattern.FromRegex(legacy).ToFluentCode()` turns cryptic regexes into readable C# |
+| [Test data generation](#test-data-generation) | `GenerateMatching()` and `GenerateNonMatching()` produce verified samples and near misses |
+| [ReDoS safety analysis](#redos-safety-analysis) | `AnalyzeSafety(confirm: true)` finds catastrophic backtracking and proves it with a timed attack |
+| [Match tracing](#match-tracing) | `Trace(input)` shows which construct matched which text, or exactly where matching failed |
+| [Diagrams](#diagrams) | `ToRailroadSvg()` and `ToMermaid()` for docs and pull requests |
+| [Compile-time checks](#compile-time-checks) | A source generator and analyzers catch invalid patterns, ReDoS and group typos while you type |
+| [Command-line tool](#command-line-tool) | `fluentregex scan src` finds risky regexes across a codebase and fails CI on them |
+| [Fluent replacements](#fluent-replacements) | `Replace(input, r => r.Group("day").Literal("/").Group("month"))` with validated group names |
+| [Immutable patterns](#migrating-from-2x-to-30) | Every call returns a new pattern, so building blocks are safe to share |
+| [Modern .NET](#modern-net-apis) | Span APIs, `Count`, timeouts, the non-backtracking engine, and Native AOT support |
+
+---
+
 ## Installation
 
 ### Package Manager Console
@@ -158,16 +198,23 @@ dotnet add package Masterly.FluentRegex
 
 ### PackageReference
 ```xml
-<PackageReference Include="Masterly.FluentRegex" Version="2.0.0" />
+<PackageReference Include="Masterly.FluentRegex" Version="3.0.0" />
+```
+
+The package includes the source generator and analyzers. No extra install is needed for compile-time checks.
+
+### Command-Line Tool (optional)
+```bash
+dotnet tool install --global Masterly.FluentRegex.Tool
 ```
 
 ### Supported Frameworks
-- .NET Standard 2.1+
-- .NET Core 3.0+
-- .NET 5.0+
-- .NET 6.0+
-- .NET 7.0+
-- .NET 8.0+
+
+| Target | What you get |
+|--------|--------------|
+| .NET 9 | Everything, including `EnumerateSplits` |
+| .NET 8 | Everything except `EnumerateSplits`; trimming and Native AOT compatible |
+| .NET Standard 2.1 (.NET Core 3.0+, .NET 5-7, Mono, Unity) | The full builder, analysis, generation, tracing and diagrams; no span APIs |
 
 ---
 
@@ -370,9 +417,10 @@ Match one character from a set:
 Pattern vowels = Pattern.With.Set(Pattern.With.Literal("aeiouAEIOU"));
 // Result: [aeiouAEIOU]
 
-// Match hex digit
-Pattern hex = Pattern.With.Set(Pattern.With.Digit.Literal("a-fA-F"));
+// Match hex digit (ranges use Range; Literal is always literal, even inside a set)
+Pattern hex = Pattern.With.Set(Pattern.With.Digit.Range('a', 'f').Range('A', 'F'));
 // Result: [\da-fA-F]
+// Shortcut: Pattern.With.HexDigit renders [0-9a-fA-F]
 
 // Match alphanumeric
 Pattern alphanumeric = Pattern.With.Set(Pattern.With.Letter.Digit);
@@ -384,6 +432,22 @@ Pattern identifier = Pattern.With
     .Set(Pattern.With.Letter.Digit.Literal("_")).Repeat.ZeroOrMore;
 // Result: [a-zA-Z_][a-zA-Z\d_]*
 ```
+
+### Ranges, Character Lists and Unicode
+
+```csharp
+Pattern.With.Range('a', 'f');                      // [a-f]  (a-f inside a Set)
+Pattern.With.AnyOf("+-*/");                        // [\+\-\*/]  every character literal
+Pattern.With.NoneOf("\"'");                        // [^"']
+Pattern.With.Letter;                               // [a-zA-Z]  (a-zA-Z inside a Set)
+Pattern.With.Unicode(UnicodeGroup.Letter);         // \p{L}   any letter in any script
+Pattern.With.Unicode(UnicodeCategory.UppercaseLetter); // \p{Lu}
+Pattern.With.NotUnicode(UnicodeGroup.Number);      // \P{N}
+Pattern.With.UnicodeBlock("Greek");                // \p{IsGreek}
+```
+
+`Literal` escapes every special character in context. Inside a `Set` that includes `-`, so
+`Set(Literal("a-z"))` matches the three characters `a`, `-` and `z`. Use `Range('a', 'z')` for a range.
 
 ### Negated Sets
 
@@ -400,7 +464,7 @@ Pattern consonants = Pattern.With.NegatedSet(Pattern.With.Literal("aeiouAEIOU"))
 
 // Match non-whitespace, non-punctuation
 Pattern simple = Pattern.With.NegatedSet(Pattern.With.Whitespace.Literal(".,!?"));
-// Result: [^\s.,!?]
+// Result: [^\s\.,!\?]
 ```
 
 ### Alternation (OR)
@@ -437,6 +501,29 @@ Pattern dateSeparator = Pattern.With.Choice(
 // Result: (-|/|\.)
 ```
 
+`Choice` creates a numbered capturing group. When you only need alternation, use `OneOf` or the
+`|` operator, which create a non-capturing group and leave group numbers untouched:
+
+```csharp
+Pattern.With.OneOf(Pattern.With.Literal("cat"), Pattern.With.Literal("dog"));  // (?:cat|dog)
+Pattern.With.OneOf("jpg", "png", "gif");                                        // (?:jpg|png|gif)
+
+Pattern animal = Pattern.With.Literal("cat") | Pattern.With.Literal("dog") | Pattern.With.Literal("bird");
+// Result: (?:cat|dog|bird)   chains flatten into one group
+
+Pattern area = Pattern.With.Digit.Repeat.Times(3);
+Pattern phone = area + Pattern.With.Literal("-") + area;
+// Result: \d{3}-\d{3}   + concatenates patterns
+```
+
+### Inline Options
+
+```csharp
+Pattern.With.Literal("id:").IgnoreCase(Pattern.With.Literal("abc"));    // id:(?i:abc)
+Pattern.With.CaseSensitive(Pattern.With.Literal("X"));                   // (?-i:X)
+Pattern.With.InlineOptions(RegexOptions.Singleline, Pattern.With.Anything.Repeat.ZeroOrMore); // (?s:.*)
+```
+
 ---
 
 ## Quantifiers (Repeat)
@@ -470,7 +557,7 @@ Pattern flexibleSpaces = Pattern.With.Whitespace.Repeat.ZeroOrMore;
 | `.Repeat.Times(n)` | `{n}` | Exactly n times |
 | `.Repeat.Times(min, max)` | `{min,max}` | Between min and max times |
 | `.Repeat.AtLeast(n)` | `{n,}` | At least n times |
-| `.Repeat.AtMost(n)` | `{,n}` | At most n times |
+| `.Repeat.AtMost(n)` | `{0,n}` | At most n times |
 
 ```csharp
 // Phone number: exactly 10 digits
@@ -517,6 +604,17 @@ Pattern lazyZeroOrMore = Pattern.With.Anything.Repeat.ZeroOrMore.Lazy;
 // Lazy with quantifiers
 Pattern lazyBounded = Pattern.With.Digit.Repeat.Times(1, 5).Lazy;
 // Result: \d{1,5}?
+```
+
+### Possessive Matching
+
+`.Possessive` makes a quantifier keep everything it matched and never backtrack into it.
+It is the simplest cure for catastrophic backtracking. .NET has no possessive syntax, so the
+exact equivalent atomic group is emitted:
+
+```csharp
+Pattern possessive = Pattern.With.Digit.Repeat.OneOrMore.Possessive;
+// Result: (?>\d+)
 ```
 
 ---
@@ -929,6 +1027,44 @@ Regex regex = pattern.ToRegex(
 // - CultureInvariant: Ignore cultural differences
 ```
 
+`WithOptions` returns a new pattern; the original is unchanged. Options carry through the rest of the chain.
+
+### Timeouts and the Non-Backtracking Engine
+
+Untrusted input deserves a time budget. Both settings travel with the pattern into every
+matching method, `ToRegex()`, and the code the source generator emits.
+
+```csharp
+Pattern guarded = CommonPatterns.Email().WithTimeout(TimeSpan.FromMilliseconds(100));
+guarded.IsMatch(userInput); // throws RegexMatchTimeoutException instead of hanging
+
+// .NET 8+: linear-time matching that is immune to ReDoS.
+// It does not support backreferences, lookarounds, atomic groups or conditionals.
+Pattern linear = Pattern.With.Word.Repeat.OneOrMore.UseNonBacktracking();
+```
+
+### Modern .NET APIs
+
+On .NET 8 and later, patterns expose the allocation-free APIs of `Regex`:
+
+```csharp
+Pattern number = Pattern.With.Digit.Repeat.OneOrMore;
+ReadOnlySpan<char> text = "order 17, order 204".AsSpan();
+
+number.IsMatch(text);   // true, no allocation
+number.Count(text);     // 2  (Count(string) works on every target)
+
+foreach (ValueMatch m in number.EnumerateMatches(text))
+    Console.WriteLine(text.Slice(m.Index, m.Length).ToString());
+
+// .NET 9+
+foreach (Range part in Pattern.With.Literal(",").EnumerateSplits("a,b,c"))
+    Console.WriteLine(part);
+```
+
+The .NET 8 and .NET 9 builds are annotated for trimming and Native AOT. The `RegEx` and
+`FromRegex` parameters are marked as regex syntax, so the IDE colorizes and validates them.
+
 ---
 
 ## Common Patterns Library
@@ -1068,6 +1204,34 @@ CommonPatterns.HtmlTag().IsMatch("</div>");                       // true
 CommonPatterns.HtmlTag().IsMatch("<img src=\"image.png\" />");    // true
 ```
 
+### More Patterns in 3.0
+
+| Method | Matches | Named groups |
+|--------|---------|--------------|
+| `Email(PatternStrictness)` | Loose, standard or RFC 5322 strict email addresses | strict: `local`, `domain` |
+| `Url(PatternStrictness)` | Any scheme (loose) up to strict http(s) with host, port, path, query and fragment | strict: `scheme`, `host`, `port`, `path`, `query`, `fragment` |
+| `PhoneNumberE164()` | International numbers such as `+14155552671` | `number` |
+| `Iban()` | IBAN shape, compact or in groups of four | `country`, `check` |
+| `SemVer()` | Semantic Versioning 2.0.0 (official grammar) | `major`, `minor`, `patch`, `prerelease`, `buildmetadata` |
+| `Jwt()` | JSON Web Tokens in compact form | `header`, `payload`, `signature` |
+| `MacAddress()` | `00:1A:2B:3C:4D:5E` with one consistent separator | `sep` |
+| `Base64()` | Non-empty, correctly padded Base64 | |
+| `Slug()` | URL slugs such as `hello-world-2024` | |
+| `DateTimeIso()` | ISO 8601 date-times with optional seconds, fraction and offset | `year`, `month`, `day`, `hour`, `minute`, `second`, `fraction`, `offset` |
+| `MarkdownLink()` | Inline Markdown links (unanchored, skips images) | `text`, `url`, `title` |
+
+```csharp
+CommonPatterns.Email(PatternStrictness.Strict).IsMatch("a..b@example.com");   // false
+CommonPatterns.MacAddress().IsMatch("00:1A-2B:3C:4D:5E");                     // false (mixed separators)
+
+record SemanticVersion(int Major, int Minor, int Patch, string? Prerelease, string? BuildMetadata);
+var version = CommonPatterns.SemVer().Extract<SemanticVersion>("3.0.0-rc.2+build.77");
+```
+
+Every common pattern passes the ReDoS analyzer, and the test suite generates and verifies
+samples for each one. The `Url()` host in 3.0 no longer allows dots in its first label. In 2.x
+that let a hostile input trigger polynomial backtracking.
+
 ---
 
 ## Validation and Debugging
@@ -1136,6 +1300,363 @@ Explanation:
   - Word character [a-zA-Z0-9_]
   - Zero or more (lazy)
   - End of line/string
+```
+
+---
+
+## Typed Extraction
+
+Bind named groups directly onto records and classes, with type conversion.
+
+```csharp
+public enum Level { Debug, Info, Warn, Error }
+public record LogEntry(DateTime Timestamp, Level Level, string Message);
+
+Pattern logLine = Pattern.With
+    .StartOfLine
+    .NamedGroup("timestamp", Pattern.With.NonWhitespace.Repeat.OneOrMore)
+    .Whitespace.Repeat.OneOrMore
+    .NamedGroup("level", Pattern.With.UppercaseLetter.Repeat.OneOrMore)
+    .Whitespace.Repeat.OneOrMore
+    .NamedGroup("message", Pattern.With.Anything.Repeat.OneOrMore)
+    .EndOfLine
+    .WithOptions(RegexOptions.Multiline);
+
+LogEntry entry = logLine.Extract<LogEntry>("2024-05-17T10:30:00 ERROR Disk full");
+
+if (logLine.TryExtract("garbage", out LogEntry? maybe)) { /* ... */ }
+
+foreach (LogEntry e in logLine.ExtractAll<LogEntry>(File.ReadAllText("app.log")))
+    Console.WriteLine($"{e.Timestamp:t} {e.Level} {e.Message}");
+```
+
+| Rule | Behavior |
+|------|----------|
+| Binding | Groups bind case-insensitively to the parameters of the public constructor with the most parameters, then to settable properties |
+| Renaming | `[RegexGroup("y")]` on a parameter or property binds it to group `y` |
+| Missing values | A group that did not participate gives the parameter's default value, or `null` for nullable types |
+| Types | Strings, all numeric types, `bool` (`true/yes/on/1`), enums, `DateTime`, `DateTimeOffset`, `TimeSpan`, `DateOnly`, `TimeOnly`, `Guid`, `Uri`, `Version`, and their nullable forms |
+| Custom types | `ExtractionConverters.Register<Money>(s => Money.Parse(s))` |
+| Culture | Invariant by default; pass an `IFormatProvider` to `Extract` for culture-specific numbers and dates |
+| Errors | No match or a bad value throws `FormatException` naming the group; a required parameter without a group throws `InvalidOperationException` listing the available groups |
+
+The analyzer checks `Extract<T>` at compile time too, so a misspelled group name is a build warning
+([FRX008](#compile-time-checks)).
+
+---
+
+## Fluent Replacements
+
+Replacement strings such as `"${day}/${month}/$1"` fail silently when a group name is mistyped.
+The fluent builder validates every group against the pattern before replacing anything.
+
+```csharp
+Pattern isoDate = Pattern.With
+    .NamedGroup("year", Pattern.With.Digit.Repeat.Times(4)).Literal("-")
+    .NamedGroup("month", Pattern.With.Digit.Repeat.Times(2)).Literal("-")
+    .NamedGroup("day", Pattern.With.Digit.Repeat.Times(2));
+
+isoDate.Replace("Due 2024-05-17", r => r.Group("day").Literal("/").Group("month").Literal("/").Group("year"));
+// "Due 17/05/2024"
+
+// Transform a group's text
+isoDate.Replace("2024-05-17", r => r.Group("month", m => MonthName(m)).Literal(" ").Group("year"));
+// "May 2024"
+
+isoDate.Replace("2024-05-17", r => r.Group("yaer"));
+// ArgumentException: Group 'yaer' does not exist in the pattern ... Available groups: 0, year, month, day.
+```
+
+| Builder method | Inserts |
+|----------------|---------|
+| `Group(name)`, `Group(number)` | The captured text, optionally transformed: `Group("x", s => s.ToUpper())` |
+| `Literal(text)` | Literal text; `$` is escaped automatically |
+| `WholeMatch()` | The entire match (`$&`), optionally transformed |
+| `BeforeMatch()`, `AfterMatch()` | The input before (`` $` ``) or after (`$'`) the match |
+| `LastGroup()`, `EntireInput()` | `$+` and `$_` |
+| `Computed(match => ...)` | Any text computed from the `Match` |
+
+---
+
+## Regex to Fluent Code
+
+Every team has regexes nobody dares to touch. Turn them into readable, editable fluent code:
+
+```csharp
+string code = Pattern.FromRegex(@"^(?<user>[\w.]+)@(?<host>[\w-]+\.\w{2,})$").ToFluentCode();
+```
+
+```csharp
+Pattern.With
+    .StartOfLine
+    .NamedGroup("user", Pattern.With.Set(Pattern.With.Word.Literal(".")).Repeat.OneOrMore)
+    .Literal("@")
+    .NamedGroup(
+        "host",
+        Pattern.With
+            .Set(Pattern.With.Word.Literal("-")).Repeat.OneOrMore
+            .Literal(".")
+            .Word.Repeat.AtLeast(2))
+    .EndOfLine
+```
+
+- `FromRegex` validates the expression and returns a pattern you can chain, analyze, trace or visualize.
+- The converter uses friendly members where they exist: `Letter`, `HexDigit`, `Range`, `AnyOf`, `NoneOf`, `OneOf`, `Choice`, `Unicode`, lookarounds, inline options and lazy quantifiers.
+- Constructs with no fluent equivalent, such as balancing groups and class subtraction, are kept with `RegEx(...)`.
+- Options and timeouts are included as `.WithOptions(...)` and `.WithTimeout(...)`.
+
+The test suite compiles the generated code for a corpus of real-world patterns with Roslyn, runs
+it, and checks that it matches exactly the same strings as the original. The
+[command-line tool](#command-line-tool) converts every regex literal in a file or folder in one go.
+
+---
+
+## Test Data Generation
+
+Every pattern can produce its own test cases. All samples are verified against the real .NET
+engine, so lookarounds, backreferences and options are always honored.
+
+```csharp
+CommonPatterns.IPv4().GenerateMatching(5, seed: 42);
+// 127.253.251.243  254.11.253.8  250.70.207.202  250.235.240.250  6.225.247.255
+
+CommonPatterns.IPv4().GenerateNonMatching(5, seed: 42);
+// 25411.253.8  255.05Z5.229.241  x255.055.229.241  #6.225.247.255  250
+```
+
+Non-matching samples are mostly near misses: valid samples with one character inserted, removed,
+replaced, duplicated or swapped. They are exactly the inputs that expose off-by-one mistakes.
+Repetition counts favor their boundaries, so `{2,5}` produces 2- and 5-character runs often.
+
+Use them for property-style tests:
+
+```csharp
+[Fact]
+public void Validator_AgreesWithPattern()
+{
+    foreach (string sample in CommonPatterns.Email().GenerateMatching(100, seed: 1))
+        MyValidator.IsValidEmail(sample).ShouldBeTrue(sample);
+
+    foreach (string sample in CommonPatterns.Email().GenerateNonMatching(100, seed: 1))
+        MyValidator.IsValidEmail(sample).ShouldBeFalse(sample);
+}
+```
+
+A `seed` makes the output reproducible. Fewer samples are returned when the pattern has fewer
+distinct matches, for example `OneOf("yes", "no")`.
+
+---
+
+## ReDoS Safety Analysis
+
+A regex that backtracks catastrophically can freeze a server with a 30-character input.
+`AnalyzeSafety()` finds the three structures behind almost every real-world ReDoS:
+
+| Issue | Example | Risk |
+|-------|---------|------|
+| Nested quantifier | `(a+)+`, `(\w+\s?)*`, `(x+x+)+` | High: exponential |
+| Ambiguous alternation in a repetition | `(a\|aa)+`, `(ab\|a\|b)*` | High: exponential |
+| Adjacent overlapping repetitions | `\d+\d+`, `\s*.*\s*` | Medium: polynomial |
+
+```csharp
+SafetyReport report = Pattern.FromRegex(@"^([a-zA-Z0-9]+[._-]?)*@example\.com$").AnalyzeSafety(confirm: true);
+Console.WriteLine(report);
+```
+
+```
+Pattern: ^([a-zA-Z0-9]+[._-]?)*@example\.com$
+Risk:    High
+
+  [High] NestedQuantifier at position 1: ([a-zA-Z0-9]+[._-]?)*
+    The repetition '[a-zA-Z0-9]+' is nested inside the repetition '*'. The same text can be split
+    between iterations in exponentially many ways, so a failing match backtracks through all of them.
+    Fix: Make the inner repetition possessive (.Possessive), wrap it in AtomicGroup(...), or remove
+    one of the quantifiers. For untrusted input also use WithTimeout(...) or UseNonBacktracking().
+    Attack input (33 chars): 00000000000000000000000000000000!
+    CONFIRMED: matching did not finish within 248 ms.
+```
+
+- Each issue carries its position, the offending fragment, an explanation, a fix and a crafted `AttackInput`.
+- With `confirm: true` the attack input runs under a short timeout, so `Confirmed == true` is proof, not a guess.
+- Atomic groups and possessive quantifiers are understood. Fixed counts such as `(?:\w{4})*` are correctly treated as safe.
+- Overlapping single-character alternatives such as `(\w|\d)+` are reported as Low. .NET merges them into one set, so they are redundant rather than dangerous.
+
+The same analysis runs at compile time ([FRX004 and FRX005](#compile-time-checks)) and in CI
+(`fluentregex scan`).
+
+---
+
+## Match Tracing
+
+When a regex doesn't match, `Trace` shows you why.
+
+```csharp
+Console.WriteLine(datePattern.Trace("2024-5-17"));
+```
+
+```
+Pattern: ^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})$
+Input:   "2024-5-17"
+Result:  NO MATCH
+
+Matched before the failure:
+  [0..0)    ^                                ""               start of input
+  [0..4)    (?<year>\d{4})                   "2024"           group 'year'
+    [0..4)    \d{4}                          "2024"           a digit, exactly 4 times
+  [4..5)    -                                "-"              the character '-'
+
+Failed at position 5: expected \d{2} (a digit, exactly 2 times)
+Found:   "5-17"
+
+  2024-5-17
+       ^
+```
+
+For a successful match, `Trace` lists every construct with the exact span and text it consumed,
+including one entry per iteration of a repeated group. The spans come from the .NET engine
+itself: the pattern is instrumented with hidden named groups, so they are always exact. The result
+is also available as data through `MatchTrace.Steps` and `MatchTrace.Failure`.
+
+---
+
+## Diagrams
+
+```csharp
+File.WriteAllText("email.svg", CommonPatterns.Email().ToRailroadSvg());   // railroad diagram
+string mermaid = isoDate.ToMermaid();                                      // Mermaid flowchart
+```
+
+![Railroad diagram of an email pattern](docs/images/railroad-email.svg)
+
+`ToRailroadSvg()` produces a self-contained SVG with literals, character classes, anchors, labelled
+groups, alternatives, optional paths and loops with their counts. `ToMermaid()` produces a
+flowchart that GitHub, GitLab and Azure DevOps render natively in a ` ```mermaid ` block:
+
+```mermaid
+flowchart LR
+    start([start])
+    subgraph g0["group 'year'"]
+        direction LR
+        n1["digit · 4 times"]
+        start --> n1
+    end
+    n2["#quot;-#quot;"]
+    n1 --> n2
+    subgraph g3["group 'month'"]
+        direction LR
+        n4["digit · 2 times"]
+        n2 --> n4
+    end
+    finish([match])
+    n4 --> finish
+```
+
+---
+
+## Compile-Time Checks
+
+The NuGet package includes a source generator, analyzers and a code fix. They evaluate fluent
+chains inside the compiler by running the library's own builder code, so the results are exact.
+
+### Source Generator: `[GeneratePattern]`
+
+```csharp
+public static partial class Validators
+{
+    [GeneratePattern]
+    public static Pattern ProductCode => Pattern.With.StartOfLine
+        .UppercaseLetter.Repeat.Times(3).Literal("-").Digit.Repeat.Times(4).EndOfLine;
+}
+
+// Generated at build time:
+//   public const string ProductCodeSource = @"^[A-Z]{3}-\d{4}$";
+//   public static Regex ProductCodeRegex() => cached, compiled Regex with the pattern's options and timeout
+
+Validators.ProductCodeRegex().IsMatch("ABC-1234");   // true
+```
+
+The chain may use constants, other static patterns (fields, properties or parameterless methods),
+`CommonPatterns`, the `+` and `|` operators, `WithOptions`, `WithTimeout` and `TimeSpan` factories.
+The containing types must be `partial` and the member must be `static`. Use an expression-bodied
+property so the fluent chain never runs at runtime.
+
+### Analyzers
+
+| ID | Severity | Reports |
+|----|----------|---------|
+| FRX001 | Warning | A `[GeneratePattern]` chain uses a value that is not a compile-time constant |
+| FRX002 | Error | A type containing `[GeneratePattern]` is not partial |
+| FRX003 | Error | The pattern produces an invalid regular expression, such as a backreference to a missing group |
+| FRX004 | Warning | Exponential backtracking (ReDoS) risk |
+| FRX005 | Info | Polynomial backtracking risk |
+| FRX006 | Error | Building the pattern throws, for example `.Lazy` without a quantifier or `Times(5, 2)` |
+| FRX007 | Info | A constant pattern can be backed by .NET's `[GeneratedRegex]` (code fix available) |
+| FRX008 | Warning | An `Extract<T>` target member has no matching named group |
+| FRX009 | Error | A `[GeneratePattern]` member is not static |
+
+Every analyzer evaluates any compile-time-constant chain anywhere in your code, not only
+`[GeneratePattern]` members. Patterns built from runtime values are skipped.
+
+```csharp
+record Size(int Width, int Height);
+
+Size s = Pattern.With.NamedGroup("width", digits).Literal("x").NamedGroup("heigth", digits).Extract<Size>(input);
+//                                                                                          ~~~~~~~
+// warning FRX008: 'Size.Height' has no matching group 'Height' in the pattern, so it will never be set.
+//                 Available groups: 0, width, heigth.
+```
+
+### Code Fix: Use `[GeneratedRegex]`
+
+On .NET 7 and later, the FRX007 light bulb adds a `[GeneratedRegex]` method next to a constant pattern:
+
+```csharp
+static readonly Pattern Number = Pattern.With.StartOfLine.Digit.Repeat.OneOrMore.EndOfLine;
+
+/// <summary>Generated by the .NET regex source generator from <see cref="Number"/>.</summary>
+[global::System.Text.RegularExpressions.GeneratedRegex(@"^\d+$")]
+private static partial global::System.Text.RegularExpressions.Regex NumberRegex();
+```
+
+Roslyn source generators cannot consume each other's output, so `[GeneratePattern]` cannot emit
+`[GeneratedRegex]` directly. The code fix bridges the gap: it writes the attribute into your source,
+and .NET's regex generator implements it on the next build.
+
+---
+
+## Command-Line Tool
+
+```bash
+dotnet tool install --global Masterly.FluentRegex.Tool
+```
+
+| Command | What it does |
+|---------|--------------|
+| `fluentregex convert <regex>` | Prints fluent C# that builds the regex |
+| `fluentregex convert --file <path>` | Converts every regex literal in a C# file or folder |
+| `fluentregex analyze <regex> [--confirm]` | Reports ReDoS risks, optionally proving them |
+| `fluentregex scan <path> [--fail-on high\|medium\|none]` | Scans C# code for risky regex literals; exits with 1 on findings |
+| `fluentregex explain <regex>` | Explains the regex in plain English |
+| `fluentregex generate <regex> [--count N] [--non-matching]` | Generates matching or near-miss test strings |
+| `fluentregex trace <regex> <input>` | Shows which part matched what, or where it failed |
+| `fluentregex diagram <regex> [--format svg\|mermaid] [--output file]` | Draws a railroad diagram or Mermaid flowchart |
+
+`scan` finds regexes in `new Regex(...)`, the static `Regex` methods, `[GeneratedRegex]` and
+`[RegularExpression]`. It works on any C# codebase, whether or not it uses FluentRegex:
+
+```
+$ fluentregex scan src --confirm
+src/Legacy.cs(5,45): warning FRX-NestedQuantifier: new Regex "^([a-zA-Z0-9]+[._-]?)*@example\.com$" [CONFIRMED by timeout]
+src/Legacy.cs(6,60): warning FRX-NestedQuantifier: Regex.IsMatch "^(\w+\s?)*$" [CONFIRMED by timeout]
+
+Scanned 4 regex literal(s): 2 high, 1 medium risk finding(s).
+```
+
+Add it to CI to stop ReDoS-prone regexes from being merged:
+
+```yaml
+- run: dotnet tool install --global Masterly.FluentRegex.Tool
+- run: fluentregex scan src --fail-on high
 ```
 
 ---
@@ -1524,9 +2045,46 @@ Console.WriteLine(string.Join(" | ", values));
 
 | Method | Description |
 |--------|-------------|
-| `.WithOptions(options)` | Sets default RegexOptions |
-| `.ToRegex(options)` | Compiles to System.Text.RegularExpressions.Regex |
+| `.WithOptions(options)` | Returns a copy that uses these RegexOptions |
+| `.WithTimeout(timeout)` | Returns a copy with a match timeout |
+| `.UseNonBacktracking()` | Returns a copy that uses the linear-time engine (.NET 8+) |
+| `.ToRegex()` | Creates a Regex with the pattern's options and timeout |
+| `.ToRegex(options)` | Creates a Regex with explicit options |
 | `.ToString()` | Returns the regex pattern string |
+| `.Options`, `.Timeout`, `.IsEmpty` | Read the pattern's settings |
+
+#### Composition Members (3.0)
+
+| Member | Regex | Description |
+|--------|-------|-------------|
+| `.Lazy` | `+?`, `*?`, `{n,m}?` | Makes the preceding quantifier non-greedy |
+| `.Possessive` | `(?>x+)` | Makes the preceding quantifier possessive |
+| `.OneOf(patterns)`, `.OneOf(words)` | `(?:a\|b)` | Non-capturing alternation |
+| `a + b` | `ab` | Concatenation |
+| `a \| b` | `(?:a\|b)` | Non-capturing alternation; chains flatten |
+| `.Then(pattern)` | | Appends another pattern's elements |
+| `.Range(from, to)` | `[a-f]` | Character range; bare inside a Set |
+| `.HexDigit` | `[0-9a-fA-F]` | Hexadecimal digit |
+| `.AnyOf(chars)`, `.NoneOf(chars)` | `[abc]`, `[^abc]` | Literal character lists |
+| `.Unicode(category)`, `.NotUnicode(category)` | `\p{Lu}`, `\P{Lu}` | Unicode categories and groups |
+| `.UnicodeBlock(name)` | `\p{IsGreek}` | Unicode named block |
+| `.StartOfInput`, `.EndOfInput`, `.NonWordBoundary` | `\A`, `\z`, `\B` | Extra anchors |
+| `.IgnoreCase(p)`, `.CaseSensitive(p)`, `.InlineOptions(on, p, off)` | `(?i:...)` | Inline option scopes |
+
+#### Analysis, Testing and Tooling Members (3.0)
+
+| Member | Description |
+|--------|-------------|
+| `Pattern.FromRegex(regex, options)` | Wraps and validates an existing regex |
+| `.ToFluentCode()` | Generates fluent C# that rebuilds the pattern |
+| `.Extract<T>(input)`, `.TryExtract<T>(...)`, `.ExtractAll<T>(...)` | Binds named groups to a type |
+| `.Replace(input, r => ...)` | Fluent, validated replacement |
+| `.GenerateMatching(count, seed)` | Verified matching samples |
+| `.GenerateNonMatching(count, seed)` | Verified near-miss samples |
+| `.AnalyzeSafety(confirm)` | ReDoS report with attack inputs |
+| `.Trace(input)` | Step-by-step match explanation |
+| `.ToRailroadSvg()`, `.ToMermaid()` | Diagrams |
+| `.Count(input)`, span overloads, `.EnumerateMatches`, `.EnumerateSplits` | Modern matching APIs |
 
 #### Validation Methods
 
@@ -1550,8 +2108,9 @@ Access via `.Repeat` property on Pattern:
 | `.Times(n)` | `{n}` | Exactly n times |
 | `.Times(min, max)` | `{min,max}` | Between min and max times |
 | `.AtLeast(n)` | `{n,}` | At least n times |
-| `.AtMost(n)` | `{,n}` | At most n times |
-| `.Lazy` | `?` suffix | Non-greedy matching |
+| `.AtMost(n)` | `{0,n}` | At most n times |
+
+Follow any quantifier with `.Lazy` or `.Possessive` (members of `Pattern`).
 
 ### CommonPatterns Class
 
@@ -1738,9 +2297,42 @@ Pattern lazy = Pattern.With
     .Literal("end");
 ```
 
+### 5. Build Patterns at Compile Time
+
+Patterns are immutable and thread-safe, so a `static readonly` pattern can be shared freely.
+To skip building the chain at runtime entirely, use [`[GeneratePattern]`](#source-generator-generatepattern),
+or apply the FRX007 code fix to get a .NET `[GeneratedRegex]` method.
+
+### 6. Guard Untrusted Input
+
+Run `AnalyzeSafety()` (or rely on the FRX004 build warning), make risky repetitions `.Possessive`,
+and add `WithTimeout(...)` or `UseNonBacktracking()` for patterns that see user input.
+
 ---
 
 ## Migration Guide
+
+### Migrating from 2.x to 3.0
+
+3.0 fixes several 2.x bugs. Some fixes change the regex a pattern produces, so check the
+items below. Most code compiles and behaves the same without changes.
+
+| Change | 2.x | 3.0 | What to do |
+|--------|-----|-----|------------|
+| **Patterns are immutable** | Every call mutated and returned the same instance | Every call returns a new pattern | Only code that calls a member as a statement and ignores the result changes, such as `p.WithOptions(...);`. Assign the result: `p = p.WithOptions(...)` |
+| **`Literal` inside a `Set` escapes `-`** | `Set(Literal("a-f"))` was the range a to f, and `Literal(".-_")` silently became a range that matched `@` and `/` | Every character is literal | Use `Range('a', 'f')` for ranges |
+| **`Letter` outside a `Set`** | Rendered `a-zA-Z`, which matched that literal text | Renders `[a-zA-Z]` | Nothing; inside a `Set` it is unchanged |
+| **`Repeat.AtMost(n)`** | Rendered `{,n}`, which .NET treats as literal text | Renders `{0,n}` | Nothing |
+| **Stale regex cache** | Matching, then extending, a pattern kept the old regex | Impossible: patterns are immutable | Nothing |
+| **`ToRegex()` without arguments** | Ignored `WithOptions` | Uses the pattern's options and timeout | Nothing |
+| **Invalid builder calls** | `Repeat` on an empty pattern produced invalid regex | Throws `InvalidOperationException`; bad bounds throw `ArgumentOutOfRangeException` | Fix the call; the analyzer reports it as FRX006 at build time |
+| **Quantifier on a quantifier** | `Times(2).Repeat.Times(3)` produced invalid `{2}{3}` | Produces `(?:\d{2}){3}` | Nothing |
+| **`CommonPatterns.StrongPassword()`** | Its special-character set contained the range `+` to `=`, so digits counted as special characters | Fixed | Nothing |
+| **`CommonPatterns.Url()`** | Dots in the first host label allowed polynomial backtracking | Fixed | Nothing |
+| **Packaging** | `GeneratePackageOnBuild` was on | Pack explicitly with `dotnet pack` | Only affects building from source |
+
+`Choice(...)` still creates a numbered capturing group, as in 2.x. Use `OneOf(...)` or `|` when
+you don't want one.
 
 ### From Traditional Regex
 
@@ -1819,9 +2411,21 @@ dotnet restore
 # Build
 dotnet build
 
-# Run tests
+# Run tests (on .NET 8 and .NET 9)
 dotnet test
+
+# Tour every feature
+dotnet run --project samples/Masterly.FluentRegex.Showcase
 ```
+
+| Folder | Contents |
+|--------|----------|
+| `src/Masterly.FluentRegex` | The library |
+| `src/Masterly.FluentRegex.Analyzers` | Source generator and analyzers; compiles in the library's builder, parser and safety analysis |
+| `src/Masterly.FluentRegex.CodeFixes` | IDE code fixes |
+| `tools/Masterly.FluentRegex.Cli` | The `fluentregex` .NET tool |
+| `samples/Masterly.FluentRegex.Showcase` | A runnable tour of every feature |
+| `test/Masterly.FluentRegex.Tests` | Unit, round-trip, generator, analyzer and code fix tests |
 
 ---
 

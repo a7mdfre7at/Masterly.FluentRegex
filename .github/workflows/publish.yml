@@ -22,7 +22,9 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: |
+            8.0.x
+            9.0.x
 
       - name: Cache NuGet packages
         uses: actions/cache@v4
@@ -40,6 +42,15 @@ jobs:
           VERSION_REGEX: ^\s*<Version>(.*)<\/Version>\s*$
           TAG_COMMIT: true
           TAG_FORMAT: v*
+          NUGET_KEY: ${{ secrets.NUGET_API_KEY }}
+          INCLUDE_SYMBOLS: false
+
+      - name: Publish CLI tool to NuGet
+        uses: alirezanet/publish-nuget@v3.1.0
+        with:
+          PROJECT_FILE_PATH: tools/Masterly.FluentRegex.Cli/Masterly.FluentRegex.Cli.csproj
+          VERSION_REGEX: ^\s*<Version>(.*)<\/Version>\s*$
+          TAG_COMMIT: false
           NUGET_KEY: ${{ secrets.NUGET_API_KEY }}
           INCLUDE_SYMBOLS: false
 

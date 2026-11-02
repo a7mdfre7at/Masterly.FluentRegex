@@ -1,3 +1,6 @@
+using System;
+using System.Globalization;
+
 namespace Masterly.FluentRegex
 {
     /// <summary>
@@ -19,8 +22,7 @@ namespace Masterly.FluentRegex
         /// </example>
         public Pattern NamedGroup(string name, Pattern pattern)
         {
-            _regexStringBuilder.AppendFormat("(?<{0}>{1})", name, pattern);
-            return this;
+            return Append(new WrapToken("(?<" + ValidateGroupName(name) + ">", Require(pattern, nameof(pattern)), ")"));
         }
 
         /// <summary>
@@ -34,8 +36,7 @@ namespace Masterly.FluentRegex
         /// </example>
         public Pattern NonCapturingGroup(Pattern pattern)
         {
-            _regexStringBuilder.AppendFormat("(?:{0})", pattern);
-            return this;
+            return Append(new WrapToken("(?:", Require(pattern, nameof(pattern)), ")"));
         }
 
         /// <summary>
@@ -49,8 +50,7 @@ namespace Masterly.FluentRegex
         /// </example>
         public Pattern AtomicGroup(Pattern pattern)
         {
-            _regexStringBuilder.AppendFormat("(?>{0})", pattern);
-            return this;
+            return Append(new WrapToken("(?>", Require(pattern, nameof(pattern)), ")"));
         }
 
         /// <summary>
@@ -66,8 +66,7 @@ namespace Masterly.FluentRegex
         /// </example>
         public Pattern Backreference(string name)
         {
-            _regexStringBuilder.AppendFormat("\\k<{0}>", name);
-            return this;
+            return Append(new RawToken(@"\k<" + ValidateGroupName(name) + ">"));
         }
 
         /// <summary>
@@ -83,8 +82,8 @@ namespace Masterly.FluentRegex
         /// </example>
         public Pattern Backreference(int groupNumber)
         {
-            _regexStringBuilder.AppendFormat("\\{0}", groupNumber);
-            return this;
+            if (groupNumber < 1) throw new ArgumentOutOfRangeException(nameof(groupNumber), "Group numbers start at 1.");
+            return Append(new RawToken(@"\" + groupNumber.ToString(CultureInfo.InvariantCulture)));
         }
 
         /// <summary>
@@ -106,8 +105,7 @@ namespace Masterly.FluentRegex
         /// </example>
         public Pattern Conditional(string groupName, Pattern truePattern, Pattern falsePattern)
         {
-            _regexStringBuilder.AppendFormat("(?({0}){1}|{2})", groupName, truePattern, falsePattern);
-            return this;
+            return Append(new ConditionalToken(ValidateGroupName(groupName), Require(truePattern, nameof(truePattern)), falsePattern ?? With));
         }
 
         /// <summary>
@@ -130,8 +128,8 @@ namespace Masterly.FluentRegex
         /// </example>
         public Pattern Conditional(int groupNumber, Pattern truePattern, Pattern falsePattern)
         {
-            _regexStringBuilder.AppendFormat("(?({0}){1}|{2})", groupNumber, truePattern, falsePattern);
-            return this;
+            if (groupNumber < 1) throw new ArgumentOutOfRangeException(nameof(groupNumber), "Group numbers start at 1.");
+            return Append(new ConditionalToken(groupNumber.ToString(CultureInfo.InvariantCulture), Require(truePattern, nameof(truePattern)), falsePattern ?? With));
         }
     }
 }
