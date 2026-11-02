@@ -262,9 +262,21 @@ internal abstract class SqlRegexTranslator
     {
         StringBuilder sb = new StringBuilder();
         bool afterNumericReference = false;
-        foreach (RegexNode item in sequence.Items)
+        IReadOnlyList<RegexNode> items = sequence.Items;
+        for (int i = 0; i < items.Count; i++)
         {
-            string text = Emit(item);
+            RegexNode item = items[i];
+            string text;
+            if (IsSurrogatePair(items, i))
+            {
+                text = EmitSupplementary((LiteralNode)item, (LiteralNode)items[i + 1]);
+                i++;
+            }
+            else
+            {
+                text = Emit(item);
+            }
+
             if (afterNumericReference && text.Length > 0 && IsAsciiDigit(text[0]))
             {
                 text = Chars.Hex(text[0]) + text.Substring(1); // keeps \1 followed by 0 from reading as \10
@@ -276,6 +288,22 @@ internal abstract class SqlRegexTranslator
 
         return sb.ToString();
     }
+
+    /// <summary>
+    /// Gets a value indicating whether the items at <paramref name="index"/> and the next index are the two
+    /// halves of a supplementary character written literally, such as an emoji in the pattern text.
+    /// </summary>
+    private static bool IsSurrogatePair(IReadOnlyList<RegexNode> items, int index) =>
+        index + 1 < items.Count
+        && items[index] is LiteralNode high && char.IsHighSurrogate(high.Value)
+        && items[index + 1] is LiteralNode low && char.IsLowSurrogate(low.Value);
+
+    /// <summary>
+    /// Writes a literal surrogate pair as one code point. The engines match code points, so the two
+    /// halves written separately would be rejected (PCRE2) or could never match (a half is not a character).
+    /// </summary>
+    private string EmitSupplementary(LiteralNode high, LiteralNode low) =>
+        Chars.CodePoint(char.ConvertToUtf32(high.Value, low.Value));
 
     private static bool IsAsciiDigit(char c) => c >= '0' && c <= '9';
 
@@ -480,6 +508,12 @@ internal abstract class SqlRegexTranslator
 
     private string EmitLiteral(LiteralNode literal)
     {
+        if (char.IsSurrogate(literal.Value))
+        {
+            Unsupported("a lone surrogate (the engine matches whole code points, never half of one)", literal);
+            return string.Empty;
+        }
+
         if (NeedsCaseExpansion(literal))
         {
             return EmitSet(CharSet.ForNode(literal) ?? CharSet.Empty, literal);
@@ -586,7 +620,8 @@ internal abstract class SqlRegexTranslator
     {
         if (item.ShorthandKind == null)
         {
-            return Chars.ClassRange(item.Low, item.High);
+            // A range that touches the surrogates is written from the exact set, which never names a surrogate.
+            return SqlCharWriter.OverlapsSurrogates(item.Low, item.High) ? null : Chars.ClassRange(item.Low, item.High);
         }
 
         switch (item.ShorthandKind.Value)
@@ -685,12 +720,13 @@ internal abstract class SqlRegexTranslator
         }
     }
 
-    /// <summary>Sums the fixed length of a lookbehind body, or returns null when it can vary.</summary>
+    /// <summary>Sums the fixed length of a lookbehind body in code points, or returns null when it can vary.</summary>
     protected static int? FixedLength(RegexNode node)
     {
         switch (node)
         {
-            case LiteralNode _:
+            case LiteralNode literal:
+                return char.IsHighSurrogate(literal.Value) ? 0 : 1; // a surrogate pair is one code point in the engine
             case CharClassNode _:
                 return 1;
             case SequenceNode sequence:
