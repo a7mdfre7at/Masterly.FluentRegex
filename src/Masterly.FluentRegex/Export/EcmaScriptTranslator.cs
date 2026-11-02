@@ -215,20 +215,24 @@ internal sealed partial class EcmaScriptTranslator
     private static string QuantifierText(QuantifierNode quantifier)
     {
         string lazy = quantifier.Lazy ? "?" : string.Empty;
+        return $"{CountText(quantifier)}{lazy}";
+    }
+
+    private static string CountText(QuantifierNode quantifier)
+    {
         string min = quantifier.Min.ToString(CultureInfo.InvariantCulture);
         if (quantifier.IsUnbounded)
         {
-            string unbounded = quantifier.Min == 0 ? "*" : quantifier.Min == 1 ? "+" : $"{{{min},}}";
-            return unbounded + lazy;
+            return quantifier.Min == 0 ? "*" : quantifier.Min == 1 ? "+" : $"{{{min},}}";
         }
 
         if (quantifier.Min == 0 && quantifier.Max == 1)
         {
-            return "?" + lazy;
+            return "?";
         }
 
         string max = quantifier.Max.ToString(CultureInfo.InvariantCulture);
-        return (quantifier.Min == quantifier.Max ? $"{{{min}}}" : $"{{{min},{max}}}") + lazy;
+        return quantifier.Min == quantifier.Max ? $"{{{min}}}" : $"{{{min},{max}}}";
     }
 
     private string EmitGroup(GroupNode group)
