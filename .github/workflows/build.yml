@@ -18,7 +18,9 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: |
+            8.0.x
+            9.0.x
 
       - name: Cache NuGet packages
         uses: actions/cache@v4
@@ -36,6 +38,9 @@ jobs:
 
       - name: Test
         run: dotnet test --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage"
+
+      - name: Scan for ReDoS-prone regex literals
+        run: dotnet run --project tools/Masterly.FluentRegex.Cli --configuration Release --no-build -- scan . --fail-on high
 
       - name: Upload coverage reports
         uses: codecov/codecov-action@v5
