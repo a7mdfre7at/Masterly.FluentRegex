@@ -28,6 +28,15 @@ namespace Masterly.FluentRegex.Cli
               fluentregex trace    <regex> <input> [--options <list>]   Show which part matched what, or where it failed
               fluentregex diagram  <regex> [--format svg|mermaid] [--output <file>] [--options <list>]
                                                                         Draw a railroad diagram or Mermaid flowchart
+              fluentregex compare  <regexA> <regexB> [--options <list>] Prove equivalence or show the shortest counterexample
+              fluentregex optimize <regex> [--options <list>]           Simplify a regex with verified, semantics-preserving rewrites
+              fluentregex learn    <example>... [--not <example>...]   Infer a regex from examples (or --from-file <path>, one per line)
+              fluentregex profile  <regex> <input> [--options <list>]   Count backtracking steps and show the hotspots
+              fluentregex highlight <regex> <file|-> [--format ansi|html|brackets] [--options <list>]
+                                                                        Show matches and groups inside a text file
+              fluentregex coverage <regex> <file|-> [--options <list>]  Report which branches and limits the lines of a file exercise
+              fluentregex export   <regex> [--to js|json-schema|typescript] [--name <identifier>] [--options <list>]
+                                                                        Translate to JavaScript, JSON Schema or a TypeScript constant
 
             Options:
               --options <list>   Comma-separated RegexOptions, e.g. IgnoreCase,Multiline
@@ -39,6 +48,8 @@ namespace Masterly.FluentRegex.Cli
 
         public static int Run(string[] args)
         {
+            // Counterexamples, heat bars and highlighted text are often non-ASCII.
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
             try
             {
                 if (args.Length == 0 || args[0] is "--help" or "-h" or "help")
@@ -63,10 +74,17 @@ namespace Masterly.FluentRegex.Cli
                     "generate" => Generate(arguments),
                     "trace" => Trace(arguments),
                     "diagram" => Diagram(arguments),
+                    "compare" => Compare(arguments),
+                    "optimize" => Optimize(arguments),
+                    "learn" => Learn(args.Skip(1).ToArray()),
+                    "profile" => Profile(arguments),
+                    "highlight" => Highlight(arguments),
+                    "coverage" => Coverage(arguments),
+                    "export" => Export(arguments),
                     _ => Fail("Unknown command '" + args[0] + "'. Run 'fluentregex --help'.")
                 };
             }
-            catch (Exception ex) when (ex is ArgumentException or FileNotFoundException or InvalidOperationException or FormatException)
+            catch (Exception ex) when (ex is ArgumentException or FileNotFoundException or InvalidOperationException or FormatException or NotSupportedException)
             {
                 return Fail(ex.Message);
             }
@@ -209,13 +227,130 @@ namespace Masterly.FluentRegex.Cli
             return Ok;
         }
 
+        private static int Compare(Arguments args)
+        {
+            Pattern left = Load(args, 0, "regexA");
+            Pattern right = Load(args, 1, "regexB");
+            PatternComparison comparison = Pattern.Compare(left, right);
+            bool equivalent = comparison.Relation == PatternRelation.Equivalent;
+            WriteColored(comparison.ToString(), equivalent ? ConsoleColor.Green : ConsoleColor.Yellow);
+            return equivalent ? Ok : Findings;
+        }
+
+        private static int Optimize(Arguments args)
+        {
+            OptimizationResult result = Load(args).Optimize();
+            Console.WriteLine(result.ToString());
+            return Ok;
+        }
+
+        private static int Learn(string[] rawArgs)
+        {
+            const string RejectMarker = "--not";
+            const string FileOption = "--from-file";
+
+            List<string> matches = new List<string>();
+            List<string> rejects = new List<string>();
+            List<string> target = matches;
+            for (int i = 0; i < rawArgs.Length; i++)
+            {
+                if (rawArgs[i] == RejectMarker)
+                {
+                    target = rejects;
+                }
+                else if (rawArgs[i] == FileOption && i + 1 < rawArgs.Length)
+                {
+                    target.AddRange(File.ReadAllLines(rawArgs[++i]).Where(line => line.Length > 0));
+                }
+                else
+                {
+                    target.Add(rawArgs[i]);
+                }
+            }
+
+            if (matches.Count == 0)
+            {
+                throw new ArgumentException("Give at least one example to learn from. Run 'fluentregex --help'.");
+            }
+
+            Pattern learned = Pattern.Learn(matches, rejects);
+            Console.WriteLine(learned.ToString());
+            Console.WriteLine();
+            Console.WriteLine(learned.ToFluentCode());
+            return Ok;
+        }
+
+        private static int Profile(Arguments args)
+        {
+            ProfileReport report = Load(args).Profile(args.Positional(1, "input"));
+            WriteColored(report.ToString(), report.BudgetExhausted ? ConsoleColor.Red : ConsoleColor.Green);
+            return report.BudgetExhausted ? Findings : Ok;
+        }
+
+        private static int Highlight(Arguments args)
+        {
+            Pattern pattern = Load(args);
+            string text = ReadInput(args.Positional(1, "file"));
+            string format = (args.Option("format") ?? (Console.IsOutputRedirected ? "brackets" : "ansi")).ToLowerInvariant();
+            HighlightFormat highlightFormat = format switch
+            {
+                "ansi" => HighlightFormat.Ansi,
+                "html" => HighlightFormat.Html,
+                "brackets" => HighlightFormat.Brackets,
+                _ => throw new ArgumentException($"Unknown --format '{format}'. Use ansi, html or brackets.")
+            };
+            Console.WriteLine(pattern.Highlight(text, highlightFormat));
+            return Ok;
+        }
+
+        private static int Coverage(Arguments args)
+        {
+            Pattern pattern = Load(args);
+            string text = ReadInput(args.Positional(1, "file")).TrimEnd('\r', '\n');
+            string[] inputs = text.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
+            CoverageReport report = pattern.MeasureCoverage(inputs);
+            WriteColored(report.ToString(), report.Uncovered.Count == 0 ? ConsoleColor.Green : ConsoleColor.Yellow);
+            return report.Uncovered.Count == 0 ? Ok : Findings;
+        }
+
+        private static int Export(Arguments args)
+        {
+            Pattern pattern = Load(args);
+            string target = (args.Option("to") ?? "js").ToLowerInvariant();
+            if (target == "typescript")
+            {
+                string name = args.Option("name") ?? "pattern";
+                Dictionary<string, Pattern> patterns = new Dictionary<string, Pattern> { [name] = pattern };
+                Console.WriteLine(PatternExport.ToTypeScript(patterns));
+                return Ok;
+            }
+
+            RegexFlavor flavor = target switch
+            {
+                "js" or "javascript" => RegexFlavor.JavaScript,
+                "json-schema" or "jsonschema" => RegexFlavor.JsonSchema,
+                _ => throw new ArgumentException($"Unknown --to '{target}'. Use js, json-schema or typescript.")
+            };
+            FlavorConversion conversion = pattern.ToFlavor(flavor);
+            Console.WriteLine(flavor == RegexFlavor.JavaScript ? conversion.ToLiteral() : conversion.Pattern);
+            foreach (string warning in conversion.Warnings)
+            {
+                WriteColored($"warning: {warning}", ConsoleColor.Yellow);
+            }
+            return Ok;
+        }
+
         // ------------------------------------------------------------------
         // Helpers
         // ------------------------------------------------------------------
 
-        private static Pattern Load(Arguments args)
+        private static string ReadInput(string path) => path == "-" ? Console.In.ReadToEnd() : File.ReadAllText(path);
+
+        private static Pattern Load(Arguments args) => Load(args, 0, "regex");
+
+        private static Pattern Load(Arguments args, int index, string argumentName)
         {
-            string regex = args.Positional(0, "regex");
+            string regex = args.Positional(index, argumentName);
             RegexOptions options = RegexOptions.None;
             if (args.Option("options") is { } list)
             {
