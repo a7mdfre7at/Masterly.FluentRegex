@@ -46,7 +46,9 @@ public sealed class PatternWorkbench
         State = state;
         try
         {
-            Pattern = Masterly.FluentRegex.Pattern.FromRegex(state.Regex, state.Options).WithTimeout(MatchTimeout);
+            Pattern = Masterly.FluentRegex.Pattern.FromRegex(state.Regex, state.Options)
+                .WithDigits(Digits)
+                .WithTimeout(MatchTimeout);
         }
         catch (ArgumentException ex)
         {
@@ -116,7 +118,9 @@ public sealed class PatternWorkbench
     /// <param name="otherRegex">The regex to compare against.</param>
     /// <returns>The comparison, or the error that prevented it.</returns>
     public PanelResult<PatternComparison> Compare(string otherRegex) =>
-        Panel($"{nameof(Compare)}:{otherRegex}", p => Masterly.FluentRegex.Pattern.Compare(p, Masterly.FluentRegex.Pattern.FromRegex(otherRegex, State.Options)));
+        Panel($"{nameof(Compare)}:{otherRegex}", p => Masterly.FluentRegex.Pattern.Compare(p, Masterly.FluentRegex.Pattern.FromRegex(otherRegex, State.Options).WithDigits(Digits)));
+
+    private DigitMode Digits => State.AsciiDigits ? DigitMode.Ascii : DigitMode.Unicode;
 
     private string[] TestLines() => State.TestText.Replace("\r\n", "\n").Split('\n');
 

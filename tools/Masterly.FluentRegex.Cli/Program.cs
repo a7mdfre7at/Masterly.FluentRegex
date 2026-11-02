@@ -40,6 +40,7 @@ namespace Masterly.FluentRegex.Cli
 
             Options:
               --options <list>   Comma-separated RegexOptions, e.g. IgnoreCase,Multiline
+              --ascii-digits     Make \d match only 0-9 (by default .NET's \d matches every Unicode digit)
               --help, -h         Show this help
               --version          Show the version
 
@@ -361,7 +362,8 @@ namespace Masterly.FluentRegex.Cli
                     options |= flag;
                 }
             }
-            return Pattern.FromRegex(regex, options);
+            Pattern pattern = Pattern.FromRegex(regex, options);
+            return args.Flag("ascii-digits") ? pattern.WithAsciiDigits() : pattern;
         }
 
         private static string Relative(string path)
@@ -400,7 +402,7 @@ namespace Masterly.FluentRegex.Cli
     /// <summary>Minimal argument parser: positional values, --name value options and --flag switches.</summary>
     internal sealed class Arguments
     {
-        private static readonly HashSet<string> Flags = new(StringComparer.Ordinal) { "confirm", "non-matching" };
+        private static readonly HashSet<string> Flags = new(StringComparer.Ordinal) { "confirm", "non-matching", "ascii-digits" };
 
         private readonly List<string> _positional = new();
         private readonly Dictionary<string, string?> _options = new(StringComparer.OrdinalIgnoreCase);

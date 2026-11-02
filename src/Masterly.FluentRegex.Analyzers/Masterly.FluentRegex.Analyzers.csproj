@@ -33,6 +33,9 @@
     <Compile Include="..\Masterly.FluentRegex\Repeat.cs" Link="Shared\Repeat.cs" />
     <Compile Include="..\Masterly.FluentRegex\CommonPatterns.cs" Link="Shared\CommonPatterns.cs" />
     <Compile Include="..\Masterly.FluentRegex\CommonPatterns.Extended.cs" Link="Shared\CommonPatterns.Extended.cs" />
+    <Compile Include="..\Masterly.FluentRegex\CommonPatterns.Digits.cs" Link="Shared\CommonPatterns.Digits.cs" />
+    <Compile Include="..\Masterly.FluentRegex\Pattern.Digits.cs" Link="Shared\Pattern.Digits.cs" />
+    <Compile Include="..\Masterly.FluentRegex\DigitMode.cs" Link="Shared\DigitMode.cs" />
     <Compile Include="..\Masterly.FluentRegex\CodeGen\*.cs" Link="Shared\CodeGen\%(Filename)%(Extension)" />
     <Compile Include="..\Masterly.FluentRegex\Syntax\*.cs" Link="Shared\Syntax\%(Filename)%(Extension)" />
     <Compile Include="..\Masterly.FluentRegex\Analysis\*.cs" Link="Shared\Analysis\%(Filename)%(Extension)" />

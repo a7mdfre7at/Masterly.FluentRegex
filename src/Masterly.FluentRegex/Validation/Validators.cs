@@ -101,7 +101,7 @@ public static class Validators
 
     /// <summary>
     /// Validates a dotted-quad IPv4 address whose four octets are each 0-255 (one to three digits;
-    /// leading zeros are accepted, as by <see cref="CommonPatterns.IPv4"/>).
+    /// leading zeros are accepted, as by <see cref="CommonPatterns.IPv4()"/>).
     /// </summary>
     /// <param name="value">The address, for example <c>192.168.0.1</c>.</param>
     /// <returns><c>true</c> when every octet is in range.</returns>

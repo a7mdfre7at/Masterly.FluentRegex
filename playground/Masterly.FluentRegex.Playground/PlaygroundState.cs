@@ -13,6 +13,8 @@ public sealed class PlaygroundState
     private const string OptionsKey = "o";
     private const string TextKey = "t";
     private const string TabKey = "tab";
+    private const string AsciiDigitsKey = "ad";
+    private const string EnabledFlag = "1";
 
     /// <summary>Gets or sets the regex source.</summary>
     public string Regex { get; set; } = @"^(?<user>[\w.+-]+)@(?<domain>[\w-]+(?:\.[\w-]+)+)$";
@@ -26,11 +28,15 @@ public sealed class PlaygroundState
     /// <summary>Gets or sets the selected panel.</summary>
     public string Tab { get; set; } = "matches";
 
+    /// <summary>Gets or sets a value indicating whether <c>\d</c> matches only the ASCII digits 0-9.</summary>
+    public bool AsciiDigits { get; set; }
+
     /// <summary>Encodes the state as a URL fragment, including the leading '#'.</summary>
     /// <returns>The fragment.</returns>
     public string ToFragment()
     {
-        return $"#{PatternKey}={Encode(Regex)}&{OptionsKey}={(int)Options}&{TextKey}={Encode(TestText)}&{TabKey}={Uri.EscapeDataString(Tab)}";
+        string digits = AsciiDigits ? $"&{AsciiDigitsKey}={EnabledFlag}" : string.Empty;
+        return $"#{PatternKey}={Encode(Regex)}&{OptionsKey}={(int)Options}&{TextKey}={Encode(TestText)}&{TabKey}={Uri.EscapeDataString(Tab)}{digits}";
     }
 
     /// <summary>Reads state from a URL fragment, keeping defaults for anything missing or malformed.</summary>
@@ -79,6 +85,9 @@ public sealed class PlaygroundState
                 break;
             case TabKey:
                 Tab = Uri.UnescapeDataString(value);
+                break;
+            case AsciiDigitsKey:
+                AsciiDigits = value == EnabledFlag;
                 break;
         }
     }

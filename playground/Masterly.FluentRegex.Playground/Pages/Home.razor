@@ -33,6 +33,10 @@
                     @option
                 </label>
             }
+            <label class="option" title="By default .NET's \d matches every Unicode digit, such as ٢ and ९">
+                <input type="checkbox" checked="@_state.AsciiDigits" @onchange="e => ToggleAsciiDigits((bool)e.Value!)" />
+                ASCII digits only
+            </label>
         </div>
 
         <label class="field-label" for="text">Test text</label>
@@ -222,6 +226,12 @@
     private async Task ToggleOption(RegexOptions option, bool enabled)
     {
         _state.Options = enabled ? _state.Options | option : _state.Options & ~option;
+        await Refresh();
+    }
+
+    private async Task ToggleAsciiDigits(bool enabled)
+    {
+        _state.AsciiDigits = enabled;
         await Refresh();
     }
 
