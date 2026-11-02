@@ -11,6 +11,7 @@ internal static class SqlDialect
     private const string DoubledQuote = "''";
     private const char Backslash = '\\';
     private const string DoubledBackslash = @"\\";
+    private const char NationalPrefix = 'N';
 
     /// <summary>Returns true for the flavors that target a database engine.</summary>
     public static bool IsSql(RegexFlavor flavor)
@@ -32,11 +33,24 @@ internal static class SqlDialect
     public static bool EscapesBackslashes(RegexFlavor flavor) =>
         flavor == RegexFlavor.MySql || flavor == RegexFlavor.MariaDb;
 
-    /// <summary>Writes <paramref name="text"/> as a single-quoted SQL string literal.</summary>
+    /// <summary>
+    /// Returns true when the flavor's literals need the <c>N</c> (national character) prefix: a SQL Server
+    /// literal without it is <c>varchar</c>, which <c>REGEXP_LIKE</c> silently truncates to 4,000 characters.
+    /// </summary>
+    public static bool UsesNationalLiterals(RegexFlavor flavor) => flavor == RegexFlavor.SqlServer;
+
+    /// <summary>
+    /// Writes <paramref name="text"/> as a single-quoted SQL string literal (<c>N'...'</c> for SQL Server).
+    /// </summary>
     public static string Quote(string text, RegexFlavor flavor)
     {
         bool escapeBackslashes = EscapesBackslashes(flavor);
-        StringBuilder sb = new StringBuilder(text.Length + 2);
+        StringBuilder sb = new StringBuilder(text.Length + 3);
+        if (UsesNationalLiterals(flavor))
+        {
+            sb.Append(NationalPrefix);
+        }
+
         sb.Append(Quote1);
         foreach (char c in text)
         {

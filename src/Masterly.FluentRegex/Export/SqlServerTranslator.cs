@@ -21,6 +21,7 @@ namespace Masterly.FluentRegex.Export;
 internal sealed class SqlServerTranslator : SqlRegexTranslator
 {
     private const int Re2MaxBound = 1000;
+    private const int Re2MaxPatternLength = 4000;
 
     public SqlServerTranslator(RegexTree tree) : base(tree, RegexFlavor.SqlServer, HexEscapeStyle.Braced)
     {
@@ -35,6 +36,12 @@ internal sealed class SqlServerTranslator : SqlRegexTranslator
     protected override bool SupportsAtomicGroups => false;
 
     protected override int MaxRepeatBound => Re2MaxBound;
+
+    /// <summary>
+    /// The pattern argument is at most <c>nvarchar(4000)</c>: SQL Server 2025 rejects a longer
+    /// <c>N'...'</c> literal ("Argument data type NVARCHAR(MAX) is invalid for argument 2").
+    /// </summary>
+    protected override int MaxPatternLength => Re2MaxPatternLength;
 
     protected override string AnyCharacter => "(?s:.)";
 
@@ -52,7 +59,27 @@ internal sealed class SqlServerTranslator : SqlRegexTranslator
             Unsupported("'$' or '\\Z' followed by more pattern (RE2 has no lookahead to express \"end or before a final newline\")", anchor);
         }
 
+        WarnExtent($"'$' or '\\Z' {At(anchor)} is written '\\n?\\z', which consumes a final newline that .NET leaves " +
+                   "outside the match: on \"a\\n\", replacing a$ gives \"X\" in SQL Server and \"X\\n\" in .NET.");
         return @"\n?\z";
+    }
+
+    /// <summary>
+    /// RE2 is leftmost-first with .NET's preferences (verified on SQL Server 2025: <c>(a|ab)</c> matches
+    /// <c>a</c>, a group skipped by a later iteration keeps its capture), but it refuses empty iterations,
+    /// so a repeat whose body can match empty text can match and capture differently (on <c>ab</c>,
+    /// <c>(?:a?|b{1,2})*</c> matches <c>a</c> in .NET and <c>ab</c> in RE2; on <c>aa</c>, <c>(a?)+</c>
+    /// leaves the group empty in .NET and at <c>a</c> in RE2). The <c>$</c> rewrite is reported where it is emitted.
+    /// </summary>
+    protected override void AddMatchExtentWarnings()
+    {
+        QuantifierNode? repeat = Plan.FirstNullableRepeat();
+        if (repeat != null)
+        {
+            WarnExtent($"The repeat {At(repeat)} can run an iteration that matches empty text: .NET stops the repeat " +
+                       "there, while RE2 refuses empty iterations and tries the body's other ways, so the match and " +
+                       "the captures can differ.");
+        }
     }
 
     protected override string MultilineStart(AnchorNode anchor) => "(?m:^)";

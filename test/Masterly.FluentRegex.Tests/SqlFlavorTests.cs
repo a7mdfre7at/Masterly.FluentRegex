@@ -69,13 +69,14 @@ public class SqlFlavorTests
     }
 
     [Fact]
-    public void ToFlavor_PostgreSql_MixedGreedyAndLazyQuantifiers_Warn()
+    public void ToFlavor_PostgreSql_MixedGreedyAndLazyQuantifiers_ReportOnlyAMatchExtentDifference()
     {
         FlavorConversion conversion = Pattern.FromRegex("a+?b*").ToFlavor(RegexFlavor.PostgreSql);
 
         conversion.Pattern.ShouldBe("a+?b*");
-        conversion.IsExact.ShouldBeFalse();
-        conversion.Warnings.ShouldHaveSingleItem().ShouldContain("greedy and lazy");
+        conversion.IsExact.ShouldBeTrue();
+        conversion.PreservesMatchExtent.ShouldBeFalse();
+        conversion.MatchExtentWarnings.ShouldHaveSingleItem().ShouldContain("shortest match");
     }
 
     [Theory]
@@ -179,7 +180,6 @@ public class SqlFlavorTests
     [InlineData("a.b(?s:.)", "a.b(?:(?s:.))")]
     [InlineData("(?m)^x$", "(?m:^)x(?m:$)")]
     [InlineData(@"(?<year>\d{2})-(\d{2})", @"(?P<year>\p{Nd}{2})-(\p{Nd}{2})")]
-    [InlineData(@"\p{Cn}", @"[\x{0378}")]
     [InlineData("(?i)k", "[Kk\\x{212A}]")]
     [InlineData("a{1000}", "a{1000}")]
     public void ToFlavor_SqlServer_TranslatesEachConstruct(string regex, string expectedStart)
@@ -253,7 +253,7 @@ public class SqlFlavorTests
 
     [Theory]
     [InlineData(RegexFlavor.PostgreSql, @"it's\\", @"'it''s\\'")]
-    [InlineData(RegexFlavor.SqlServer, @"it's\\", @"'it''s\\'")]
+    [InlineData(RegexFlavor.SqlServer, @"it's\\", @"N'it''s\\'")]
     [InlineData(RegexFlavor.Sqlite, @"it's\\", @"'it''s\\'")]
     [InlineData(RegexFlavor.MySql, @"it's\\", @"'(?-i)it''s\\\\'")]
     [InlineData(RegexFlavor.MariaDb, @"it's\\", @"'(?-i)it''s\\\\'")]
@@ -270,7 +270,7 @@ public class SqlFlavorTests
     [InlineData(RegexFlavor.PostgreSql, "\"Email\"", "\"Email\" ~ '\\A[0-9]+(?=\\n?\\Z)'")]
     [InlineData(RegexFlavor.MySql, "Email", "REGEXP_LIKE(Email, '(?-i)\\\\A[0-9]+(?=\\\\n?\\\\z)')")]
     [InlineData(RegexFlavor.MariaDb, "Email", "Email REGEXP '(?-i)\\\\A[0-9]+(?=\\\\n?\\\\z)'")]
-    [InlineData(RegexFlavor.SqlServer, "[Email]", "REGEXP_LIKE([Email], '\\A[0-9]+\\n?\\z')")]
+    [InlineData(RegexFlavor.SqlServer, "[Email]", "REGEXP_LIKE([Email], N'\\A[0-9]+\\n?\\z')")]
     [InlineData(RegexFlavor.Sqlite, "Email", "Email REGEXP '^[0-9]+$'")]
     public void ToSqlCondition_EachSqlFlavor_UsesTheEngineOperator(RegexFlavor flavor, string column, string expected)
     {
@@ -362,7 +362,6 @@ public class SqlFlavorTests
     }
 
     [Theory]
-    [InlineData(RegexOptions.CultureInvariant)]
     [InlineData(RegexOptions.ECMAScript)]
     [InlineData(RegexOptions.NonBacktracking)]
     public void ToFlavor_Sqlite_OptionWithoutInlineForm_ThrowsNotSupported(RegexOptions option)

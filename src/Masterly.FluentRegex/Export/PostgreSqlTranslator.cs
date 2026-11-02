@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using Masterly.FluentRegex.Syntax;
 
 namespace Masterly.FluentRegex.Export;
@@ -63,11 +64,16 @@ internal sealed class PostgreSqlTranslator : SqlRegexTranslator
 
     protected override bool Captures(GroupNode group) => !IsInsideLookaround(group);
 
-    protected override void CheckBackreference(BackreferenceNode reference)
+    protected override void CheckBackreference(BackreferenceNode reference, GroupNode group)
     {
         if (InsideLookaround)
         {
             Unsupported("backreference inside a lookaround (PostgreSQL forbids it)", reference);
+        }
+
+        if (Plan.MayLoseCaptureBetweenIterations(group))
+        {
+            Unsupported("backreference to a group that a repeat iteration can skip (PostgreSQL resets the group on every iteration; .NET keeps the earlier capture)", reference);
         }
     }
 
@@ -111,14 +117,76 @@ internal sealed class PostgreSqlTranslator : SqlRegexTranslator
         return chunks;
     }
 
-    protected override void AddSummaryWarnings()
+    /// <summary>
+    /// PostgreSQL picks the longest or the shortest match from the leftmost start (decided by the RE's
+    /// first quantifier) and then lets earlier subexpressions take the longest or shortest text, instead of
+    /// .NET's first-alternative, greedy-first backtracking order; it also resets groups on every repeat
+    /// iteration. Both are reported unless the pattern provably leaves no choice.
+    /// </summary>
+    protected override void AddMatchExtentWarnings()
     {
-        List<QuantifierNode> quantifiers = Plan.Nodes.OfType<QuantifierNode>().Where(q => q.Min != q.Max).ToList();
-        if (quantifiers.Any(q => q.Lazy) && quantifiers.Any(q => !q.Lazy))
+        foreach (GroupNode group in CapturingGroups.Where(Plan.MayLoseCaptureBetweenIterations).OrderBy(g => g.Start))
         {
-            Warn("The pattern mixes greedy and lazy quantifiers. PostgreSQL decides whether the whole match is " +
-                 "longest or shortest from the first quantifier, so the extent of a match (and what groups capture) " +
-                 "can differ from .NET. Whether a string matches at all is unaffected.");
+            WarnExtent($"The group {At(group)} can be skipped by an iteration of an enclosing repeat: .NET keeps its " +
+                       "capture from an earlier iteration, PostgreSQL resets it on every iteration.");
         }
+
+        bool onlyExtentMatters = CapturingGroups.Count == 0;
+        if (onlyExtentMatters && MatchShape.HasForcedEnd(Tree.Root))
+        {
+            return; // a match that starts at the leftmost position can only end at one place
+        }
+
+        MatchPreference engine = Preference(Tree.Root) == MatchPreference.Shortest ? MatchPreference.Shortest : MatchPreference.Longest;
+        if (!PreferenceAnalysis.Of(Tree.Root).AgreesWith(engine))
+        {
+            string rule = engine == MatchPreference.Longest ? "longest" : "shortest";
+            WarnExtent($"PostgreSQL takes the {rule} match (decided by the first quantifier) and gives earlier groups " +
+                       "the longest or shortest text, while .NET takes the first alternative and the greedy or lazy " +
+                       "count that succeeds first: the matched substring and the captures can differ (for example, " +
+                       "(a|ab) matches \"a\" of \"ab\" in .NET and \"ab\" in PostgreSQL). Whether a string matches is unaffected.");
+        }
+    }
+
+    /// <summary>
+    /// The PostgreSQL greediness attribute of the translated node (section 9.7.3.5): a branch takes the
+    /// attribute of its first quantified atom that has one, a parenthesized RE that of its content, an RE of
+    /// two or more branches is greedy, and a quantifier other than <c>{m}</c> is greedy or lazy. The
+    /// translation's own alternations (multiline <c>^</c> and <c>\b</c>) count as greedy groups.
+    /// </summary>
+    private static MatchPreference Preference(RegexNode node)
+    {
+        switch (node)
+        {
+            case SequenceNode sequence:
+                return sequence.Items.Select(Preference).FirstOrDefault(p => p != MatchPreference.None);
+            case AlternationNode alternation:
+                return alternation.Branches.Count > 1 ? MatchPreference.Longest : Preference(alternation.Branches[0]);
+            case GroupNode group:
+                return group.IsLookaround ? MatchPreference.None : Preference(group.Body);
+            case QuantifierNode quantifier:
+                return QuantifierPreference(quantifier);
+            case AnchorNode anchor:
+                return IsTranslatedAsAlternation(anchor) ? MatchPreference.Longest : MatchPreference.None;
+            default:
+                return MatchPreference.None;
+        }
+    }
+
+    private static MatchPreference QuantifierPreference(QuantifierNode quantifier)
+    {
+        if (quantifier.Min == quantifier.Max)
+        {
+            return Preference(quantifier.Body);
+        }
+
+        return quantifier.Lazy ? MatchPreference.Shortest : MatchPreference.Longest;
+    }
+
+    private static bool IsTranslatedAsAlternation(AnchorNode anchor)
+    {
+        bool multilineStart = anchor.AnchorKind == AnchorKind.StartOfLine && (anchor.Options & RegexOptions.Multiline) != 0;
+        bool boundary = anchor.AnchorKind == AnchorKind.WordBoundary || anchor.AnchorKind == AnchorKind.NonWordBoundary;
+        return multilineStart || boundary;
     }
 }

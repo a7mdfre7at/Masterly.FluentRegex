@@ -28,6 +28,7 @@ internal abstract class SqlRegexTranslator
     private const string LineFeedEscape = @"\n";
 
     private readonly List<string> _warnings = new List<string>();
+    private readonly List<string> _extentWarnings = new List<string>();
     private readonly List<string> _issues = new List<string>();
     private readonly HashSet<string> _groupNames = new HashSet<string>(StringComparer.Ordinal);
     private readonly Dictionary<GroupNode, int> _numbers = new Dictionary<GroupNode, int>();
@@ -53,6 +54,9 @@ internal abstract class SqlRegexTranslator
     /// <summary>Writes characters in the engine's escape syntax.</summary>
     protected SqlCharWriter Chars { get; }
 
+    /// <summary>Gets the .NET groups that capture in the engine.</summary>
+    protected IReadOnlyCollection<GroupNode> CapturingGroups => _numbers.Keys;
+
     /// <summary>True while emitting the body of a lookaround.</summary>
     protected bool InsideLookaround => _lookaroundDepth > 0;
 
@@ -74,6 +78,9 @@ internal abstract class SqlRegexTranslator
 
     /// <summary>The largest value allowed in a <c>{m,n}</c> bound.</summary>
     protected abstract int MaxRepeatBound { get; }
+
+    /// <summary>The longest translated pattern, in UTF-16 code units, that the engine accepts.</summary>
+    protected virtual int MaxPatternLength => int.MaxValue;
 
     /// <summary>Text placed before the pattern, such as <c>(?-i)</c>.</summary>
     protected virtual string Prefix => string.Empty;
@@ -116,8 +123,8 @@ internal abstract class SqlRegexTranslator
     {
     }
 
-    /// <summary>Reports engine-specific limits of a backreference's position.</summary>
-    protected virtual void CheckBackreference(BackreferenceNode reference)
+    /// <summary>Reports engine-specific limits of a backreference to <paramref name="group"/>.</summary>
+    protected virtual void CheckBackreference(BackreferenceNode reference, GroupNode group)
     {
     }
 
@@ -127,6 +134,26 @@ internal abstract class SqlRegexTranslator
     /// <summary>Adds warnings that depend on the whole pattern.</summary>
     protected virtual void AddSummaryWarnings()
     {
+    }
+
+    /// <summary>Adds the engine's <see cref="FlavorConversion.MatchExtentWarnings"/>, which depend on the whole pattern.</summary>
+    protected virtual void AddMatchExtentWarnings()
+    {
+    }
+
+    /// <summary>
+    /// Reports groups in a repeat whose body can match empty text. Engines disagree on the final, empty
+    /// iterations of such repeats: on <c>aa</c>, .NET leaves <c>(a?)+</c>'s group empty and RE2 leaves it at
+    /// <c>a</c>; ICU and PCRE2 agree with .NET on that pattern but not on every one (on <c>aa</c>,
+    /// <c>[ab]((a\b)??|b{0,2}?){0,2}\z</c> leaves the group empty in .NET and at <c>a</c> in both).
+    /// </summary>
+    protected void WarnCapturesInNullableRepeats()
+    {
+        foreach (GroupNode group in CapturingGroups.Where(Plan.MayCaptureInEmptyIteration).OrderBy(g => g.Start))
+        {
+            WarnExtent($"The group {At(group)} is in a repeat whose body can match empty text: .NET can end with an " +
+                       $"extra empty iteration that captures empty text, while {EngineName} can keep an earlier capture.");
+        }
     }
 
     // ------------------------------------------------------------------
@@ -172,14 +199,28 @@ internal abstract class SqlRegexTranslator
         }
 
         NumberGroups();
-        string body = Emit(Tree.Root);
+        string pattern = Prefix + Emit(Tree.Root);
+        CheckPatternLength(pattern);
         AddSummaryWarnings();
         if (_issues.Count > 0)
         {
             throw UnsupportedException(EngineName, _issues);
         }
 
-        return new FlavorConversion(Flavor, Prefix + body, string.Empty, _warnings, TranslationPlan.BuildGroupNumbers(_numbers));
+        AddMatchExtentWarnings();
+        return new FlavorConversion(Flavor, pattern, string.Empty, _warnings, TranslationPlan.BuildGroupNumbers(_numbers), _extentWarnings);
+    }
+
+    private void CheckPatternLength(string pattern)
+    {
+        if (pattern.Length <= MaxPatternLength)
+        {
+            return;
+        }
+
+        string length = pattern.Length.ToString(CultureInfo.InvariantCulture);
+        string limit = MaxPatternLength.ToString(CultureInfo.InvariantCulture);
+        _issues.Add($"the translated pattern is {length} characters long ({EngineName} accepts at most {limit})");
     }
 
     protected string EngineName => SqlDialect.Name(Flavor);
@@ -219,6 +260,15 @@ internal abstract class SqlRegexTranslator
         if (!_warnings.Contains(warning))
         {
             _warnings.Add(warning);
+        }
+    }
+
+    /// <summary>Records a difference in match extent or captures that does not change acceptance.</summary>
+    protected void WarnExtent(string warning)
+    {
+        if (!_extentWarnings.Contains(warning))
+        {
+            _extentWarnings.Add(warning);
         }
     }
 
@@ -485,7 +535,12 @@ internal abstract class SqlRegexTranslator
             return string.Empty;
         }
 
-        CheckBackreference(reference);
+        if ((reference.Options & RegexOptions.ECMAScript) != 0 && !Plan.AlwaysParticipatesBefore(group, reference))
+        {
+            Unsupported($"backreference to a group that may not have participated, under RegexOptions.ECMAScript (.NET then matches the empty string, {EngineName} fails)", reference);
+        }
+
+        CheckBackreference(reference, group);
         return BackreferenceText(group, number);
     }
 
