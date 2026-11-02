@@ -70,6 +70,98 @@ namespace Masterly.FluentRegex.Syntax
             return result;
         }
 
+        /// <summary>Every UTF-16 code unit.</summary>
+        public static CharSet All { get; } = BuildAll();
+
+        /// <summary>Returns the set that contains only <paramref name="c"/>.</summary>
+        public static CharSet Single(char c)
+        {
+            var result = new CharSet();
+            result.Add(c);
+            return result;
+        }
+
+        /// <summary>Returns the set of code units that are not in this set.</summary>
+        public CharSet Complement()
+        {
+            var result = new CharSet();
+            for (int i = 0; i < _bits.Length; i++) result._bits[i] = ~_bits[i];
+            result.RecountBits();
+            return result;
+        }
+
+        /// <summary>Returns the members of this set that are not in <paramref name="other"/>.</summary>
+        public CharSet Except(CharSet other)
+        {
+            var result = new CharSet();
+            for (int i = 0; i < _bits.Length; i++) result._bits[i] = _bits[i] & ~(other?._bits[i] ?? 0);
+            result.RecountBits();
+            return result;
+        }
+
+        /// <summary>Returns true when both sets have exactly the same members.</summary>
+        public bool SetEquals(CharSet other)
+        {
+            if (other == null || other.Count != Count) return false;
+            for (int i = 0; i < _bits.Length; i++)
+            {
+                if (_bits[i] != other._bits[i]) return false;
+            }
+            return true;
+        }
+
+        /// <summary>Returns true when every member of this set is also in <paramref name="other"/>.</summary>
+        public bool IsSubsetOf(CharSet other)
+        {
+            if (other == null) return IsEmpty;
+            for (int i = 0; i < _bits.Length; i++)
+            {
+                if ((_bits[i] & ~other._bits[i]) != 0) return false;
+            }
+            return true;
+        }
+
+        /// <summary>A hash of the members, consistent with <see cref="SetEquals"/>.</summary>
+        public int ContentHash()
+        {
+            unchecked
+            {
+                int hash = Count;
+                for (int i = 0; i < _bits.Length; i++)
+                {
+                    ulong word = _bits[i];
+                    if (word != 0) hash = (hash * 31) ^ (int)word ^ (int)(word >> 32) ^ i;
+                }
+                return hash;
+            }
+        }
+
+        /// <summary>Enumerates the members as maximal contiguous ranges, lowest first.</summary>
+        public IEnumerable<KeyValuePair<char, char>> Ranges()
+        {
+            int c = 0;
+            while (c < Size)
+            {
+                if (!Contains((char)c))
+                {
+                    c++;
+                    continue;
+                }
+                int low = c;
+                while (c + 1 < Size && Contains((char)(c + 1))) c++;
+                yield return new KeyValuePair<char, char>((char)low, (char)c);
+                c++;
+            }
+        }
+
+        private static CharSet BuildAll()
+        {
+            var result = new CharSet();
+            for (int i = 0; i < result._bits.Length; i++) result._bits[i] = ulong.MaxValue;
+            result.Count = Size;
+            return result;
+        }
+
         private void RecountBits()
         {
             int count = 0;
