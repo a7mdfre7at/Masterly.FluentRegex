@@ -107,14 +107,22 @@ B-tree index on the column can narrow the scan. For `WhereMatches(p => p.Sku, Pa
 ```sql
 WHERE p."Sku" IS NOT NULL AND p."Sku" ~ '\AABC-[0-9]{4}(?=\n?\Z)'
   AND p."Sku" LIKE 'ABC-%' ESCAPE '\' AND length(p."Sku") <= 9                                    -- PostgreSQL
-WHERE [p].[Sku] IS NOT NULL AND IIF(REGEXP_LIKE([p].[Sku], N'\AABC-[0-9]{4}\n?\z'), 1, 0) = 1
-  AND [p].[Sku] LIKE N'ABC-%' ESCAPE N'\' AND CAST(LEN([p].[Sku]) AS int) <= 9                     -- SQL Server 2025
 WHERE `p`.`Sku` IS NOT NULL AND ((REGEXP_LIKE(`p`.`Sku`, '(?-i)\\AABC-[0-9]{4}(?=\\n?\\z)', 'c')
   AND (`p`.`Sku` LIKE 'ABC-%' ESCAPE '\\')) AND (CHAR_LENGTH(`p`.`Sku`) <= 9))                    -- MySQL
+WHERE [p].[Sku] IS NOT NULL AND IIF(REGEXP_LIKE([p].[Sku], N'\AABC-[0-9]{4}\n?\z'), 1, 0) = 1
+  AND [p].[Sku] LIKE N'ABC-%' ESCAPE N'\' AND CAST(LEN([p].[Sku]) AS int) <= 9   -- SQL Server 2025, binary collation
 ```
 
 The bound is 9, not 8, because `$` also accepts one final newline; end the pattern with `\z` to get 8. The
 `IS NOT NULL` guard is the [NULL rule](#null-rule); EF Core drops it for required columns.
+
+On SQL Server the prefix `LIKE` is only added when you declare `UseLikeCollation(LikeCollation.Binary)`. SQL Server's
+linguistic collations do not compare `LIKE` character by character. In the version-80 collations, including the
+server default `SQL_Latin1_General_CP1_CI_AS`, a combining accent joins the letter before it, so
+`N'ABC-' + NCHAR(0x301) LIKE N'ABC-%'` is false although .NET's `^ABC-` matches. Czech, Slovak and similar
+collations treat `ch` as one letter, so `N'chx' LIKE N'c%'` is false there. Either would make the hint drop rows.
+The length bound is always safe and is kept. Verified on SQL Server 2025; PostgreSQL, MySQL and MariaDB compare
+`LIKE` character by character under every collation tested, including Czech ones.
 
 Only the upper length bound is emitted: SQL length functions count code points (`LEN` also strips trailing
 spaces), so a lower bound computed in UTF-16 units could exclude matches. Hints apply to patterns known at query
@@ -254,7 +262,12 @@ maps characters in a non-Unicode literal (`'lemon' LIKE 'ł%'` is true) and igno
 comparisons, and either would break the proof. With Windows collations SQL Server still seeks an index on the
 `varchar` column; with legacy `SQL_*` collations the conversion can turn the seek into a scan.
 The `MatchingAsync` prefilter on the other dialects compiles its `LIKE` for a binary collation, which stays a
-superset under any case- or accent-insensitive collation.
+superset under any case- or accent-insensitive collation. On SQL Server the prefilter uses `LIKE` only under a
+declared binary collation (see [index hints](#index-hints)); otherwise it narrows rows with `IS NOT NULL` and the
+length bound, and .NET does the rest. The `LIKE` fallback for SQL Server before 2025 is opt-in: its proof models
+case folding, but under linguistic collations a combining accent after a literal, a contraction such as Czech `ch`,
+or an ignorable character such as a soft hyphen can still change the result. Use it with binary collations, or
+with data free of such characters.
 
 ## Dialect support matrix
 

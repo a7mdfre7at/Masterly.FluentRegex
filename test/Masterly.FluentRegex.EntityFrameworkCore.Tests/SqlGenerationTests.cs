@@ -262,13 +262,27 @@ public sealed class SqlGenerationTests
     }
 
     [Fact]
-    public void SqlServer2025_IndexHints_UseLenAndAUnicodePrefix()
+    public void SqlServer2025_IndexHintsUnderABinaryCollation_UseLenAndAUnicodePrefix()
     {
-        using CatalogContext context = SqlServer(configure: fluent => fluent.UseDialect(SqlDialect.SqlServer2025));
+        using CatalogContext context = SqlServer(configure: fluent => fluent.UseDialect(SqlDialect.SqlServer2025).UseLikeCollation(LikeCollation.Binary));
 
         string sql = HintedMatch(context);
 
         sql.ShouldContain(@"LIKE N'ABC-%' ESCAPE N'\'");
+        sql.ShouldContain("LEN(");
+        sql.ShouldContain("<= 9");
+    }
+
+    [Fact]
+    public void SqlServer2025_IndexHintsUnderTheDefaultCollation_OmitThePrefixLike()
+    {
+        // In SQL Server's version-80 collations a combining mark joins the letter before it, so
+        // N'ABC-' + NCHAR(0x301) LIKE N'ABC-%' is false although .NET's ^ABC- matches: the prefix would drop rows.
+        using CatalogContext context = SqlServer(configure: fluent => fluent.UseDialect(SqlDialect.SqlServer2025));
+
+        string sql = HintedMatch(context);
+
+        sql.ShouldNotContain(" LIKE N'", customMessage: sql);
         sql.ShouldContain("LEN(");
         sql.ShouldContain("<= 9");
     }
@@ -325,7 +339,7 @@ public sealed class SqlGenerationTests
     {
         using VarcharCatalogContext context = new VarcharCatalogContext(
             new DbContextOptionsBuilder<VarcharCatalogContext>().UseSqlServer(SqlServerConnection)
-                .UseFluentRegex(fluent => fluent.UseDialect(SqlDialect.SqlServer2025)).Options);
+                .UseFluentRegex(fluent => fluent.UseDialect(SqlDialect.SqlServer2025).UseLikeCollation(LikeCollation.Binary)).Options);
 
         string sql = context.Products.WhereMatches(product => product.Sku, TestPatterns.AbcSku).ToQueryString();
 
@@ -352,15 +366,27 @@ public sealed class SqlGenerationTests
     }
 
     [Fact]
-    public void SqlServer_MatchingAsyncPrefilter_UsesTheSupersetLikeAndTheLengthBound()
+    public void SqlServer_MatchingAsyncPrefilterUnderABinaryCollation_UsesTheSupersetLikeAndTheLengthBound()
     {
-        using CatalogContext context = SqlServer();
-        string expected = TestPatterns.Sku.ToLike(LikeDialect.SqlServer, MatchScope.Substring, LikeCollation.CaseInsensitive).Expression;
+        using CatalogContext context = SqlServer(configure: fluent => fluent.UseLikeCollation(LikeCollation.Binary));
+        string expected = TestPatterns.Sku.ToLike(LikeDialect.SqlServer, MatchScope.Substring, LikeCollation.Binary).Expression;
 
         string sql = Prefilter(context, TestPatterns.Sku);
 
         sql.ShouldContain($"LIKE N'{expected}'", customMessage: sql);
         sql.ShouldContain("LEN(");
+        sql.ShouldContain("<= 9");
+    }
+
+    [Fact]
+    public void SqlServer_MatchingAsyncPrefilterUnderTheDefaultCollation_UsesOnlyNullAndLengthChecks()
+    {
+        using CatalogContext context = SqlServer();
+
+        string sql = Prefilter(context, TestPatterns.Sku);
+
+        sql.ShouldNotContain("LIKE", customMessage: sql);
+        sql.ShouldContain("IS NOT NULL");
         sql.ShouldContain("<= 9");
     }
 
