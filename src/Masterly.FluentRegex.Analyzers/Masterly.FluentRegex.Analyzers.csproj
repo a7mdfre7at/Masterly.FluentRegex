@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Source generator and analyzers. Runs inside the C# compiler, so it targets netstandard2.0.
+    The fluent builder, regex parser and safety analyzer are compiled in from the main library
+    sources, so compile-time evaluation runs exactly the same code as the runtime.
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <IsRoslynComponent>true</IsRoslynComponent>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <IsPackable>false</IsPackable>
+    <DefineConstants>$(DefineConstants);FLUENTREGEX_ANALYZER</DefineConstants>
+    <RootNamespace>Masterly.FluentRegex.Analyzers</RootNamespace>
+    <NoWarn>$(NoWarn);CS1591;RS2008</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Masterly.FluentRegex\Pattern.cs" Link="Shared\Pattern.cs" />
+    <Compile Include="..\Masterly.FluentRegex\Pattern.Tokens.cs" Link="Shared\Pattern.Tokens.cs" />
+    <Compile Include="..\Masterly.FluentRegex\Pattern.Groups.cs" Link="Shared\Pattern.Groups.cs" />
+    <Compile Include="..\Masterly.FluentRegex\Pattern.Assertions.cs" Link="Shared\Pattern.Assertions.cs" />
+    <Compile Include="..\Masterly.FluentRegex\Pattern.Operators.cs" Link="Shared\Pattern.Operators.cs" />
+    <Compile Include="..\Masterly.FluentRegex\Pattern.CharacterClasses.cs" Link="Shared\Pattern.CharacterClasses.cs" />
+    <Compile Include="..\Masterly.FluentRegex\Pattern.CodeGeneration.cs" Link="Shared\Pattern.CodeGeneration.cs" />
+    <Compile Include="..\Masterly.FluentRegex\Pattern.Safety.cs" Link="Shared\Pattern.Safety.cs" />
+    <Compile Include="..\Masterly.FluentRegex\Repeat.cs" Link="Shared\Repeat.cs" />
+    <Compile Include="..\Masterly.FluentRegex\CommonPatterns.cs" Link="Shared\CommonPatterns.cs" />
+    <Compile Include="..\Masterly.FluentRegex\CommonPatterns.Extended.cs" Link="Shared\CommonPatterns.Extended.cs" />
+    <Compile Include="..\Masterly.FluentRegex\CodeGen\*.cs" Link="Shared\CodeGen\%(Filename)%(Extension)" />
+    <Compile Include="..\Masterly.FluentRegex\Syntax\*.cs" Link="Shared\Syntax\%(Filename)%(Extension)" />
+    <Compile Include="..\Masterly.FluentRegex\Analysis\*.cs" Link="Shared\Analysis\%(Filename)%(Extension)" />
+    <Compile Include="..\Masterly.FluentRegex\Generation\*.cs" Link="Shared\Generation\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>
