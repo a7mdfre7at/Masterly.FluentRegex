@@ -181,6 +181,9 @@ FluentRegex 3.1 can prove things about your patterns, learn them from examples, 
 | Semantic rules | `CreditCard().Must(Validators.Luhn)` adds checks a regex can't express | [rules and redaction](docs/features/rules-and-redaction.md) |
 | PII redaction | `Redactor.For(Email, Phone).Mask(text)` with mask, label, keep-last and email styles | [rules and redaction](docs/features/rules-and-redaction.md) |
 | Export | `ToJavaScript()`, JSON Schema and TypeScript output that keeps the .NET meaning | [export](docs/features/export.md) |
+| SQL regex dialects | `ToSqlCondition("Email", RegexFlavor.PostgreSql)` for PostgreSQL, MySQL, MariaDB, SQL Server 2025 and SQLite | [sql flavors](docs/features/sql-flavors.md) |
+| LIKE with proof | `ToLike(LikeDialect.SqlServer)` compiles to `LIKE` and proves whether it is exact or a superset | [like](docs/features/like.md) |
+| Language facts | `GetLanguageFacts()` proves length bounds and the prefix and suffix every match must have | [language facts](docs/features/language-facts.md) |
 | Backtracking profiler | `Profile(input)` counts steps per construct and shows a heatmap | [profiler](docs/features/profiler.md) |
 | Streaming | `MatchesAsync(stream)` matches multi-GB input in constant memory | [streaming](docs/features/streaming.md) |
 | Highlighting | `Highlight(text)` for terminals, HTML pages and readable test assertions | [highlighting](docs/features/highlighting.md) |
@@ -190,6 +193,7 @@ FluentRegex 3.1 can prove things about your patterns, learn them from examples, 
 | ASP.NET Core | Route constraints such as `{id:pattern(sku)}` from a pattern registry | [aspnetcore](docs/features/aspnetcore.md) |
 | xUnit | `[MatchingData]` and `[NonMatchingData]` theory data from any pattern | [xunit](docs/features/xunit.md) |
 | AI drafting | Describe a pattern in English; the draft is verified locally before you get it | [ai](docs/features/ai.md) |
+| EF Core | `Where(u => EF.Functions.Matches(u.Email, Patterns.Email))` runs in the database, with proven index hints and `CHECK` constraints | [entity framework](docs/features/entity-framework.md) |
 | Playground | Try every feature in the browser, with shareable links | [playground](playground/README.md) |
 
 ### A quick tour
@@ -220,6 +224,12 @@ CommonPatterns.CreditCard().Must(Validators.Luhn, "Luhn checksum").IsMatch("4111
 // One rule, every platform
 CommonPatterns.ZipCode().ToJavaScript();   // /^\p{Nd}{5}(?:-\p{Nd}{4})?(?=\n?$)/u
 
+// ...including the database, with the exact .NET meaning or a proven LIKE
+Pattern invoice = Pattern.FromRegex(@"^INV-[0-9]{4}-[0-9]{4}\z");
+invoice.ToSqlCondition("\"Number\"", RegexFlavor.PostgreSql);   // "Number" ~ '\AINV-[0-9]{4}-[0-9]{4}\Z'
+invoice.ToLike(LikeDialect.SqlServer).ToSql("[Number]");         // [Number] LIKE 'INV-[0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]'  (IsExact: true)
+invoice.GetLanguageFacts();                                      // length 13..13, prefix "INV-" (exact)
+
 // Arabic with or without harakat
 Pattern.With.Literal("محمد").IgnoreDiacritics().IsMatch("مُحَمَّد");   // true
 ```
@@ -231,8 +241,9 @@ Pattern.With.Literal("محمد").IgnoreDiacritics().IsMatch("مُحَمَّد");
 | `Masterly.FluentRegex.AspNetCore` | `AddFluentPatterns(...)` and the `pattern(name)` route constraint |
 | `Masterly.FluentRegex.Xunit` | `[MatchingData]` and `[NonMatchingData]` for xUnit v3 theories |
 | `Masterly.FluentRegex.AI` | `PatternAssistant`, which drafts patterns with Claude and verifies them locally |
+| `Masterly.FluentRegex.EntityFrameworkCore` | `UseFluentRegex()`: patterns in LINQ run as the database's own regex, SQL Server gets proven `LIKE`, indexes get proven prefix hints, and `HasPattern` adds `CHECK` constraints |
 
-All three target .NET 8 and .NET 10. The core package has no new dependencies.
+All four target .NET 8 and .NET 10. The core package has no new dependencies.
 
 ---
 
@@ -1745,7 +1756,9 @@ dotnet tool install --global Masterly.FluentRegex.Tool
 | `fluentregex profile <regex> <input>` | Counts backtracking steps and shows the hotspots; exits with 1 when the budget runs out |
 | `fluentregex highlight <regex> <file\|->` | Shows matches and groups in a file (`--format ansi\|html\|brackets`) |
 | `fluentregex coverage <regex> <file\|->` | Reports which branches and limits the lines of a file exercise |
-| `fluentregex export <regex> [--to js\|json-schema\|typescript]` | Translates the regex for JavaScript, JSON Schema or TypeScript |
+| `fluentregex export <regex> [--to js\|json-schema\|typescript\|postgresql\|mysql\|mariadb\|sqlserver\|sqlite]` | Translates the regex for JavaScript, JSON Schema, TypeScript or a database's regex engine (`--column` prints a `WHERE` condition) |
+| `fluentregex export <regex> --to like [--dialect sqlserver\|postgresql\|mysql\|sqlite\|standard]` | Compiles the regex to `LIKE` and reports whether it is proven exact or a superset |
+| `fluentregex facts <regex> [--scope full\|substring]` | Prints the proven length bounds and the prefix and suffix every match must have |
 
 Every command that takes a regex also accepts `--options <list>` and `--ascii-digits`.
 

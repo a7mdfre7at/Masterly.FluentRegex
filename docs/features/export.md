@@ -5,6 +5,10 @@ in your OpenAPI / JSON Schema documents. Every output below was produced by the 
 of conversions (all `CommonPatterns` plus about 60 hand-picked constructs, against hundreds of inputs)
 was cross-checked in Node.js 26 against the .NET engine.
 
+The same `ToFlavor` call also targets databases: see [SQL regex flavors](sql-flavors.md) for PostgreSQL,
+MySQL, MariaDB, SQL Server and SQLite, [LIKE compilation with proof](like.md) for databases without a
+regex engine, and [Entity Framework Core](entity-framework.md) to use patterns directly in LINQ.
+
 ```csharp
 CommonPatterns.Email().ToJavaScript();
 // /^[a-zA-Z\p{Nd}._\-]+@[a-zA-Z\p{Nd}.\-]+\.[a-zA-Z]{2,}(?=\n?$)/u

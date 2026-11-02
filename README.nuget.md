@@ -48,14 +48,20 @@ Redactor.For(CommonPatterns.Email(), CommonPatterns.PhoneNumberE164()).Mask(text
 // One rule for .NET, the browser and OpenAPI
 CommonPatterns.ZipCode().ToJavaScript();   // /^\p{Nd}{5}(?:-\p{Nd}{4})?(?=\n?$)/u
 
+// ...and the database: exact regex dialects, or a LIKE proven exact
+Pattern invoice = Pattern.FromRegex(@"^INV-[0-9]{4}-[0-9]{4}\z");
+invoice.ToSqlCondition("\"Number\"", RegexFlavor.PostgreSql);   // "Number" ~ '\AINV-[0-9]{4}-[0-9]{4}\Z'
+invoice.ToLike(LikeDialect.SqlServer).IsExact;                   // true
+
 // Unicode scripts and diacritic-insensitive matching
 Pattern.With.Literal("محمد").IgnoreDiacritics().IsMatch("مُحَمَّد");   // true
 ```
 
 Also new: streaming matches over `Stream`/`TextReader`, `Highlight` for terminals and HTML,
 `[MatchesPattern]` for DataAnnotations, and the companion packages
-`Masterly.FluentRegex.AspNetCore` (route constraints), `Masterly.FluentRegex.Xunit` (theory data)
-and `Masterly.FluentRegex.AI` (verified AI drafting).
+`Masterly.FluentRegex.EntityFrameworkCore` (patterns in LINQ run in the database, with proven index
+hints and `CHECK` constraints), `Masterly.FluentRegex.AspNetCore` (route constraints),
+`Masterly.FluentRegex.Xunit` (theory data) and `Masterly.FluentRegex.AI` (verified AI drafting).
 
 ## Highlights in 3.0
 

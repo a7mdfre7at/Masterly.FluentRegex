@@ -10,6 +10,8 @@ package has no new dependencies.
 - **Pattern algebra:** `Pattern.Compare`, `IsEquivalentTo`, `IsSubsetOf`, `Overlaps`, `MatchesNothing`, `ShortestMatch`, `Intersect`, `Except` and `Union`. Patterns are compiled to minimized automata over exact Unicode character sets; every counterexample is verified with the .NET engine. Lookaheads at the start of a pattern are supported; other non-regular constructs throw `NotSupportedException` naming the construct.
 - **Verified optimizer:** `Optimize()` merges alternations into classes, factors common prefixes, removes duplicate branches, normalizes quantifiers, merges repeated atoms and unwraps redundant groups. Each rewrite is checked match-by-match and, for regular patterns, proven equivalent.
 - **Learn from examples:** `Pattern.Learn(match, reject)` infers a readable, anchored pattern.
+- **Language facts:** `GetLanguageFacts(MatchScope)` reads the shortest and longest accepted lengths, the text every match must start and end with, and whether the empty string is accepted from the pattern's minimal automaton. The facts are sound by construction; patterns outside the regular subset get a sound syntactic approximation.
+- **Pattern equality:** `Pattern` implements `IEquatable<Pattern>`; two patterns are equal when they render the same regex with the same options and timeout, so patterns work as dictionary keys and in query caches.
 
 ### Testing
 - **Regex coverage:** `MeasureCoverage(inputs)` and the thread-safe `TrackCoverage()` recorder report alternation branches, optional parts and upper bounds that inputs never exercise.
@@ -31,19 +33,22 @@ package has no new dependencies.
 
 ### Export
 - `ToFlavor(RegexFlavor.JavaScript | JsonSchema)`, `ToJavaScript()` and `PatternExport.ToTypeScript`. Translations keep the .NET meaning of `\d`, `\w`, `\s`, `\b`, `$` and `.`, expand class subtraction and Unicode blocks, and report every remaining difference as a warning. Constructs JavaScript cannot express, such as atomic groups, throw `NotSupportedException` listing each one.
+- **SQL regex dialects:** `ToFlavor(RegexFlavor.PostgreSql | MySql | MariaDb | SqlServer | Sqlite)` and `ToSqlCondition(columnSql, flavor)` translate a pattern for the database's own regex engine with the exact .NET meaning: case folding, `\d`, `\w`, `\s`, `\b`, `$` and `.` are written out explicitly, `FlavorConversion.GroupNumbers` maps .NET groups to the engine's numbering, and anything an engine cannot express throws. PostgreSQL 17 and SQL Server 2025 output was verified against live engines with over 6,000 checks and no disagreements.
+- **LIKE with proof:** `ToLike(LikeDialect, MatchScope, LikeCollation)` compiles a pattern to the tightest `LIKE` pattern that accepts every match (SQL Server sets such as `[0-9]` included) and uses language algebra to prove whether it is exact. `LikeConversion.ToSql(columnSql)` writes the condition with the right `ESCAPE` clause.
 
 ### New Packages
 - **Masterly.FluentRegex.AspNetCore:** `AddFluentPatterns(...)` and the `pattern(name)` route constraint.
 - **Masterly.FluentRegex.Xunit:** `[MatchingData]` and `[NonMatchingData]` theory data for xUnit v3.
 - **Masterly.FluentRegex.AI:** `PatternAssistant` drafts a pattern from a description with Claude, verifies syntax, safety and your examples locally, and retries with precise feedback.
+- **Masterly.FluentRegex.EntityFrameworkCore:** `UseFluentRegex()` on any `DbContextOptionsBuilder`. `EF.Functions.Matches(column, pattern)`, `Group` and `Replace` translate to the regex operator of PostgreSQL, MySQL, MariaDB, SQL Server 2025 or SQLite with the exact .NET meaning; SQL Server before 2025 gets a `LIKE` that language algebra proved exact (or an opt-in proven superset); every regex condition gets a proven `LIKE` prefix and length hint so B-tree indexes stay usable; `MatchingAsync` runs a proven-superset prefilter in SQL and the exact check in .NET for patterns the database cannot run; `HasPattern` and `[MatchesPattern]` become `CHECK` constraints in migrations. Patterns that would silently change meaning are rejected at query translation, never run.
 
 ### Platforms
 - **.NET 10:** the core, AspNetCore, Xunit and AI packages now also target .NET 10 (trimming and Native AOT compatible). The test suite runs on .NET 8 and .NET 10.
 - **.NET 9 target removed:** .NET 9 left support in May 2026, so the packages no longer ship a `net9.0` build. .NET 9 apps keep working on the .NET 8 build; only the span `EnumerateSplits` overload needs .NET 10.
 
 ### Tooling
-- New CLI commands: `compare`, `optimize`, `learn`, `profile`, `highlight`, `coverage` and `export`. The CLI now writes UTF-8 output.
-- A browser playground (`playground/`) running the library in WebAssembly, with shareable links and a GitHub Pages workflow.
+- New CLI commands: `compare`, `optimize`, `learn`, `profile`, `highlight`, `coverage`, `export` and `facts`. `export --to` accepts `postgresql`, `mysql`, `mariadb`, `sqlserver`, `sqlite` and `like` (with `--dialect`, `--scope`, `--case-insensitive` and `--column`). The CLI now writes UTF-8 output.
+- A browser playground (`playground/`) running the library in WebAssembly, with shareable links and a GitHub Pages workflow. Its Export tab shows the regex condition, the proven `LIKE` and the language facts for each database.
 
 ## Fixed
 - `Extract<T>` and templates parse numbers written with any Unicode decimal digits, such as Arabic-Indic "٢٠٢٦", which `\d` already matched.
