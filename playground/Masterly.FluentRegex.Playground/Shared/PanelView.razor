@@ -1,0 +1,21 @@
+@typeparam T
+
+@* Renders a computed panel, or its error, so each panel fails independently. *@
+@if (Result.Succeeded && Result.Value is { } value)
+{
+    @ChildContent(value)
+}
+else if (Result.Error != null)
+{
+    <div class="error">@Result.Error</div>
+}
+
+@code {
+    /// <summary>Gets or sets the panel result to render.</summary>
+    [Parameter, EditorRequired]
+    public PanelResult<T> Result { get; set; } = null!; // required parameter, always supplied by the parent
+
+    /// <summary>Gets or sets the content rendered with the computed value.</summary>
+    [Parameter, EditorRequired]
+    public RenderFragment<T> ChildContent { get; set; } = null!; // required parameter, always supplied by the parent
+}
