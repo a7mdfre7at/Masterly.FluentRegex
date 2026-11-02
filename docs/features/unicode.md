@@ -51,6 +51,17 @@ Pattern.With.Digit.IsMatch("٣");        // true
 Pattern.With.AsciiDigit.IsMatch("٣");   // false
 ```
 
+To switch a whole pattern, including every common pattern, choose a `DigitMode`:
+
+```csharp
+CommonPatterns.IPv4().IsMatch("0.0.0.٩");                   // true  (Unicode digits, the default)
+CommonPatterns.IPv4(DigitMode.Ascii).IsMatch("0.0.0.٩");    // false
+Pattern.FromRegex(@"^\d{4}$").WithAsciiDigits().ToString();  // ^[0-9]{4}$
+```
+
+`WithAsciiDigits()` rewrites `\d` and `\D` wherever they appear, including inside sets and class
+subtractions, so they mean exactly 0-9 and everything else. `\w` and explicit `\p{Nd}` are left alone.
+
 `DigitIn` selects one script's digits. Arabic covers both Arabic-Indic `٠-٩` and Extended
 Arabic-Indic (Persian/Urdu) `۰-۹`; Latin gives `0-9`:
 

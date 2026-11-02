@@ -27,6 +27,7 @@ package has no new dependencies.
 
 ### Unicode
 - `Script(UnicodeScript)`, `LetterIn`, `DigitIn`, `AsciiDigit`, `CodePoint`, an approximate `Grapheme` and `IgnoreDiacritics()` (for example, "محمد" matches "مُحَمَّد" and "cafe" matches "café").
+- **Digit mode:** every `CommonPatterns` method has a `DigitMode` overload, such as `CommonPatterns.IPv4(DigitMode.Ascii)`, and any pattern can switch with `WithAsciiDigits()` or `WithDigits(DigitMode)`. `DigitMode.Ascii` rewrites `\d` and `\D` everywhere, including inside sets and subtractions, so they mean exactly 0-9 and everything else. The overloads work in `[GeneratePattern]` chains, the CLI accepts `--ascii-digits`, and the playground has an "ASCII digits only" toggle.
 
 ### Export
 - `ToFlavor(RegexFlavor.JavaScript | JsonSchema)`, `ToJavaScript()` and `PatternExport.ToTypeScript`. Translations keep the .NET meaning of `\d`, `\w`, `\s`, `\b`, `$` and `.`, expand class subtraction and Unicode blocks, and report every remaining difference as a warning. Constructs JavaScript cannot express, such as atomic groups, throw `NotSupportedException` listing each one.
@@ -45,7 +46,7 @@ package has no new dependencies.
 
 ## Upgrade Notes
 - The new public `Masterly.FluentRegex.Validators` class can clash with a `Validators` type in your own code when both namespaces are imported. Use a using alias to resolve it.
-- `\d` matches every Unicode decimal digit, and so do the `CommonPatterns` built on it. Use `AsciiDigit` or `[0-9]` when only ASCII digits are valid.
+- `\d` matches every Unicode decimal digit, so the parameterless `CommonPatterns` methods accept digits such as "٩" (for example, `IPv4()` accepts "0.0.0.٩"). This is unchanged from 3.0. Pass `DigitMode.Ascii` or call `WithAsciiDigits()` when only 0-9 are valid.
 
 ---
 

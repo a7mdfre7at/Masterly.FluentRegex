@@ -185,6 +185,7 @@ FluentRegex 3.1 can prove things about your patterns, learn them from examples, 
 | Streaming | `MatchesAsync(stream)` matches multi-GB input in constant memory | [streaming](docs/features/streaming.md) |
 | Highlighting | `Highlight(text)` for terminals, HTML pages and readable test assertions | [highlighting](docs/features/highlighting.md) |
 | Unicode scripts | `Script(UnicodeScript.Arabic)`, `DigitIn(...)`, `Grapheme`, `IgnoreDiacritics()` | [unicode](docs/features/unicode.md) |
+| Digit mode | `CommonPatterns.IPv4(DigitMode.Ascii)` or `pattern.WithAsciiDigits()` makes `\d` mean 0-9 only | [below](#unicode-or-ascii-digits) |
 | DataAnnotations | `[MatchesPattern(typeof(Patterns), nameof(Patterns.Sku))]` | [rules and redaction](docs/features/rules-and-redaction.md) |
 | ASP.NET Core | Route constraints such as `{id:pattern(sku)}` from a pattern registry | [aspnetcore](docs/features/aspnetcore.md) |
 | xUnit | `[MatchingData]` and `[NonMatchingData]` theory data from any pattern | [xunit](docs/features/xunit.md) |
@@ -1142,6 +1143,32 @@ The .NET 8 and .NET 9 builds are annotated for trimming and Native AOT. The `Reg
 
 Pre-built, tested patterns for common validation scenarios.
 
+### Unicode or ASCII Digits
+
+In .NET, `\d` matches every Unicode decimal digit, not just 0-9: `\d{4}` also accepts "٢٠٢٦" (Arabic-Indic)
+and "२०२६" (Devanagari). That suits free text in any language, but formats defined over ASCII, such as
+IPv4 addresses, ISO dates or card numbers, usually should not accept them. Both behaviors are available:
+
+```csharp
+// Default: Unicode digits, exactly as in 3.0
+CommonPatterns.IPv4().IsMatch("0.0.0.٩");                   // true
+
+// Every common pattern has a DigitMode overload
+CommonPatterns.IPv4(DigitMode.Ascii).IsMatch("0.0.0.٩");    // false
+CommonPatterns.IPv4(DigitMode.Ascii).IsMatch("10.0.0.1");   // true
+CommonPatterns.Email(PatternStrictness.Strict, DigitMode.Ascii);
+
+// Any pattern can switch
+Pattern.FromRegex(@"^\d{4}$").WithAsciiDigits().ToString();      // ^[0-9]{4}$
+myPattern.WithDigits(DigitMode.Ascii);
+```
+
+`WithAsciiDigits()` rewrites `\d` and `\D` everywhere they appear, including inside sets, negated sets,
+class subtractions and lookarounds, and keeps the options and timeout. Each replacement matches exactly
+the ASCII meaning; for example, `[\Dx]` becomes a set of every character except 0-9, plus `x`. Explicit
+categories such as `\p{Nd}`, and `\w`, which also contains Unicode digits, are left as written. The
+`DigitMode` overloads also work in `[GeneratePattern]` chains, and the CLI accepts `--ascii-digits`.
+
 ### Contact Information
 
 ```csharp
@@ -1718,6 +1745,8 @@ dotnet tool install --global Masterly.FluentRegex.Tool
 | `fluentregex highlight <regex> <file\|->` | Shows matches and groups in a file (`--format ansi\|html\|brackets`) |
 | `fluentregex coverage <regex> <file\|->` | Reports which branches and limits the lines of a file exercise |
 | `fluentregex export <regex> [--to js\|json-schema\|typescript]` | Translates the regex for JavaScript, JSON Schema or TypeScript |
+
+Every command that takes a regex also accepts `--options <list>` and `--ascii-digits`.
 
 `scan` finds regexes in `new Regex(...)`, the static `Regex` methods, `[GeneratedRegex]` and
 `[RegularExpression]`. It works on any C# codebase, whether or not it uses FluentRegex:
