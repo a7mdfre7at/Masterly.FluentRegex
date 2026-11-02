@@ -54,7 +54,7 @@ internal sealed partial class EcmaScriptTranslator
         string pattern = translator.Emit(tree.Root);
         translator.AddSummaryWarnings();
         translator.ThrowIfUnsupported();
-        return new FlavorConversion(flavor, pattern, translator.Flags(), translator._warnings);
+        return new FlavorConversion(flavor, pattern, translator.Flags(), translator._warnings, translator._plan.GroupNumbers());
     }
 
     private void CheckGlobalOptions(RegexOptions options)
@@ -87,9 +87,7 @@ internal sealed partial class EcmaScriptTranslator
             return;
         }
 
-        string flavorName = _flavor == RegexFlavor.JavaScript ? "JavaScript" : "JSON Schema";
-        string list = string.Join("\n", _issues.Select(issue => $"  - {issue}"));
-        throw new NotSupportedException($"The pattern cannot be converted to {flavorName} without changing its meaning:\n{list}");
+        throw SqlRegexTranslator.UnsupportedException(SqlDialect.Name(_flavor), _issues);
     }
 
     private void AddSummaryWarnings()

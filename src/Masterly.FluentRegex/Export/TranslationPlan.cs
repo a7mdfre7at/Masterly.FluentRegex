@@ -52,6 +52,30 @@ internal sealed class TranslationPlan
     /// <summary>Gets the ECMAScript number of a capturing group: its position among all capturing groups.</summary>
     public int OrdinalOf(GroupNode group) => _ordinals[group];
 
+    /// <summary>Maps every capturing group's name and .NET number to its ECMAScript number.</summary>
+    public IReadOnlyDictionary<string, int> GroupNumbers() => BuildGroupNumbers(_ordinals);
+
+    /// <summary>
+    /// Builds the <see cref="FlavorConversion.GroupNumbers"/> dictionary from the target number of
+    /// each capturing group: the group's name (when it has one) and its .NET number, as a string.
+    /// </summary>
+    public static IReadOnlyDictionary<string, int> BuildGroupNumbers(IEnumerable<KeyValuePair<GroupNode, int>> numbers)
+    {
+        Dictionary<string, int> result = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (KeyValuePair<GroupNode, int> entry in numbers)
+        {
+            GroupNode group = entry.Key;
+            if (group.Name != null)
+            {
+                result[group.Name] = entry.Value;
+            }
+
+            result[group.Number.ToString(CultureInfo.InvariantCulture)] = entry.Value;
+        }
+
+        return result;
+    }
+
     /// <summary>
     /// Gets a value indicating whether case-insensitivity changes what the node matches. Digits,
     /// punctuation and <c>\d</c> are unaffected, so they never force per-node expansion.
