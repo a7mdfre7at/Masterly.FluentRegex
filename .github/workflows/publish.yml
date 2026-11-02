@@ -54,6 +54,33 @@ jobs:
           NUGET_KEY: ${{ secrets.NUGET_API_KEY }}
           INCLUDE_SYMBOLS: false
 
+      - name: Publish ASP.NET Core integration to NuGet
+        uses: alirezanet/publish-nuget@v3.1.0
+        with:
+          PROJECT_FILE_PATH: src/Masterly.FluentRegex.AspNetCore/Masterly.FluentRegex.AspNetCore.csproj
+          VERSION_REGEX: ^\s*<Version>(.*)<\/Version>\s*$
+          TAG_COMMIT: false
+          NUGET_KEY: ${{ secrets.NUGET_API_KEY }}
+          INCLUDE_SYMBOLS: false
+
+      - name: Publish xUnit integration to NuGet
+        uses: alirezanet/publish-nuget@v3.1.0
+        with:
+          PROJECT_FILE_PATH: src/Masterly.FluentRegex.Xunit/Masterly.FluentRegex.Xunit.csproj
+          VERSION_REGEX: ^\s*<Version>(.*)<\/Version>\s*$
+          TAG_COMMIT: false
+          NUGET_KEY: ${{ secrets.NUGET_API_KEY }}
+          INCLUDE_SYMBOLS: false
+
+      - name: Publish AI assistant to NuGet
+        uses: alirezanet/publish-nuget@v3.1.0
+        with:
+          PROJECT_FILE_PATH: src/Masterly.FluentRegex.AI/Masterly.FluentRegex.AI.csproj
+          VERSION_REGEX: ^\s*<Version>(.*)<\/Version>\s*$
+          TAG_COMMIT: false
+          NUGET_KEY: ${{ secrets.NUGET_API_KEY }}
+          INCLUDE_SYMBOLS: false
+
   on-failure:
     name: Build Failed
     runs-on: ubuntu-latest
