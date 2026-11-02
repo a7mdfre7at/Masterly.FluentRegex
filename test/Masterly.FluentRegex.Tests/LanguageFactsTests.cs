@@ -140,6 +140,98 @@ public class LanguageFactsTests
         facts.AcceptsEmpty.ShouldBe(expected);
     }
 
+    [Theory]
+    [InlineData(@"(a)\1(?:abc$){1}")]
+    [InlineData(@"(a)\1(?:abc\Z)+")]
+    [InlineData(@"(a)\1(?:x|abc$)")]
+    public void GetLanguageFacts_LenientEndAnchorInsideAQuantifierOrGroup_RequiresNoSuffix(string regex)
+    {
+        Pattern pattern = Pattern.FromRegex(regex);
+
+        LanguageFacts facts = pattern.GetLanguageFacts();
+
+        facts.IsExact.ShouldBeFalse();
+        facts.RequiredSuffix.ShouldBe("");
+        Regex.IsMatch("aaabc\n", $@"\A(?:{regex})").ShouldBeTrue(); // the anchor leaves the final newline over
+    }
+
+    // ------------------------------------------------------------------
+    // Free-spacing comments and surrogates
+    // ------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("^INV-[0-9]{4} # invoice number", RegexOptions.IgnorePatternWhitespace, "INV-1234-X")]
+    [InlineData("abc #c", RegexOptions.IgnorePatternWhitespace, "abcd")]
+    [InlineData("a(?x) b #c", RegexOptions.None, "abz")]
+    [InlineData("(?x) a | b #c", RegexOptions.None, "bz")]
+    public void GetLanguageFacts_TrailingFreeSpacingComment_KeepsTheSubstringPadding(string regex, RegexOptions options, string longerMatch)
+    {
+        Pattern pattern = Pattern.FromRegex(regex, options);
+
+        LanguageFacts facts = pattern.GetLanguageFacts(MatchScope.Substring);
+
+        pattern.IsMatch(longerMatch).ShouldBeTrue();
+        facts.MaxLength.ShouldBeNull(facts.ToString());
+        facts.RequiredSuffix.ShouldBe("");
+        Respects(facts, longerMatch).ShouldBeTrue(facts.ToString());
+    }
+
+    [Fact]
+    public void GetLanguageFacts_TrailingCommentAfterAnAlternation_DoesNotThrow()
+    {
+        Pattern pattern = Pattern.FromRegex("a|b #c", RegexOptions.IgnorePatternWhitespace);
+
+        LanguageFacts facts = pattern.GetLanguageFacts(MatchScope.Substring);
+
+        facts.IsExact.ShouldBeTrue();
+        facts.MinLength.ShouldBe(1);
+        facts.MaxLength.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GetLanguageFacts_NonRegularPatternWithTrailingComment_AsksTheEngineWithoutThrowing()
+    {
+        Pattern pattern = Pattern.FromRegex(@"(a)?\1? #c", RegexOptions.IgnorePatternWhitespace);
+
+        LanguageFacts facts = pattern.GetLanguageFacts();
+
+        facts.IsExact.ShouldBeFalse();
+        facts.AcceptsEmpty.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GetLanguageFacts_ScopedFreeSpacingGroup_KeepsLaterWhitespaceLiteral()
+    {
+        Pattern pattern = Pattern.FromRegex("^a(?x: b #c\n) c");
+
+        LanguageFacts facts = pattern.GetLanguageFacts(MatchScope.Substring);
+
+        facts.MinLength.ShouldBe(4);
+        facts.RequiredPrefix.ShouldBe("ab c");
+        facts.MaxLength.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GetLanguageFacts_BranchesSharingOnlyAHighSurrogate_RequireNoHalfCharacter()
+    {
+        Pattern pattern = Pattern.FromRegex("^(?:\\uD83D\\uDE00|\\uD83D\\uDE03)x(?:\\uD83D\\uDE00|\\uD83C\\uDE00)\\z");
+
+        LanguageFacts facts = pattern.GetLanguageFacts();
+
+        facts.RequiredPrefix.ShouldBe("");
+        facts.RequiredSuffix.ShouldBe("");
+        facts.MinLength.ShouldBe(5);
+    }
+
+    [Fact]
+    public void GetLanguageFacts_WholeSurrogatePairs_StayRequired()
+    {
+        LanguageFacts facts = Pattern.FromRegex("^\\uD83D\\uDE00ab\\uD83D\\uDE03\\z").GetLanguageFacts();
+
+        facts.RequiredPrefix.ShouldBe("\uD83D\uDE00ab\uD83D\uDE03");
+        facts.RequiredSuffix.ShouldBe("\uD83D\uDE00ab\uD83D\uDE03");
+    }
+
     [Fact]
     public void GetLanguageFacts_TooLargeForTheAlgebra_FallsBackInsteadOfThrowing()
     {

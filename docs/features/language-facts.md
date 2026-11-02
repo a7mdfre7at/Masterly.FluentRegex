@@ -61,6 +61,23 @@ CommonPatterns.Url().GetLanguageFacts();                        // length 10..un
    exactly one single-character transition leads onward, that character begins every accepted string.
 4. `RequiredSuffix` is the same walk backwards from the set of accepting states, simulated lazily as sets
    of states, so the reversed automaton is never determinized in full.
+5. The prefix is cut back to whole code points: it never ends with the first half of a surrogate pair
+   (nor contains a lone surrogate), and the suffix never starts with the second half. `^(?:😀|😃)` shares
+   only a high surrogate, so it requires no prefix; a database that stores UTF-8 or compares code points
+   could not use one.
+
+The `Substring` pattern is built without letting a trailing `#` comment in free-spacing mode
+(`RegexOptions.IgnorePatternWhitespace`, or an inline `(?x)` still in effect at the end) swallow the
+padding: `^INV-[0-9]{4} # invoice number` has length `8..unbounded` in `Substring` scope, not `8..8`.
+
+### Lengths are UTF-16 code units
+
+`MinLength` and `MaxLength` count UTF-16 code units, as .NET does: an emoji has length 2. `MaxLength` is
+therefore also an upper bound on code-point lengths (PostgreSQL and MySQL `length`/`char_length`, SQL
+Server `LEN` under a supplementary-character-aware collation, which also ignores trailing blanks), so a
+filter such as `length(col) <= MaxLength` never drops a matching row. `MinLength` is not a lower bound on
+code-point lengths: `^..\z` has `MinLength` 2 but accepts a single emoji, so do not turn it into
+`length(col) >= MinLength` on such databases.
 
 ## Outside the regular subset
 
@@ -71,7 +88,10 @@ conditionals, `\b`, multiline anchors, `RightToLeft`, or an automaton beyond the
 - `RequiredPrefix` is the run of literal characters at the start of the pattern (zero-width constructs
   such as lookarounds and `\b` are skipped because they consume nothing; a quantifier contributes its
   mandatory copies; an alternation contributes what all branches share); `RequiredSuffix` is the same
-  from the end. They are only reported when the scope or an anchor pins that end.
+  from the end. They are only reported when the scope or an anchor pins that end. Walking back from
+  the end, the suffix stops at a `$` or `\Z` (without `RegexOptions.Multiline`) wherever it sits, inside
+  a group or a quantifier too, because the string may still end with the newline those anchors accept:
+  `(a)\1(?:abc$){1}` requires no suffix.
 - `MinLength` is a lower bound summed over the tree; `MaxLength` is `null`.
 - `AcceptsEmpty` is decided by the engine itself on the empty string.
 

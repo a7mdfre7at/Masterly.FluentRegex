@@ -63,7 +63,8 @@ public partial class Pattern
                 return IsMatch(string.Empty);
             }
 
-            return new Regex($"\\A(?:{ToString()})\\z", _options, _timeout).IsMatch(string.Empty);
+            string body = ScopeAnalysis.TerminatedPattern(ParseTree()); // a trailing # comment must not swallow ")\z"
+            return new Regex($"\\A(?:{body})\\z", _options, _timeout).IsMatch(string.Empty);
         }
         catch (RegexMatchTimeoutException)
         {
