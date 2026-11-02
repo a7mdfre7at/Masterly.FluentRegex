@@ -16,7 +16,16 @@ internal static class LanguageAlgebra
     public static PatternComparison Compare(RegexTree left, RegexTree right)
     {
         LanguageContext context = new LanguageContext(left, right);
-        ComparisonWitnesses witnesses = WitnessSearch.Compare(context[0], context[1], context.Partition);
+        return Compare(context, 0, 1, left, right);
+    }
+
+    /// <summary>
+    /// Compares two automata of a shared context, so one expensive automaton can take part in several
+    /// comparisons. Witnesses are still confirmed against the trees with the .NET engine.
+    /// </summary>
+    public static PatternComparison Compare(LanguageContext context, int leftIndex, int rightIndex, RegexTree left, RegexTree right)
+    {
+        ComparisonWitnesses witnesses = WitnessSearch.Compare(context[leftIndex], context[rightIndex], context.Partition);
         MembershipOracle leftOracle = new MembershipOracle(left);
         MembershipOracle rightOracle = new MembershipOracle(right);
         Confirm(witnesses.OnlyLeft, leftOracle, rightOracle, expectLeft: true, expectRight: false);
