@@ -15,6 +15,7 @@ internal static class ScopeAnalysis
 {
     private const string LeadingPadding = @"[\s\S]*?";
     private const string TrailingPadding = @"[\s\S]*";
+    private const string CommentTerminator = "\n";
 
     /// <summary>Gets a value indicating whether every match must start at the beginning of the input.</summary>
     public static bool IsStartAnchored(RegexNode node)
@@ -90,10 +91,58 @@ internal static class ScopeAnalysis
         }
 
         // Only an alternation needs grouping; keeping a sequence bare leaves a leading lookahead where the algebra can see it.
-        string body = tree.Root is AlternationNode ? $"(?:{tree.Pattern})" : tree.Pattern;
+        string pattern = TerminatedPattern(tree);
+        string body = tree.Root is AlternationNode ? $"(?:{pattern})" : pattern;
         string leading = startAnchored ? string.Empty : LeadingPadding;
         string trailing = endAnchored ? string.Empty : TrailingPadding;
         return $"{leading}{body}{trailing}";
+    }
+
+    /// <summary>
+    /// Returns the pattern text, followed by a newline when free-spacing mode (<c>x</c>) is still on at
+    /// its end, so text appended after it can never become part of a trailing <c>#</c> comment. In
+    /// free-spacing mode the newline is ignored whitespace; otherwise nothing is added.
+    /// </summary>
+    public static string TerminatedPattern(RegexTree tree) =>
+        EndsInFreeSpacingMode(tree) ? tree.Pattern + CommentTerminator : tree.Pattern;
+
+    /// <summary>
+    /// Gets a value indicating whether <c>x</c> is in effect at the end of the pattern: the construction
+    /// options, changed by every inline <c>(?x)</c> or <c>(?-x)</c> at the top level, which apply up to
+    /// the end of the pattern (across alternation branches too). Scoped <c>(?x:...)</c> groups and
+    /// options inside groups end with their group.
+    /// </summary>
+    public static bool EndsInFreeSpacingMode(RegexTree tree)
+    {
+        RegexOptions options = tree.Options;
+        foreach (RegexNode item in TopLevelItems(tree.Root))
+        {
+            if (item is InlineOptionsNode inline)
+            {
+                options = RegexParser.ApplyFlags(options, inline.OptionsOn, inline.OptionsOff);
+            }
+        }
+
+        return (options & RegexOptions.IgnorePatternWhitespace) != 0;
+    }
+
+    private static IEnumerable<RegexNode> TopLevelItems(RegexNode root)
+    {
+        List<RegexNode> branches = root is AlternationNode alternation ? alternation.Branches : new List<RegexNode> { root };
+        foreach (RegexNode branch in branches)
+        {
+            if (branch is SequenceNode sequence)
+            {
+                foreach (RegexNode item in sequence.Items)
+                {
+                    yield return item;
+                }
+            }
+            else
+            {
+                yield return branch;
+            }
+        }
     }
 
     /// <summary>Parses the scoped pattern with the given options.</summary>

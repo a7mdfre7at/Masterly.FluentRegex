@@ -58,13 +58,24 @@ internal static class SyntacticFacts
                 return CollectGroup(group, fromStart, text);
             case QuantifierNode quantifier:
                 return CollectQuantifier(quantifier, fromStart, text);
+            case AnchorNode anchor:
+                return fromStart || !IsLenientEnd(anchor) || text.Length > 0;
             case BackreferenceNode _:
             case ConditionalNode _:
                 return false;
             default:
-                return true; // anchors, inline options, comments and empty nodes consume nothing
+                return true; // other anchors, inline options, comments and empty nodes consume nothing
         }
     }
+
+    /// <summary>
+    /// <c>$</c> (without <c>RegexOptions.Multiline</c>) and <c>\Z</c> also accept one final newline. Walking
+    /// back from the end, nothing collected yet means the string may still end with that newline, so
+    /// the suffix must stop there, wherever the anchor sits (inside a quantifier or group too).
+    /// </summary>
+    private static bool IsLenientEnd(AnchorNode anchor) =>
+        anchor.AnchorKind == AnchorKind.EndOfInputOrNewline ||
+        (anchor.AnchorKind == AnchorKind.EndOfLine && (anchor.Options & RegexOptions.Multiline) == 0);
 
     private static bool CollectLiteral(LiteralNode literal, StringBuilder text)
     {

@@ -22,6 +22,10 @@ internal enum LikePartKind
 /// <summary>One piece of a LIKE pattern.</summary>
 internal sealed class LikePart
 {
+    private const char FirstSurrogate = '\uD800';
+    private const char LastSurrogate = '\uDFFF';
+    private static readonly CharSet Surrogates = CharSet.Range(FirstSurrogate, LastSurrogate);
+
     private LikePart(LikePartKind kind, string text, CharSet? set)
     {
         Kind = kind;
@@ -34,7 +38,10 @@ internal sealed class LikePart
     /// <summary>The literal text of a <see cref="LikePartKind.Text"/> part.</summary>
     public string Text { get; }
 
-    /// <summary>The members of a <see cref="LikePartKind.Set"/> part.</summary>
+    /// <summary>
+    /// The members of a <see cref="LikePartKind.Set"/> part; for a <see cref="LikePartKind.AnyChar"/>
+    /// part, the characters the regex construct it replaces can match (null when unknown).
+    /// </summary>
     public CharSet? Set { get; }
 
     public static LikePart AnyChar { get; } = new LikePart(LikePartKind.AnyChar, string.Empty, null);
@@ -45,8 +52,20 @@ internal sealed class LikePart
 
     public static LikePart OfSet(CharSet set) => new LikePart(LikePartKind.Set, string.Empty, set);
 
+    /// <summary>A <c>_</c> standing for a regex construct that matches one of <paramref name="replaced"/>.</summary>
+    public static LikePart AnyCharFor(CharSet replaced) => new LikePart(LikePartKind.AnyChar, string.Empty, replaced);
+
     /// <summary>Gets a value indicating whether the part matches exactly one character.</summary>
     public bool IsSingleCharacter => Kind == LikePartKind.AnyChar || Kind == LikePartKind.Set || (Kind == LikePartKind.Text && Text.Length == 1);
+
+    /// <summary>
+    /// Gets a value indicating whether the part is one regex position that can match a UTF-16 surrogate
+    /// code unit. Two such positions in a row can together match one supplementary character, which a
+    /// database counting code points sees as a single character.
+    /// </summary>
+    public bool CanMatchSurrogate =>
+        (Kind == LikePartKind.AnyChar && (Set == null || Set.Overlaps(Surrogates))) ||
+        (Kind == LikePartKind.Set && Set != null && Set.Overlaps(Surrogates));
 
     /// <summary>The characters a single-character part matches.</summary>
     public CharSet SingleCharacterSet()

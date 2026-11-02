@@ -25,8 +25,8 @@ public sealed class LanguageFacts
         Scope = scope;
         MinLength = minLength;
         MaxLength = maxLength;
-        RequiredPrefix = requiredPrefix;
-        RequiredSuffix = requiredSuffix;
+        RequiredPrefix = WholeCodePointPrefix(requiredPrefix);
+        RequiredSuffix = WholeCodePointSuffix(requiredSuffix);
         AcceptsEmpty = acceptsEmpty;
         IsEmptyLanguage = isEmptyLanguage;
         IsExact = isExact;
@@ -47,14 +47,16 @@ public sealed class LanguageFacts
     /// <summary>
     /// Gets the text every accepted string starts with; empty when nothing is required. Under
     /// <see cref="System.Text.RegularExpressions.RegexOptions.IgnoreCase"/> only characters without case
-    /// variants can be required. When <see cref="IsExact"/> is false the real required prefix may be longer.
+    /// variants can be required. The prefix ends at a whole code point: it never ends with half of a
+    /// surrogate pair (or contains a lone surrogate), so it stays a prefix for databases that store UTF-8
+    /// or compare code points. When <see cref="IsExact"/> is false the real required prefix may be longer.
     /// </summary>
     public string RequiredPrefix { get; }
 
     /// <summary>
     /// Gets the text every accepted string ends with; empty when nothing is required. A pattern ending
     /// in <c>$</c> or <c>\Z</c> requires no suffix, because it also accepts a trailing newline; use
-    /// <c>\z</c> to require one.
+    /// <c>\z</c> to require one. Like <see cref="RequiredPrefix"/>, it starts at a whole code point.
     /// </summary>
     public string RequiredSuffix { get; }
 
@@ -90,5 +92,51 @@ public sealed class LanguageFacts
         string accepts = AcceptsEmpty ? "true" : "false";
         return $"{Scope}: length {min}..{max}, prefix {PatternComparison.Quote(RequiredPrefix)}, " +
                $"suffix {PatternComparison.Quote(RequiredSuffix)}, accepts empty: {accepts} ({exactness})";
+    }
+
+    /// <summary>Cuts <paramref name="text"/> before its first lone surrogate (including a final high surrogate).</summary>
+    internal static string WholeCodePointPrefix(string text)
+    {
+        int i = 0;
+        while (i < text.Length)
+        {
+            if (char.IsSurrogatePair(text, i))
+            {
+                i += 2;
+            }
+            else if (char.IsSurrogate(text[i]))
+            {
+                return text.Substring(0, i);
+            }
+            else
+            {
+                i++;
+            }
+        }
+
+        return text;
+    }
+
+    /// <summary>Keeps <paramref name="text"/> after its last lone surrogate (including a first low surrogate).</summary>
+    internal static string WholeCodePointSuffix(string text)
+    {
+        int i = text.Length - 1;
+        while (i >= 0)
+        {
+            if (i > 0 && char.IsSurrogatePair(text[i - 1], text[i]))
+            {
+                i -= 2;
+            }
+            else if (char.IsSurrogate(text[i]))
+            {
+                return text.Substring(i + 1);
+            }
+            else
+            {
+                i--;
+            }
+        }
+
+        return text;
     }
 }

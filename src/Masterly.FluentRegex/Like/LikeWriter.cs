@@ -21,8 +21,9 @@ internal static class LikeWriter
     private const char LastSurrogate = '\uDFFF';
 
     /// <summary>Writes the parts; <paramref name="escapeCharacter"/> is set when an <c>ESCAPE</c> clause is required.</summary>
-    public static string Write(IReadOnlyList<LikePart> parts, LikeDialect dialect, bool allowRanges, out char? escapeCharacter)
+    public static string Write(IReadOnlyList<LikePart> parts, LikeDialect dialect, LikeCollation collation, out char? escapeCharacter)
     {
+        bool allowRanges = collation == LikeCollation.Binary;
         bool defaultBackslash = HasDefaultBackslashEscape(dialect);
         bool escaping = NeedsEscaping(parts, dialect) || (defaultBackslash && ContainsBackslash(parts));
         StringBuilder sb = new StringBuilder();
@@ -41,18 +42,22 @@ internal static class LikeWriter
 
     /// <summary>
     /// Gets a value indicating whether a set can be written for the dialect: only SQL Server has sets,
-    /// members must not need escaping, ranges need a code-point collation (otherwise every member is
-    /// listed), and lone surrogates and very large sets are excluded.
+    /// members must not be set syntax, ranges need a code-point collation (otherwise every member is
+    /// listed), and lone surrogates and very large sets are excluded. A set that contains surrogates is
+    /// written negated, which a case-insensitive collation rules out: there <c>[^a]</c> also rejects
+    /// <c>A</c> (and whatever else the collation folds with <c>a</c>), so it would not be a superset.
     /// </summary>
-    public static bool CanWriteSet(CharSet set, LikeDialect dialect, bool allowRanges, out bool nonAscii)
+    public static bool CanWriteSet(CharSet set, LikeDialect dialect, LikeCollation collation, out bool nonAscii)
     {
         nonAscii = false;
-        if (dialect != LikeDialect.SqlServer)
+        bool negated = ContainsSurrogate(set);
+        if (dialect != LikeDialect.SqlServer || (negated && collation != LikeCollation.Binary))
         {
             return false;
         }
 
-        CharSet members = ContainsSurrogate(set) ? set.Complement() : set;
+        bool allowRanges = collation == LikeCollation.Binary;
+        CharSet members = negated ? set.Complement() : set;
         if (!allowRanges && members.Count > MaxSetRanges)
         {
             return false;
@@ -136,7 +141,7 @@ internal static class LikeWriter
                 sb.Append(Percent);
                 break;
             case LikePartKind.Set:
-                AppendSet(sb, part.Set ?? CharSet.Empty, allowRanges);
+                AppendSet(sb, part.Set ?? CharSet.Empty, allowRanges, escaping);
                 break;
             default:
                 AppendText(sb, part.Text, dialect, escaping);
@@ -158,7 +163,11 @@ internal static class LikeWriter
         }
     }
 
-    private static void AppendSet(StringBuilder sb, CharSet set, bool allowRanges)
+    /// <summary>
+    /// Writes <c>[...]</c> or <c>[^...]</c>. Under an <c>ESCAPE</c> clause SQL Server reads the escape
+    /// character inside brackets too (<c>[\a]</c> is just <c>a</c>), so a member equal to it is doubled.
+    /// </summary>
+    private static void AppendSet(StringBuilder sb, CharSet set, bool allowRanges, bool escaping)
     {
         bool negated = ContainsSurrogate(set);
         CharSet members = negated ? set.Complement() : set;
@@ -170,20 +179,21 @@ internal static class LikeWriter
 
         foreach (KeyValuePair<char, char> range in members.Ranges())
         {
-            AppendRange(sb, range, allowRanges);
+            AppendRange(sb, range, allowRanges, escaping);
         }
 
         sb.Append(CloseSet);
     }
 
-    private static void AppendRange(StringBuilder sb, KeyValuePair<char, char> range, bool allowRanges)
+    private static void AppendRange(StringBuilder sb, KeyValuePair<char, char> range, bool allowRanges, bool escaping)
     {
         if (range.Key == range.Value || allowRanges)
         {
-            sb.Append(range.Key);
+            AppendMember(sb, range.Key, escaping);
             if (range.Value != range.Key)
             {
-                sb.Append(RangeDash).Append(range.Value);
+                sb.Append(RangeDash);
+                AppendMember(sb, range.Value, escaping);
             }
 
             return;
@@ -191,8 +201,18 @@ internal static class LikeWriter
 
         for (int c = range.Key; c <= range.Value; c++)
         {
-            sb.Append((char)c); // ranges follow the collation's order, so list the members instead
+            AppendMember(sb, (char)c, escaping); // ranges follow the collation's order, so list the members instead
         }
+    }
+
+    private static void AppendMember(StringBuilder sb, char member, bool escaping)
+    {
+        if (escaping && member == Escape)
+        {
+            sb.Append(Escape);
+        }
+
+        sb.Append(member);
     }
 
     private static bool IsSetSyntax(char c) => c == OpenSet || c == CloseSet || c == Negation || c == RangeDash;

@@ -119,7 +119,7 @@ public sealed class ExportCommandTests : CliTestBase
         CliResult result = Run("export", @"^INV-[0-9]{4}\z", "--to", "like", "--dialect", "sqlserver", "--column", "[Number]");
 
         result.ExitCode.ShouldBe(Ok);
-        result.OutputLines[0].ShouldBe("[Number] LIKE 'INV-[0-9][0-9][0-9][0-9]'");
+        result.OutputLines[0].ShouldBe("[Number] LIKE N'INV-[0-9][0-9][0-9][0-9]'");
         result.OutputLines[1].ShouldStartWith("exact:");
     }
 
