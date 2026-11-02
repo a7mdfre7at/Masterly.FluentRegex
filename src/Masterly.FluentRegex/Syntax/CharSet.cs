@@ -81,6 +81,14 @@ namespace Masterly.FluentRegex.Syntax
             return result;
         }
 
+        /// <summary>Returns the set of every code unit from <paramref name="low"/> to <paramref name="high"/> inclusive.</summary>
+        public static CharSet Range(char low, char high)
+        {
+            var result = new CharSet();
+            for (int c = low; c <= high; c++) result.Add(c);
+            return result;
+        }
+
         /// <summary>Returns the set of code units that are not in this set.</summary>
         public CharSet Complement()
         {
