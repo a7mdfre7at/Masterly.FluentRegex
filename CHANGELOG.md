@@ -1,3 +1,16 @@
+# What's New in 3.1.1
+
+A packaging and documentation release. There are no code or API changes.
+
+## Changed
+- **New brand:** every package now ships the new FluentRegex icon, and the NuGet readme shows the new banner.
+- **Documentation site:** the full documentation now lives at https://a7mdfre7at.github.io/Masterly.FluentRegex/, with
+  run-verified examples for every feature, the API reference and the upgrade guide. The browser playground is
+  published next to it at https://a7mdfre7at.github.io/Masterly.FluentRegex/playground/.
+- **README:** shortened to an introduction that points to the documentation site. The NuGet readme links to the site
+  instead of README sections.
+
+
 # What's New in 3.1.0
 
 FluentRegex 3.1 proves things about patterns, learns them from examples, and takes them into

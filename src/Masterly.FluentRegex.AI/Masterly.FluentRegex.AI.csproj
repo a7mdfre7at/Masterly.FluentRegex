@@ -19,9 +19,9 @@
     <PackageTags>Regex;FluentRegex;AI;Claude;Anthropic;LLM;ReDoS;Verification</PackageTags>
     <PackageReleaseNotes>See https://github.com/a7mdfre7at/Masterly.FluentRegex/blob/master/CHANGELOG.md</PackageReleaseNotes>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
-    <AssemblyVersion>3.1.0</AssemblyVersion>
-    <FileVersion>3.1.0</FileVersion>
-    <Version>3.1.0</Version>
+    <AssemblyVersion>3.1.1</AssemblyVersion>
+    <FileVersion>3.1.1</FileVersion>
+    <Version>3.1.1</Version>
   </PropertyGroup>
 
   <ItemGroup>

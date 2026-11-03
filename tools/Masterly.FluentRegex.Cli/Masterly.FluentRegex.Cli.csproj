@@ -15,7 +15,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>fluentregex</ToolCommandName>
     <PackageId>Masterly.FluentRegex.Tool</PackageId>
-    <Version>3.1.0</Version>
+    <Version>3.1.1</Version>
     <Authors>Ahmad Al-Freihat</Authors>
     <Description>Command-line companion for Masterly.FluentRegex: prove two regexes equivalent, optimize, learn from examples, profile backtracking, measure coverage, export to JavaScript and to the regex dialects of PostgreSQL, MySQL, MariaDB, SQL Server and SQLite, compile to SQL LIKE with a proof of exactness, print proven language facts, convert to fluent C#, scan codebases for ReDoS, generate test data, trace matches and draw railroad diagrams.</Description>
     <PackageProjectUrl>https://github.com/a7mdfre7at/Masterly.FluentRegex</PackageProjectUrl>
