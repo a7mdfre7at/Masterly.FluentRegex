@@ -136,13 +136,12 @@ WHERE [p].[Sku] IS NOT NULL AND IIF(REGEXP_LIKE([p].[Sku], N'\AABC-[0-9]{4}\n?\z
 The bound is 9, not 8, because `$` also accepts one final newline; end the pattern with `\z` to get 8. The
 `IS NOT NULL` guard is the [NULL rule](#null-rule); EF Core drops it for required columns.
 
-On SQL Server the prefix `LIKE` is only added when you declare `UseLikeCollation(LikeCollation.Binary)`. SQL Server's
-linguistic collations do not compare `LIKE` character by character. In the version-80 collations, including the
-server default `SQL_Latin1_General_CP1_CI_AS`, a combining accent joins the letter before it, so
-`N'ABC-' + NCHAR(0x301) LIKE N'ABC-%'` is false although .NET's `^ABC-` matches. Czech, Slovak and similar
-collations treat `ch` as one letter, so `N'chx' LIKE N'c%'` is false there. Either would make the hint drop rows.
-The length bound is always safe and is kept. Verified on SQL Server 2025; PostgreSQL, MySQL and MariaDB compare
-`LIKE` character by character under every collation tested, including Czech ones.
+On SQL Server the prefix `LIKE` is only added for columns declared binary with
+`UseLikeCollation(LikeCollation.Binary)`. SQL Server's linguistic collations do not compare `LIKE` character by
+character (see [SQL Server `LIKE` and collations](#sql-server-like-and-collations)), so on other columns the hint
+could drop rows, and a `COLLATE` that fixes that would also stop the index from being used. The length bound is
+always safe and is kept. PostgreSQL, MySQL and MariaDB compare `LIKE` character by character under every collation
+tested, including Czech ones.
 
 Only the upper length bound is emitted: SQL length functions count code points (`LEN` also strips trailing
 spaces), so a lower bound computed in UTF-16 units could exclude matches. Hints apply to patterns known at query
@@ -243,7 +242,7 @@ options.UseFluentRegex(fluent => fluent
     .UseDialect(SqlDialect.SqlServer2025)          // override detection, e.g. Azure SQL without an explicit level
     .UseIndexHints(true)                           // default
     .UseLikeFallback(LikeFallback.AllowSuperset)   // SQL Server without regex: superset LIKE + logged warning
-    .UseLikeCollation(LikeCollation.Binary)        // SQL Server columns use a _BIN2 or _CS_AS collation
+    .UseLikeCollation(LikeCollation.Binary)        // SQL Server columns use a _BIN2 or _BIN collation
     .AddCheckConstraintsFromAttributes());         // [MatchesPattern] -> CHECK constraints
 ```
 
@@ -261,19 +260,30 @@ throw. Translation differences reported by the dialect conversion are logged as
 
 ### SQL Server `LIKE` and collations
 
-Whether a `LIKE` is exact depends on what the column's collation does to it, so the proof needs to know.
-`UseLikeCollation` defaults to `LikeCollation.CaseInsensitive`, which matches SQL Server's default collations:
-`LIKE 'INV-%'` also accepts `inv-`, so a case-sensitive pattern with letters is never exact, and sets list their
-members instead of using ranges, whose order follows the collation. With `LikeCollation.Binary` (`_BIN2`, `_CS_AS`
-columns) ranges are safe and case is exact:
+SQL Server's linguistic collations, case-sensitive ones such as `_CS_AS` included, do not compare `LIKE`
+character by character. Verified on SQL Server 2025:
+- In the version-80 collations, including the server default `SQL_Latin1_General_CP1_CI_AS`, a combining accent
+  joins the letter before it, so `N'abc' + NCHAR(0x301) LIKE N'abc%'` is false although .NET's `^abc` matches.
+- Czech, Slovak and similar collations treat `ch` as one letter, so `N'chx' LIKE N'c%'` is false.
+- Ignorable characters such as a soft hyphen are skipped, and case-insensitive collations fold case.
+
+So every SQL Server `LIKE` that must be correct (the fallback below, the `MatchingAsync` prefilter, `CHECK`
+constraints and `SqlRegex.Condition`) compares under `COLLATE Latin1_General_100_BIN2`. There `LIKE` compares
+UTF-16 code units exactly as .NET does: case-sensitive, accents and soft hyphens are ordinary characters, `_`
+matches one code unit, and ranges follow code-point order. The proven `LIKE` therefore means the same on every
+column, and case-sensitive patterns translate exactly:
 
 ```csharp
 public static readonly Pattern Sku = Pattern.FromRegex(@"^[A-Z]{3}-[0-9]{4}\z");
 
-options.UseSqlServer(cs).UseFluentRegex(fluent => fluent.UseLikeCollation(LikeCollation.Binary));
 db.Products.WhereMatches(p => p.Sku, Sku);
-// WHERE [p].[Sku] LIKE N'[A-Z][A-Z][A-Z]-[0-9][0-9][0-9][0-9]'      -- proven exact, no regex engine needed
+// WHERE [p].[Sku] COLLATE Latin1_General_100_BIN2 LIKE N'[A-Z][A-Z][A-Z]-[0-9][0-9][0-9][0-9]'   -- proven exact
 ```
+
+A `COLLATE` on the column prevents an index seek. When your columns already use a `_BIN2` or `_BIN` collation,
+declare `UseLikeCollation(LikeCollation.Binary)`: the `COLLATE` is dropped, the condition can seek an index, and the
+index-hint prefix is emitted. A regression test runs the fallback against SQL Server 2025's default collation with
+an accented, an upper-case and a soft-hyphen row, and gets exactly .NET's result.
 
 End such patterns with `\z`: `$` also accepts a final newline, which `LIKE` can only cover with a trailing `%`.
 
@@ -282,12 +292,7 @@ maps characters in a non-Unicode literal (`'lemon' LIKE 'ł%'` is true) and igno
 comparisons, and either would break the proof. With Windows collations SQL Server still seeks an index on the
 `varchar` column; with legacy `SQL_*` collations the conversion can turn the seek into a scan.
 The `MatchingAsync` prefilter on the other dialects compiles its `LIKE` for a binary collation, which stays a
-superset under any case- or accent-insensitive collation. On SQL Server the prefilter uses `LIKE` only under a
-declared binary collation (see [index hints](#index-hints)); otherwise it narrows rows with `IS NOT NULL` and the
-length bound, and .NET does the rest. The `LIKE` fallback for SQL Server before 2025 is opt-in: its proof models
-case folding, but under linguistic collations a combining accent after a literal, a contraction such as Czech `ch`,
-or an ignorable character such as a soft hyphen can still change the result. Use it with binary collations, or
-with data free of such characters.
+superset under any case- or accent-insensitive collation.
 
 ## Dialect support matrix
 
@@ -309,7 +314,8 @@ with data free of such characters.
   `NotSupportedException` at query translation, never at run time with different results. Use `MatchingAsync`
   for them. Group names are rewritten for PostgreSQL (none) and SQL Server 2025 (`(?P<name>...)`) and mapped to
   numbers for `Group` and `${name}` replacements.
-- `RegexOptions.CultureInvariant`, `RightToLeft`, `ECMAScript` and `NonBacktracking` throw `NotSupportedException`.
+- `RegexOptions.RightToLeft` throws `NotSupportedException`, and each engine rejects the other options it cannot
+  honor exactly (see [SQL flavors](sql-flavors.md)).
 - Exactness covers text in the Basic Multilingual Plane. For input containing supplementary characters, such as
   emoji, the engines count code points where .NET counts UTF-16 units, so `.` or `{n}` can differ there; see
   [SQL flavors](sql-flavors.md#verification) for the live verification against every supported engine.

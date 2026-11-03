@@ -61,11 +61,14 @@ public sealed class FluentRegexOptionsBuilder
     }
 
     /// <summary>
-    /// States what the database's collation does to <c>LIKE</c>, which decides when a <c>LIKE</c> translation is
-    /// proven exact. The default, <see cref="LikeCollation.CaseInsensitive"/>, matches SQL Server's default
-    /// collations, where <c>LIKE 'INV-%'</c> also accepts <c>inv-</c>, so a case-sensitive pattern with letters is
-    /// never exact. Use <see cref="LikeCollation.Binary"/> for binary or case-sensitive collations
-    /// (<c>_BIN2</c>, <c>_CS_AS</c>).
+    /// States whether SQL Server columns use a binary collation (<c>_BIN2</c> or <c>_BIN</c>). LIKE translations are
+    /// proven for binary comparison, which linguistic collations (case-sensitive ones such as <c>_CS_AS</c> included)
+    /// do not perform: they fold case, merge combining accents into the letter before them, treat contractions such
+    /// as Czech <c>ch</c> as one letter and skip ignorable characters. With the default,
+    /// <see cref="LikeCollation.CaseInsensitive"/>, every SQL Server LIKE that must be correct compares under
+    /// <c>COLLATE Latin1_General_100_BIN2</c>, and the index-hint prefix, which could not use an index that way, is
+    /// omitted. Declare <see cref="LikeCollation.Binary"/> for binary columns to drop the <c>COLLATE</c> and get the
+    /// prefix hint. Other databases compare LIKE character by character and ignore this setting.
     /// </summary>
     /// <param name="collation">The collation behavior.</param>
     /// <returns>This builder, for chaining.</returns>

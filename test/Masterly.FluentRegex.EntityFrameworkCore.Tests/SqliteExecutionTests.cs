@@ -199,11 +199,11 @@ public sealed class SqliteExecutionTests : IDisposable
             .LogTo(log.Add)
             .Options;
         using CatalogContext context = new CatalogContext(options);
-        string expected = TestPatterns.Sku.ToLike(LikeDialect.SqlServer, MatchScope.Substring, LikeCollation.CaseInsensitive).Expression;
+        string expected = TestPatterns.Sku.ToLike(LikeDialect.SqlServer, MatchScope.Substring, LikeCollation.Binary).Expression;
 
         string sql = context.Products.WhereMatches(product => product.Sku, TestPatterns.Sku).ToQueryString();
 
-        sql.ShouldContain($"LIKE '{expected}'");
+        sql.ShouldContain($"COLLATE Latin1_General_100_BIN2 LIKE '{expected}'", customMessage: sql);
         log.ShouldContain(line => line.Contains("superset LIKE", StringComparison.Ordinal) && line.Contains(TestPatterns.SkuRegex, StringComparison.Ordinal));
     }
 

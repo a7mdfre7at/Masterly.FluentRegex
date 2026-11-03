@@ -46,8 +46,9 @@ modelBuilder.Entity<Product>().Property(p => p.Sku).HasPattern(Patterns.Sku);
   length bound next to the regex, so a B-tree index can narrow the scan without changing results.
 - NULL never matches, exactly as in .NET: `Matches(NULL)` is false, so `!Matches(...)` keeps NULL rows, with
   or without index hints.
-- SQL Server `LIKE` exactness depends on the collation. The default `LikeCollation.CaseInsensitive` matches SQL
-  Server's default collations; declare `UseLikeCollation(LikeCollation.Binary)` for `_BIN2`/`_CS_AS` columns,
-  which makes `^[A-Z]{3}-[0-9]{4}\z` the exact `LIKE '[A-Z][A-Z][A-Z]-[0-9][0-9][0-9][0-9]'`.
+- SQL Server's linguistic collations fold case, merge combining accents and skip ignorable characters in `LIKE`, so
+  SQL Server `LIKE`s compare under `COLLATE Latin1_General_100_BIN2`, where they mean exactly what .NET means:
+  `^[A-Z]{3}-[0-9]{4}\z` becomes the exact `LIKE '[A-Z][A-Z][A-Z]-[0-9][0-9][0-9][0-9]'` on any column. Declare
+  `UseLikeCollation(LikeCollation.Binary)` for `_BIN2`/`_BIN` columns to drop the `COLLATE` and keep index seeks.
 - `SqlRegex.Condition("\"Email\"", pattern, SqlDialect.PostgreSql)` returns the predicate as raw SQL for Dapper.
 - Targets .NET 8 (EF Core 8) and .NET 10 (EF Core 10). Full documentation: `docs/features/entity-framework.md`.

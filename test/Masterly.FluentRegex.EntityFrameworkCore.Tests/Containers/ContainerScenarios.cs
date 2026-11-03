@@ -85,6 +85,43 @@ internal static class ContainerScenarios
         letters.ShouldBe(new[] { "ABC", "XYZ", null, "ABC" });
     }
 
+    /// <summary>
+    /// SQL Server's default collation, SQL_Latin1_General_CP1_CI_AS, folds case, merges a combining accent into the
+    /// letter before it and skips a soft hyphen, so a plain LIKE 'abc%' returned "ABCx" and "ab&lt;SHY&gt;c" and dropped
+    /// "abc&lt;U+0301&gt;x". The translation compares under BIN2, where the result equals .NET's.
+    /// </summary>
+    public static async Task LikeFallbackEqualsDotNetDespiteLinguisticCollationAsync(
+        DbContextOptions<ConstrainedCatalogContext> seedOptions,
+        DbContextOptions<CatalogContext> likeFallbackOptions,
+        CancellationToken cancellationToken)
+    {
+        Pattern startsWithAbc = Pattern.FromRegex("^abc");
+        Product[] tricky =
+        {
+            new Product { Id = 300, Name = "abćx" },
+            new Product { Id = 301, Name = "ABCx" },
+            new Product { Id = 302, Name = "ab­c" },
+            new Product { Id = 303, Name = "abcd" }
+        };
+        await using ConstrainedCatalogContext seed = new ConstrainedCatalogContext(seedOptions);
+        seed.Products.AddRange(tricky);
+        await seed.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await using CatalogContext context = new CatalogContext(likeFallbackOptions);
+            List<int> inSql = await context.Products.WhereMatches(product => product.Name, startsWithAbc)
+                .Where(product => product.Id >= 300).OrderBy(product => product.Id).Select(product => product.Id).ToListAsync(cancellationToken);
+
+            inSql.ShouldBe(tricky.Where(product => startsWithAbc.IsMatch(product.Name)).Select(product => product.Id));
+            inSql.ShouldBe(new[] { 300, 303 });
+        }
+        finally
+        {
+            seed.Products.RemoveRange(tricky);
+            await seed.SaveChangesAsync(cancellationToken);
+        }
+    }
+
     /// <summary>A pattern mixing named and unnamed groups, whose .NET numbers differ from the engine's.</summary>
     public static async Task GroupWithRenumberedGroupsEqualsDotNetAsync(DbContextOptions<ConstrainedCatalogContext> options, CancellationToken cancellationToken)
     {

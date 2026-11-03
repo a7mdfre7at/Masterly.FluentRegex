@@ -13,9 +13,14 @@ public sealed class SqlServer2025Fixture : IAsyncLifetime
 
     private MsSqlContainer? _container;
     private DbContextOptions<ConstrainedCatalogContext>? _options;
+    private DbContextOptions<CatalogContext>? _likeFallbackOptions;
 
     public DbContextOptions<ConstrainedCatalogContext> Options =>
         _options ?? throw new InvalidOperationException("The SQL Server container was not started.");
+
+    /// <summary>The same database, translated as SQL Server before 2025: LIKE instead of REGEXP_LIKE.</summary>
+    public DbContextOptions<CatalogContext> LikeFallbackOptions =>
+        _likeFallbackOptions ?? throw new InvalidOperationException("The SQL Server container was not started.");
 
     public async ValueTask InitializeAsync()
     {
@@ -32,6 +37,10 @@ public sealed class SqlServer2025Fixture : IAsyncLifetime
         _options = new DbContextOptionsBuilder<ConstrainedCatalogContext>()
             .UseSqlServer(connectionString.ConnectionString, sqlServer => sqlServer.UseCompatibilityLevel(RegexCompatibilityLevel))
             .UseFluentRegex()
+            .Options;
+        _likeFallbackOptions = new DbContextOptionsBuilder<CatalogContext>()
+            .UseSqlServer(connectionString.ConnectionString)
+            .UseFluentRegex(fluent => fluent.UseDialect(SqlDialect.SqlServer))
             .Options;
         await ContainerScenarios.SeedAsync(_options, CancellationToken.None);
     }
@@ -82,4 +91,8 @@ public sealed class SqlServer2025ContainerTests : IClassFixture<SqlServer2025Fix
     [DockerFact]
     public Task SqlRegexCondition_RunsAsRawSql() =>
         ContainerScenarios.RawConditionCountsMatchesAsync(_fixture.Options, SqlDialect.SqlServer2025, name => $"[{name}]", Cancellation);
+
+    [DockerFact]
+    public Task LikeFallback_UnderTheDefaultLinguisticCollation_EqualsDotNet() =>
+        ContainerScenarios.LikeFallbackEqualsDotNetDespiteLinguisticCollationAsync(_fixture.Options, _fixture.LikeFallbackOptions, Cancellation);
 }

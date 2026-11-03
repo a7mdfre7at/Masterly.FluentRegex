@@ -216,17 +216,16 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
                 "UseDialect(SqlDialect.SqlServer2025) when the database runs at compatibility level 170 or later.");
         }
 
-        bool caseInsensitive = _options.LikeCollation == LikeCollation.CaseInsensitive;
-        DialectLike like = CoreDialectAdapter.ToDialectLike(pattern, SqlDialect.SqlServer, substring: true, caseInsensitiveCollation: caseInsensitive);
+        DialectLike like = CoreDialectAdapter.ToDialectLike(pattern, SqlDialect.SqlServer, substring: true, caseInsensitiveCollation: false);
         if (like.IsExact)
         {
-            return LikePredicate(value, like);
+            return LikePredicate(BinaryLikeOperand(value), like);
         }
 
         if (_options.LikeFallback == LikeFallback.AllowSuperset && like.IsSuperset)
         {
             _logger.LikeSupersetFallback(logger, pattern, like.Expression);
-            return LikePredicate(value, like);
+            return LikePredicate(BinaryLikeOperand(value), like);
         }
 
         throw new InvalidOperationException(
@@ -271,21 +270,31 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
             return _options.IndexHints ? WithIndexHints(predicate, value, pattern) : predicate;
         }
 
+        // Compiled for a binary collation: without sets (every dialect but SQL Server) that stays a superset under a
+        // case- or accent-insensitive collation, which only accepts more, and SQL Server compares in BIN2.
         SqlExpression result = notNull;
-        if (LikeKeepsEveryMatch(dialect))
+        DialectLike like = CoreDialectAdapter.ToDialectLike(pattern, dialect, substring: true, caseInsensitiveCollation: false);
+        if (!string.Equals(like.Expression, LikeWildcard, StringComparison.Ordinal))
         {
-            // Without sets (every dialect but SQL Server) a LIKE compiled for a binary collation stays a superset
-            // under a case- or accent-insensitive one, which only accepts more; on SQL Server LikeKeepsEveryMatch
-            // already requires a binary collation.
-            DialectLike like = CoreDialectAdapter.ToDialectLike(pattern, dialect, substring: true, caseInsensitiveCollation: false);
-            if (!string.Equals(like.Expression, LikeWildcard, StringComparison.Ordinal))
-            {
-                result = _sql.AndAlso(result, LikePredicate(value, like));
-            }
+            result = _sql.AndAlso(result, LikePredicate(BinaryLikeOperand(value), like));
         }
 
         return WithMaxLength(result, value, pattern);
     }
+
+    /// <summary>
+    /// Makes a SQL Server LIKE compare UTF-16 code units, as .NET does, unless the column is declared binary.
+    /// SQL Server's linguistic collations do not compare LIKE character by character: in the version-80 collations,
+    /// including the server default SQL_Latin1_General_CP1_CI_AS, a combining mark joins the letter before it, so
+    /// <c>N'abc' + NCHAR(0x301) LIKE N'abc%'</c> is false although .NET's <c>^abc</c> matches; Czech collations treat
+    /// <c>ch</c> as one letter; ignorable characters such as a soft hyphen are skipped. Under
+    /// <c>COLLATE Latin1_General_100_BIN2</c> none of that happens (verified on SQL Server 2025), at the price of an
+    /// index seek. The other dialects compare LIKE character by character under every collation.
+    /// </summary>
+    private SqlExpression BinaryLikeOperand(SqlExpression value) =>
+        SqlServerCollation.NeedsBinaryCollate(_options.Dialect, _options.LikeCollation)
+            ? new CollateExpression(value, SqlServerCollation.Binary)
+            : value;
 
     /// <summary>
     /// Adds the proven upper length bound, when there is one. It holds under every culture (case variants of a
@@ -298,15 +307,11 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
     }
 
     /// <summary>
-    /// Gets a value indicating whether a LIKE conjunct (an index hint or a prefilter) is guaranteed to keep every
-    /// matching row. PostgreSQL, MySQL, MariaDB and SQLite compare LIKE character by character under every collation.
-    /// SQL Server's linguistic collations do not: in the version-80 collations, including the server default
-    /// SQL_Latin1_General_CP1_CI_AS, a combining mark joins the letter before it, so <c>N'abc' + NCHAR(0x301) LIKE
-    /// N'abc%'</c> is false although .NET's <c>^abc</c> matches; Czech and similar collations treat <c>ch</c> as one
-    /// letter. Only a binary collation, declared with <c>UseLikeCollation(LikeCollation.Binary)</c>, is safe.
+    /// Gets a value indicating whether a LIKE on the column itself, without <c>COLLATE</c>, compares character by
+    /// character as the proofs assume: always on PostgreSQL, MySQL, MariaDB and SQLite, and on SQL Server only when
+    /// the column is declared binary with <c>UseLikeCollation(LikeCollation.Binary)</c>. See <see cref="BinaryLikeOperand"/>.
     /// </summary>
-    private bool LikeKeepsEveryMatch(SqlDialect dialect) =>
-        (dialect != SqlDialect.SqlServer && dialect != SqlDialect.SqlServer2025) || _options.LikeCollation == LikeCollation.Binary;
+    private bool ColumnComparesLikeByCodeUnit(SqlDialect dialect) => !SqlServerCollation.NeedsBinaryCollate(dialect, _options.LikeCollation);
 
     private static DialectRegex? TryDialectRegex(Pattern pattern, SqlDialect dialect)
     {
@@ -578,13 +583,13 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
     /// Adds conjuncts that every matching row provably satisfies: a prefix LIKE that lets a B-tree index
     /// narrow the scan, and an upper length bound. The lower bound is not emitted because SQL length functions
     /// count code points (or, with LEN, strip trailing spaces), so a .NET lower bound could exclude matches. The
-    /// prefix is only emitted where <see cref="LikeKeepsEveryMatch"/> holds.
+    /// prefix is only emitted where <see cref="ColumnComparesLikeByCodeUnit"/> holds: with COLLATE it could not use an index.
     /// </summary>
     private SqlExpression WithIndexHints(SqlExpression predicate, SqlExpression value, Pattern pattern)
     {
         DialectFacts facts = CoreDialectAdapter.GetFacts(pattern, substring: true);
         SqlExpression result = predicate;
-        if (facts.RequiredPrefix.Length > 0 && LikeKeepsEveryMatch(_options.Dialect))
+        if (facts.RequiredPrefix.Length > 0 && ColumnComparesLikeByCodeUnit(_options.Dialect))
         {
             SqlExpression prefix = _sql.Constant(EscapeLike(facts.RequiredPrefix) + LikeWildcard, _stringMapping);
             result = _sql.AndAlso(result, _sql.Like(value, prefix, _sql.Constant(LikeEscape, _stringMapping)));

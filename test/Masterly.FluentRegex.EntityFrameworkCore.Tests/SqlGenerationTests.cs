@@ -380,11 +380,11 @@ public sealed class SqlGenerationTests
     public void SqlServer_AllowSuperset_EmitsTheProvenSupersetLike()
     {
         using CatalogContext context = SqlServer(configure: fluent => fluent.UseLikeFallback(LikeFallback.AllowSuperset));
-        string expected = TestPatterns.Sku.ToLike(LikeDialect.SqlServer, MatchScope.Substring, LikeCollation.CaseInsensitive).Expression;
+        string expected = TestPatterns.Sku.ToLike(LikeDialect.SqlServer, MatchScope.Substring, LikeCollation.Binary).Expression;
 
         string sql = context.Products.Where(product => PatternFunctions.Matches(product.Sku, TestPatterns.Sku)).ToQueryString();
 
-        sql.ShouldContain($"[p].[Sku] LIKE N'{expected}'");
+        sql.ShouldContain($"[p].[Sku] COLLATE Latin1_General_100_BIN2 LIKE N'{expected}'", customMessage: sql);
         sql.ShouldNotContain("REGEXP");
     }
 
@@ -426,11 +426,15 @@ public sealed class SqlGenerationTests
     }
 
     [Fact]
-    public void SqlServer_CaseInsensitiveCollation_CaseSensitivePatternIsNeverExact()
+    public void SqlServer_DefaultCollation_ComparesUnderBin2SoTheCaseSensitivePatternIsExact()
     {
+        // The column's linguistic collation would fold case and merge combining accents; under BIN2 LIKE compares
+        // UTF-16 code units exactly as .NET does, so the proven LIKE is exact.
         using CatalogContext context = SqlServer();
 
-        Should.Throw<InvalidOperationException>(() => context.Products.WhereMatches(product => product.Sku, TestPatterns.StrictSku).ToQueryString());
+        string sql = context.Products.WhereMatches(product => product.Sku, TestPatterns.StrictSku).ToQueryString();
+
+        sql.ShouldContain("[p].[Sku] COLLATE Latin1_General_100_BIN2 LIKE N'[A-Z][A-Z][A-Z]-[0-9][0-9][0-9][0-9]'", customMessage: sql);
     }
 
     [Fact]
@@ -447,13 +451,14 @@ public sealed class SqlGenerationTests
     }
 
     [Fact]
-    public void SqlServer_MatchingAsyncPrefilterUnderTheDefaultCollation_UsesOnlyNullAndLengthChecks()
+    public void SqlServer_MatchingAsyncPrefilterUnderTheDefaultCollation_ComparesTheLikeUnderBin2()
     {
         using CatalogContext context = SqlServer();
+        string expected = TestPatterns.Sku.ToLike(LikeDialect.SqlServer, MatchScope.Substring, LikeCollation.Binary).Expression;
 
         string sql = Prefilter(context, TestPatterns.Sku);
 
-        sql.ShouldNotContain("LIKE", customMessage: sql);
+        sql.ShouldContain($"COLLATE Latin1_General_100_BIN2 LIKE N'{expected}'", customMessage: sql);
         sql.ShouldContain("IS NOT NULL");
         sql.ShouldContain("<= 9");
     }

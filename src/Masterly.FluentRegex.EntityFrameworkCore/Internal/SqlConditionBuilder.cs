@@ -16,6 +16,7 @@ internal sealed record SqlCondition(string Sql, IReadOnlyList<string> Warnings);
 internal static class SqlConditionBuilder
 {
     private const string LikeEscapeKeyword = "ESCAPE";
+    private const string CollateKeyword = "COLLATE";
 
     // MySQL's REGEXP_LIKE follows the (usually case-insensitive) collation unless the 'c' match type is given.
     private const string CaseSensitiveFlag = "c";
@@ -61,16 +62,23 @@ internal static class SqlConditionBuilder
         "regular expression support. Run the database at compatibility level 170 or later and configure " +
         "UseDialect(SqlDialect.SqlServer2025), or keep this check in .NET.";
 
+    /// <summary>
+    /// Writes the exact LIKE for SQL Server without regex support. The LIKE is proven for a binary collation, so a
+    /// column not declared binary is compared under <c>COLLATE Latin1_General_100_BIN2</c>, where LIKE compares UTF-16
+    /// code units as .NET does (see <see cref="SqlServerCollation"/>).
+    /// </summary>
     private static SqlCondition BuildLike(string columnSql, Pattern pattern, LikeCollation collation)
     {
-        bool caseInsensitive = collation == LikeCollation.CaseInsensitive;
-        DialectLike like = CoreDialectAdapter.ToDialectLike(pattern, SqlDialect.SqlServer, substring: true, caseInsensitiveCollation: caseInsensitive);
+        DialectLike like = CoreDialectAdapter.ToDialectLike(pattern, SqlDialect.SqlServer, substring: true, caseInsensitiveCollation: false);
         if (!like.IsExact)
         {
             throw new InvalidOperationException(NoExactLikeMessage(pattern));
         }
 
-        string condition = $"{columnSql} LIKE {SqlLiteral.String(like.Expression, SqlDialect.SqlServer)}";
+        string column = SqlServerCollation.NeedsBinaryCollate(SqlDialect.SqlServer, collation)
+            ? $"{columnSql} {CollateKeyword} {SqlServerCollation.Binary}"
+            : columnSql;
+        string condition = $"{column} LIKE {SqlLiteral.String(like.Expression, SqlDialect.SqlServer)}";
         string sql = like.EscapeCharacter is char escape
             ? $"{condition} {LikeEscapeKeyword} {SqlLiteral.String(escape.ToString(), SqlDialect.SqlServer)}"
             : condition;

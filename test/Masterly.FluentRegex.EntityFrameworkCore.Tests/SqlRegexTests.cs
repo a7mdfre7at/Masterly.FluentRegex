@@ -47,9 +47,11 @@ public sealed class SqlRegexTests
     }
 
     [Fact]
-    public void Condition_SqlServerCaseInsensitiveCollation_CaseSensitivePatternIsNeverExact()
+    public void Condition_SqlServerDefaultCollation_ComparesTheExactLikeUnderBin2()
     {
-        Should.Throw<InvalidOperationException>(() => SqlRegex.Condition("[Sku]", ExactLikeSku, SqlDialect.SqlServer));
+        string condition = SqlRegex.Condition("[Sku]", ExactLikeSku, SqlDialect.SqlServer);
+
+        condition.ShouldBe("[Sku] COLLATE Latin1_General_100_BIN2 LIKE N'[A-Z][A-Z][A-Z]-[0-9][0-9][0-9][0-9]'");
     }
 
     [Fact]
