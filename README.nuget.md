@@ -5,6 +5,8 @@
 A fluent, immutable API for building .NET regular expressions, plus the tools to understand, test,
 secure and ship them.
 
+**[Read the documentation](https://a7mdfre7at.github.io/Masterly.FluentRegex/)** · [Quick Start](https://a7mdfre7at.github.io/Masterly.FluentRegex/docs/quick-start) · [Examples](https://a7mdfre7at.github.io/Masterly.FluentRegex/docs/examples) · [API Reference](https://a7mdfre7at.github.io/Masterly.FluentRegex/docs/api-reference) · [Playground](https://a7mdfre7at.github.io/Masterly.FluentRegex/playground/)
+
 ## Quick Start
 
 ```csharp
@@ -120,13 +122,13 @@ fluentregex export '^\d{5}$' --to js    # translate for JavaScript or JSON Schem
 ## Upgrading from 2.x
 
 Patterns are now immutable, and several 2.x bugs are fixed, including `Literal` ranges inside sets,
-`Letter` outside sets and `AtMost`. See the
-[migration guide](https://github.com/a7mdfre7at/Masterly.FluentRegex#migrating-from-2x-to-30).
+`Letter` outside sets and `AtMost`. See
+[Upgrading from 2.x](https://a7mdfre7at.github.io/Masterly.FluentRegex/docs/upgrading-from-2x).
 
 ## Documentation
 
 Full documentation, examples and API reference:
-[GitHub repository](https://github.com/a7mdfre7at/Masterly.FluentRegex#readme).
+[a7mdfre7at.github.io/Masterly.FluentRegex](https://a7mdfre7at.github.io/Masterly.FluentRegex/).
 
 ## License
 
