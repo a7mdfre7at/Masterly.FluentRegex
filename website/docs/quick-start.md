@@ -221,10 +221,10 @@ Pattern: ^\d+-\w{3,5}$
 
 Explanation:
   - Start of line/string
-  - Digit [0-9]
+  - Digit (any Unicode decimal digit)
   - One or more
   - Character '-'
-  - Word character [a-zA-Z0-9_]
+  - Word character (any Unicode letter, digit or _)
   - Between 3 and 5 times
   - End of line/string
 ```
@@ -237,12 +237,12 @@ Pattern: \b(?<number>\d+)-(?<code>\w{3,5})\b
 Explanation:
   - Word boundary
   - Named capturing group 'number'
-    - Digit [0-9]
+    - Digit (any Unicode decimal digit)
     - One or more
     - End of group
   - Character '-'
   - Named capturing group 'code'
-    - Word character [a-zA-Z0-9_]
+    - Word character (any Unicode letter, digit or _)
     - Between 3 and 5 times
     - End of group
   - Word boundary
@@ -250,7 +250,7 @@ Explanation:
 
 :::note
 
-`Explain()` gives a short, ASCII-style description of each construct. The .NET engine is broader: by default `\d` also matches digits from other scripts, such as `١٢٣`, and `\w` also matches letters such as `é`. To limit `\d` and `\w` to ASCII, use `RegexOptions.ECMAScript` (see [Step 6](#step-6-use-it-with-regex-options-and-timeouts)) or an explicit set. See [Unicode](./unicode.md).
+`Explain()` describes `\d` and `\w` the way .NET matches them: by default `\d` also matches digits from other scripts, such as `١٢٣`, and `\w` also matches letters such as `é`. To limit `\d` and `\w` to ASCII, use `RegexOptions.ECMAScript` (see [Step 6](#step-6-use-it-with-regex-options-and-timeouts)) or an explicit set. See [Unicode](./unicode.md).
 
 :::
 

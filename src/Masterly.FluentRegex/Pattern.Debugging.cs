@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -172,44 +173,105 @@ namespace Masterly.FluentRegex
         /// // Explanation:
         /// //   - Start of line/string
         /// //   - Named capturing group 'digits'
-        /// //     - Digit [0-9]
+        /// //     - Digit (any Unicode decimal digit)
         /// //     - One or more
         /// //   - End of group
         /// //   - End of line/string
         /// </example>
         public string Explain()
         {
-            var pattern = ToString();
-            var sb = new StringBuilder();
-            sb.AppendLine("Pattern: " + pattern);
-            sb.AppendLine();
-            sb.AppendLine("Explanation:");
+            string pattern = ToString();
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine("Pattern: " + pattern);
+            builder.AppendLine();
+            builder.AppendLine("Explanation:");
 
-            int i = 0;
+            ExplainContext context = new ExplainContext(pattern, _options);
+            int index = 0;
             int indentLevel = 0;
 
-            while (i < pattern.Length)
+            while (index < pattern.Length)
             {
-                var (explanation, newIndent) = ExplainConstruct(pattern, ref i, indentLevel);
+                (string explanation, int indentChange) = ExplainNext(pattern, ref index, context);
                 if (!string.IsNullOrEmpty(explanation))
                 {
-                    var indent = new string(' ', indentLevel * 2);
-                    sb.AppendLine($"  {indent}- {explanation}");
+                    string indent = new string(' ', indentLevel * 2);
+                    builder.AppendLine($"  {indent}- {explanation}");
                 }
-                indentLevel += newIndent;
-                if (indentLevel < 0) indentLevel = 0;
+
+                indentLevel += indentChange;
+                if (indentLevel < 0)
+                {
+                    indentLevel = 0;
+                }
             }
 
-            return sb.ToString();
+            return builder.ToString();
         }
 
-        private static (string explanation, int indentChange) ExplainConstruct(string pattern, ref int index, int currentIndent)
+        /// <summary>
+        /// What the explainer knows about the whole pattern while it walks it: the capture groups the .NET engine
+        /// sees (needed to tell a backreference such as \12 from an octal escape, and a group condition from an
+        /// expression condition), which open groups are conditionals (whose | means "otherwise"), and whether
+        /// ECMAScript semantics narrow \d and \w to ASCII.
+        /// </summary>
+        private sealed class ExplainContext
         {
-            if (index >= pattern.Length) return (null, 0);
+            // Only the options that change how the pattern parses. NonBacktracking would reject backreferences and
+            // conditionals, and Compiled would only cost time.
+            private const RegexOptions ParseOptions = RegexOptions.IgnoreCase | RegexOptions.Multiline
+                | RegexOptions.ExplicitCapture | RegexOptions.Singleline | RegexOptions.IgnorePatternWhitespace
+                | RegexOptions.RightToLeft | RegexOptions.ECMAScript | RegexOptions.CultureInvariant;
 
-            char c = pattern[index];
+            private readonly HashSet<int> _groupNumbers = new HashSet<int>();
+            private readonly HashSet<string> _groupNames = new HashSet<string>(StringComparer.Ordinal);
+            private readonly Stack<bool> _openGroups = new Stack<bool>();
 
-            switch (c)
+            public ExplainContext(string pattern, RegexOptions options)
+            {
+                IsEcmaScript = (options & RegexOptions.ECMAScript) != 0;
+                try
+                {
+                    Regex regex = new Regex(pattern, options & ParseOptions);
+                    foreach (int number in regex.GetGroupNumbers())
+                    {
+                        _groupNumbers.Add(number);
+                    }
+
+                    foreach (string name in regex.GetGroupNames())
+                    {
+                        _groupNames.Add(name);
+                    }
+                }
+                catch (ArgumentException)
+                {
+                    // An invalid pattern is still explained token by token; it just has no known groups.
+                }
+            }
+
+            public bool IsEcmaScript { get; }
+
+            public bool InConditional => _openGroups.Count > 0 && _openGroups.Peek();
+
+            public bool HasGroup(int number) => _groupNumbers.Contains(number);
+
+            public bool HasGroup(string name) => _groupNames.Contains(name);
+
+            public void OpenGroup(bool isConditional) => _openGroups.Push(isConditional);
+
+            public void CloseGroup()
+            {
+                if (_openGroups.Count > 0)
+                {
+                    _openGroups.Pop();
+                }
+            }
+        }
+
+        private static (string explanation, int indentChange) ExplainNext(string pattern, ref int index, ExplainContext context)
+        {
+            char current = pattern[index];
+            switch (current)
             {
                 case '^':
                     index++;
@@ -225,37 +287,34 @@ namespace Masterly.FluentRegex
 
                 case '*':
                     index++;
-                    if (index < pattern.Length && pattern[index] == '?')
-                    {
-                        index++;
-                        return ("Zero or more (lazy)", 0);
-                    }
-                    return ("Zero or more", 0);
+                    return ExplainLazySuffix(pattern, ref index, "Zero or more");
 
                 case '+':
                     index++;
-                    if (index < pattern.Length && pattern[index] == '?')
-                    {
-                        index++;
-                        return ("One or more (lazy)", 0);
-                    }
-                    return ("One or more", 0);
+                    return ExplainLazySuffix(pattern, ref index, "One or more");
 
                 case '?':
                     index++;
+                    if (index < pattern.Length && pattern[index] == '?')
+                    {
+                        index++;
+                        return ("Optional (lazy)", 0);
+                    }
+
                     return ("Optional (zero or one)", 0);
 
                 case '\\':
-                    return ExplainEscape(pattern, ref index);
+                    return ExplainEscape(pattern, ref index, context);
 
                 case '[':
                     return ExplainCharacterClass(pattern, ref index);
 
                 case '(':
-                    return ExplainGroup(pattern, ref index);
+                    return ExplainGroup(pattern, ref index, context);
 
                 case ')':
                     index++;
+                    context.CloseGroup();
                     return ("End of group", -1);
 
                 case '{':
@@ -263,183 +322,517 @@ namespace Masterly.FluentRegex
 
                 case '|':
                     index++;
-                    return ("OR (alternation)", 0);
+                    return context.InConditional ? ("Otherwise", 0) : ("OR (alternation)", 0);
 
                 default:
                     index++;
-                    if (char.IsLetterOrDigit(c))
-                        return ($"Literal '{c}'", 0);
-                    return ($"Character '{c}'", 0);
+                    return char.IsLetterOrDigit(current) ? ($"Literal '{current}'", 0) : ($"Character '{current}'", 0);
             }
         }
 
-        private static (string explanation, int indentChange) ExplainEscape(string pattern, ref int index)
+        private static (string explanation, int indentChange) ExplainLazySuffix(string pattern, ref int index, string text)
         {
-            index++; // Skip backslash
+            if (index < pattern.Length && pattern[index] == '?')
+            {
+                index++;
+                return ($"{text} (lazy)", 0);
+            }
+
+            return (text, 0);
+        }
+
+        private static (string explanation, int indentChange) ExplainEscape(string pattern, ref int index, ExplainContext context)
+        {
+            index++; // Skip the backslash.
             if (index >= pattern.Length)
+            {
                 return ("Escape character", 0);
+            }
 
             char next = pattern[index];
             index++;
 
-            return next switch
+            switch (next)
             {
-                'd' => ("Digit [0-9]", 0),
-                'D' => ("Non-digit [^0-9]", 0),
-                'w' => ("Word character [a-zA-Z0-9_]", 0),
-                'W' => ("Non-word character", 0),
-                's' => ("Whitespace", 0),
-                'S' => ("Non-whitespace", 0),
-                'b' => ("Word boundary", 0),
-                'B' => ("Non-word boundary", 0),
-                't' => ("Tab", 0),
-                'n' => ("Newline", 0),
-                'r' => ("Carriage return", 0),
-                'k' => ExplainNamedBackreference(pattern, ref index),
-                _ when char.IsDigit(next) => ($"Backreference to group {next}", 0),
-                _ => ($"Escaped literal '{next}'", 0)
-            };
+                // Without ECMAScript, .NET's \d and \w are Unicode-aware: \d also matches digits such as Arabic-Indic.
+                case 'd': return (context.IsEcmaScript ? "Digit [0-9]" : "Digit (any Unicode decimal digit)", 0);
+                case 'D': return (context.IsEcmaScript ? "Non-digit [^0-9]" : "Non-digit", 0);
+                case 'w': return (context.IsEcmaScript ? "Word character [a-zA-Z0-9_]" : "Word character (any Unicode letter, digit or _)", 0);
+                case 'W': return ("Non-word character", 0);
+                case 's': return ("Whitespace", 0);
+                case 'S': return ("Non-whitespace", 0);
+                case 'b': return ("Word boundary", 0);
+                case 'B': return ("Non-word boundary", 0);
+                case 'A': return ("Start of string", 0);
+                case 'z': return ("End of string", 0);
+                case 'Z': return ("End of string (or before a final newline)", 0);
+                case 'G': return ("Where the previous match ended", 0);
+                case 't': return ("Tab", 0);
+                case 'n': return ("Newline", 0);
+                case 'r': return ("Carriage return", 0);
+                case 'f': return ("Form feed", 0);
+                case 'v': return ("Vertical tab", 0);
+                case 'a': return ("Bell character", 0);
+                case 'e': return ("Escape character (U+001B)", 0);
+                case 'x': return ExplainHexEscape(pattern, ref index, 2);
+                case 'u': return ExplainHexEscape(pattern, ref index, 4);
+                case 'c': return ExplainControlEscape(pattern, ref index);
+                case 'p': return ExplainUnicodeCategory(pattern, ref index, negated: false);
+                case 'P': return ExplainUnicodeCategory(pattern, ref index, negated: true);
+                case 'k': return ExplainNamedBackreference(pattern, ref index);
+                case '0': return ExplainOctalEscape(pattern, ref index, index - 1);
+                default:
+                    if (next >= '1' && next <= '9')
+                    {
+                        return ExplainNumberedBackreference(pattern, ref index, context);
+                    }
+
+                    return ($"Escaped literal '{next}'", 0);
+            }
+        }
+
+        private static (string explanation, int indentChange) ExplainHexEscape(string pattern, ref int index, int length)
+        {
+            char kind = pattern[index - 1];
+            if (index + length <= pattern.Length && IsHex(pattern, index, length))
+            {
+                int code = Convert.ToInt32(pattern.Substring(index, length), 16);
+                index += length;
+                return ($"Character {DescribeCodePoint(code)}", 0);
+            }
+
+            return ($"Escaped literal '{kind}'", 0);
+        }
+
+        private static (string explanation, int indentChange) ExplainControlEscape(string pattern, ref int index)
+        {
+            if (index < pattern.Length && char.IsLetter(pattern[index]))
+            {
+                char letter = char.ToUpperInvariant(pattern[index]);
+                index++;
+                return ($"Control character Ctrl+{letter}", 0);
+            }
+
+            return ("Escaped literal 'c'", 0);
+        }
+
+        private static (string explanation, int indentChange) ExplainUnicodeCategory(string pattern, ref int index, bool negated)
+        {
+            char kind = negated ? 'P' : 'p';
+            if (index < pattern.Length && pattern[index] == '{')
+            {
+                int end = pattern.IndexOf('}', index);
+                if (end > index + 1)
+                {
+                    string name = pattern.Substring(index + 1, end - index - 1);
+                    index = end + 1;
+                    return negated
+                        ? ($"Any character NOT in Unicode category or block '{name}'", 0)
+                        : ($"Any character in Unicode category or block '{name}'", 0);
+                }
+            }
+
+            return ($"Escaped literal '{kind}'", 0);
+        }
+
+        private static (string explanation, int indentChange) ExplainOctalEscape(string pattern, ref int index, int digitsStart)
+        {
+            // \0 is followed by up to two more octal digits: \0, \07, \012.
+            int end = digitsStart + 1;
+            while (end < pattern.Length && end < digitsStart + 3 && pattern[end] >= '0' && pattern[end] <= '7')
+            {
+                end++;
+            }
+
+            int code = Convert.ToInt32(pattern.Substring(digitsStart, end - digitsStart), 8);
+            index = end;
+            return ($"Character {DescribeCodePoint(code)}", 0);
+        }
+
+        private static (string explanation, int indentChange) ExplainNumberedBackreference(string pattern, ref int index, ExplainContext context)
+        {
+            // .NET reads every following digit. The number is a backreference when that group exists, and a single
+            // digit always is (an undefined one makes the pattern invalid). Otherwise the digits are an octal escape.
+            int start = index - 1;
+            int end = index;
+            while (end < pattern.Length && pattern[end] >= '0' && pattern[end] <= '9')
+            {
+                end++;
+            }
+
+            string digits = pattern.Substring(start, end - start);
+            if (int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out int number)
+                && (context.HasGroup(number) || digits.Length == 1))
+            {
+                index = end;
+                return ($"Backreference to group {number}", 0);
+            }
+
+            int octalEnd = start;
+            while (octalEnd < pattern.Length && octalEnd < start + 3 && pattern[octalEnd] >= '0' && pattern[octalEnd] <= '7')
+            {
+                octalEnd++;
+            }
+
+            if (octalEnd == start)
+            {
+                index = start + 1;
+                return ($"Escaped literal '{pattern[start]}'", 0);
+            }
+
+            int code = Convert.ToInt32(pattern.Substring(start, octalEnd - start), 8);
+            index = octalEnd;
+            return ($"Character {DescribeCodePoint(code)}", 0);
         }
 
         private static (string explanation, int indentChange) ExplainNamedBackreference(string pattern, ref int index)
         {
-            if (index < pattern.Length && pattern[index] == '<')
+            if (index < pattern.Length && (pattern[index] == '<' || pattern[index] == '\''))
             {
-                var end = pattern.IndexOf('>', index);
-                if (end > index)
+                char close = pattern[index] == '<' ? '>' : '\'';
+                int end = pattern.IndexOf(close, index + 1);
+                if (end > index + 1)
                 {
-                    var name = pattern.Substring(index + 1, end - index - 1);
+                    string name = pattern.Substring(index + 1, end - index - 1);
                     index = end + 1;
                     return ($"Backreference to named group '{name}'", 0);
                 }
             }
+
             return ("Backreference", 0);
         }
 
         private static (string explanation, int indentChange) ExplainCharacterClass(string pattern, ref int index)
         {
-            var start = index;
-            index++; // Skip opening bracket
-
-            bool negated = false;
-            if (index < pattern.Length && pattern[index] == '^')
+            int start = index;
+            int position = index + 1;
+            bool negated = position < pattern.Length && pattern[position] == '^';
+            if (negated)
             {
-                negated = true;
-                index++;
+                position++;
             }
 
-            var end = pattern.IndexOf(']', index);
-            if (end > index)
+            int contentStart = position;
+            int end = FindCharacterClassEnd(pattern, position);
+            if (end < 0)
             {
-                var content = pattern.Substring(index, end - index);
-                index = end + 1;
-
-                var prefix = negated ? "Any character NOT in" : "Any character in";
-                return ($"{prefix}: [{content}]", 0);
+                index = start + 1;
+                return ("Character class start", 0);
             }
 
-            index = start + 1;
-            return ("Character class start", 0);
+            string content = pattern.Substring(contentStart, end - contentStart);
+            index = end + 1;
+            string prefix = negated ? "Any character NOT in" : "Any character in";
+            return ($"{prefix}: [{content}]", 0);
         }
 
-        private static (string explanation, int indentChange) ExplainGroup(string pattern, ref int index)
+        /// <summary>
+        /// Returns the index of the ] that closes a set whose content starts at <paramref name="position"/>, or -1.
+        /// A ] right after the opening bracket is a literal, escapes are skipped, and a subtraction such as
+        /// [a-z-[aeiou]] is nested.
+        /// </summary>
+        private static int FindCharacterClassEnd(string pattern, int position)
         {
-            index++; // Skip opening paren
-
-            if (index < pattern.Length && pattern[index] == '?')
+            if (position < pattern.Length && pattern[position] == ']')
             {
-                index++;
-                if (index >= pattern.Length)
-                    return ("Group start", 1);
-
-                switch (pattern[index])
-                {
-                    case ':':
-                        index++;
-                        return ("Non-capturing group", 1);
-
-                    case '=':
-                        index++;
-                        return ("Positive lookahead (must follow)", 1);
-
-                    case '!':
-                        index++;
-                        return ("Negative lookahead (must NOT follow)", 1);
-
-                    case '>':
-                        index++;
-                        return ("Atomic group (no backtracking)", 1);
-
-                    case '<':
-                        index++;
-                        if (index < pattern.Length)
-                        {
-                            if (pattern[index] == '=')
-                            {
-                                index++;
-                                return ("Positive lookbehind (must precede)", 1);
-                            }
-                            else if (pattern[index] == '!')
-                            {
-                                index++;
-                                return ("Negative lookbehind (must NOT precede)", 1);
-                            }
-                            else
-                            {
-                                // Named group
-                                var nameEnd = pattern.IndexOf('>', index);
-                                if (nameEnd > index)
-                                {
-                                    var name = pattern.Substring(index, nameEnd - index);
-                                    index = nameEnd + 1;
-                                    return ($"Named capturing group '{name}'", 1);
-                                }
-                            }
-                        }
-                        return ("Lookbehind or named group", 1);
-
-                    default:
-                        return ("Special group", 1);
-                }
+                position++;
             }
 
-            return ("Capturing group", 1);
+            while (position < pattern.Length)
+            {
+                char current = pattern[position];
+                if (current == '\\')
+                {
+                    position += 2;
+                    continue;
+                }
+
+                if (current == '-' && position + 1 < pattern.Length && pattern[position + 1] == '[')
+                {
+                    int nestedEnd = FindCharacterClassEnd(pattern, position + 2);
+                    if (nestedEnd < 0)
+                    {
+                        return -1;
+                    }
+
+                    position = nestedEnd + 1;
+                    continue;
+                }
+
+                if (current == ']')
+                {
+                    return position;
+                }
+
+                position++;
+            }
+
+            return -1;
+        }
+
+        private static (string explanation, int indentChange) ExplainGroup(string pattern, ref int index, ExplainContext context)
+        {
+            index++; // Skip the opening parenthesis.
+            if (index >= pattern.Length || pattern[index] != '?')
+            {
+                context.OpenGroup(isConditional: false);
+                return ("Capturing group", 1);
+            }
+
+            index++;
+            if (index >= pattern.Length)
+            {
+                context.OpenGroup(isConditional: false);
+                return ("Group start", 1);
+            }
+
+            switch (pattern[index])
+            {
+                case ':':
+                    index++;
+                    context.OpenGroup(isConditional: false);
+                    return ("Non-capturing group", 1);
+
+                case '=':
+                    index++;
+                    context.OpenGroup(isConditional: false);
+                    return ("Positive lookahead (must follow)", 1);
+
+                case '!':
+                    index++;
+                    context.OpenGroup(isConditional: false);
+                    return ("Negative lookahead (must NOT follow)", 1);
+
+                case '>':
+                    index++;
+                    context.OpenGroup(isConditional: false);
+                    return ("Atomic group (no backtracking)", 1);
+
+                case '#':
+                    return ExplainComment(pattern, ref index);
+
+                case '(':
+                    return ExplainConditional(pattern, ref index, context);
+
+                case '\'':
+                    return ExplainNamedGroup(pattern, ref index, '\'', context);
+
+                case '<':
+                    if (index + 1 < pattern.Length && pattern[index + 1] == '=')
+                    {
+                        index += 2;
+                        context.OpenGroup(isConditional: false);
+                        return ("Positive lookbehind (must precede)", 1);
+                    }
+
+                    if (index + 1 < pattern.Length && pattern[index + 1] == '!')
+                    {
+                        index += 2;
+                        context.OpenGroup(isConditional: false);
+                        return ("Negative lookbehind (must NOT precede)", 1);
+                    }
+
+                    return ExplainNamedGroup(pattern, ref index, '>', context);
+
+                default:
+                    return ExplainInlineOptions(pattern, ref index, context);
+            }
+        }
+
+        private static (string explanation, int indentChange) ExplainNamedGroup(string pattern, ref int index, char close, ExplainContext context)
+        {
+            index++; // Skip < or the opening quote.
+            context.OpenGroup(isConditional: false);
+            int nameEnd = pattern.IndexOf(close, index);
+            if (nameEnd <= index)
+            {
+                return ("Lookbehind or named group", 1);
+            }
+
+            string name = pattern.Substring(index, nameEnd - index);
+            index = nameEnd + 1;
+
+            int dash = name.IndexOf('-');
+            if (dash < 0)
+            {
+                return ($"Named capturing group '{name}'", 1);
+            }
+
+            string captured = name.Substring(0, dash);
+            string popped = name.Substring(dash + 1);
+            return captured.Length == 0
+                ? ($"Balancing group (removes the last capture of '{popped}')", 1)
+                : ($"Balancing group '{captured}' (captures the text since the last capture of '{popped}' and removes it)", 1);
+        }
+
+        private static (string explanation, int indentChange) ExplainComment(string pattern, ref int index)
+        {
+            int end = pattern.IndexOf(')', index);
+            if (end < 0)
+            {
+                index = pattern.Length;
+                return ("Comment", 0);
+            }
+
+            string text = pattern.Substring(index + 1, end - index - 1);
+            index = end + 1;
+            return (text.Length == 0 ? "Comment" : $"Comment: {text}", 0);
+        }
+
+        private static (string explanation, int indentChange) ExplainConditional(string pattern, ref int index, ExplainContext context)
+        {
+            // index is at the ( that opens the condition.
+            context.OpenGroup(isConditional: true);
+            if (index + 1 < pattern.Length && pattern[index + 1] == '?')
+            {
+                // An expression condition such as (?(?=\d)...): the lookaround is explained next, nested.
+                return ("Conditional: if the lookaround below matches, use the first branch", 1);
+            }
+
+            int end = pattern.IndexOf(')', index);
+            if (end < 0)
+            {
+                index++;
+                return ("Conditional", 1);
+            }
+
+            string condition = pattern.Substring(index + 1, end - index - 1);
+            index = end + 1;
+
+            if (int.TryParse(condition, NumberStyles.None, CultureInfo.InvariantCulture, out int number)
+                && context.HasGroup(number))
+            {
+                return ($"Conditional: if group {number} has matched, use the first branch", 1);
+            }
+
+            if (context.HasGroup(condition))
+            {
+                return ($"Conditional: if group '{condition}' has matched, use the first branch", 1);
+            }
+
+            return ($"Conditional: if '{condition}' matches next, use the first branch", 1);
+        }
+
+        private static (string explanation, int indentChange) ExplainInlineOptions(string pattern, ref int index, ExplainContext context)
+        {
+            int end = index;
+            while (end < pattern.Length && InlineOptionFlags.IndexOf(pattern[end]) >= 0)
+            {
+                end++;
+            }
+
+            if (end == index || end >= pattern.Length || (pattern[end] != ')' && pattern[end] != ':'))
+            {
+                context.OpenGroup(isConditional: false);
+                return ("Special group", 1);
+            }
+
+            string description = DescribeInlineOptions(pattern.Substring(index, end - index));
+            bool scoped = pattern[end] == ':';
+            index = end + 1;
+            if (scoped)
+            {
+                context.OpenGroup(isConditional: false);
+                return ($"Group with inline options ({description})", 1);
+            }
+
+            return ($"Inline options for the rest of the group ({description})", 0);
+        }
+
+        private const string InlineOptionFlags = "imnsxIMNSX-";
+
+        private static string DescribeInlineOptions(string flags)
+        {
+            List<string> on = new List<string>();
+            List<string> off = new List<string>();
+            List<string> target = on;
+            foreach (char flag in flags)
+            {
+                if (flag == '-')
+                {
+                    target = off;
+                    continue;
+                }
+
+                target.Add(DescribeInlineOption(flag));
+            }
+
+            List<string> parts = new List<string>();
+            if (on.Count > 0)
+            {
+                parts.Add("on: " + string.Join(", ", on));
+            }
+
+            if (off.Count > 0)
+            {
+                parts.Add("off: " + string.Join(", ", off));
+            }
+
+            return string.Join("; ", parts);
+        }
+
+        private static string DescribeInlineOption(char flag)
+        {
+            switch (char.ToLowerInvariant(flag))
+            {
+                case 'i': return "ignore case";
+                case 'm': return "multiline";
+                case 'n': return "explicit capture";
+                case 's': return "single line";
+                default: return "ignore pattern whitespace";
+            }
         }
 
         private static (string explanation, int indentChange) ExplainQuantifier(string pattern, ref int index)
         {
-            index++; // Skip opening brace
-            var end = pattern.IndexOf('}', index);
-
-            if (end > index)
+            // .NET accepts {n}, {n,} and {n,m}; any other { is a literal brace.
+            Match quantifier = BraceQuantifier.Match(pattern, index);
+            if (!quantifier.Success)
             {
-                var content = pattern.Substring(index, end - index);
-                index = end + 1;
-
-                // Check for lazy quantifier
-                bool lazy = false;
-                if (index < pattern.Length && pattern[index] == '?')
-                {
-                    lazy = true;
-                    index++;
-                }
-
-                var lazyStr = lazy ? " (lazy)" : "";
-
-                if (content.Contains(","))
-                {
-                    var parts = content.Split(',');
-                    if (string.IsNullOrEmpty(parts[1]))
-                        return ($"At least {parts[0]} times{lazyStr}", 0);
-                    if (string.IsNullOrEmpty(parts[0]))
-                        return ($"At most {parts[1]} times{lazyStr}", 0);
-                    return ($"Between {parts[0]} and {parts[1]} times{lazyStr}", 0);
-                }
-
-                return ($"Exactly {content} times{lazyStr}", 0);
+                index++;
+                return ("Character '{'", 0);
             }
 
-            return ("Quantifier", 0);
+            index += quantifier.Length;
+            bool lazy = index < pattern.Length && pattern[index] == '?';
+            if (lazy)
+            {
+                index++;
+            }
+
+            string lazyText = lazy ? " (lazy)" : string.Empty;
+            string minimum = quantifier.Groups[1].Value;
+            if (!quantifier.Groups[2].Success)
+            {
+                return ($"Exactly {minimum} times{lazyText}", 0);
+            }
+
+            string maximum = quantifier.Groups[3].Value;
+            return maximum.Length == 0
+                ? ($"At least {minimum} times{lazyText}", 0)
+                : ($"Between {minimum} and {maximum} times{lazyText}", 0);
+        }
+
+        private static readonly Regex BraceQuantifier = new Regex(@"\G\{([0-9]+)(,([0-9]*))?\}", RegexOptions.CultureInvariant);
+
+        private static bool IsHex(string text, int start, int length)
+        {
+            for (int position = start; position < start + length; position++)
+            {
+                if (!Uri.IsHexDigit(text[position]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static string DescribeCodePoint(int code)
+        {
+            string hex = "U+" + code.ToString("X4", CultureInfo.InvariantCulture);
+            char character = (char)code;
+            return char.IsControl(character) || char.IsWhiteSpace(character) ? hex : $"'{character}' ({hex})";
         }
     }
 }

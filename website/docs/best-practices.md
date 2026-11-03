@@ -280,12 +280,12 @@ Console.WriteLine(phone.Explain());
 //
 // Explanation:
 //   - Named capturing group 'area'
-//     - Digit [0-9]
+//     - Digit (any Unicode decimal digit)
 //     - Exactly 3 times
 //     - End of group
 //   - Character '-'
 //   - Named capturing group 'number'
-//     - Digit [0-9]
+//     - Digit (any Unicode decimal digit)
 //     - Exactly 4 times
 //     - End of group
 ```

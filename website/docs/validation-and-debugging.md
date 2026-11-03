@@ -342,11 +342,11 @@ Pattern: ^(?<digits>\d+)-\w*?$
 Explanation:
   - Start of line/string
   - Named capturing group 'digits'
-    - Digit [0-9]
+    - Digit (any Unicode decimal digit)
     - One or more
     - End of group
   - Character '-'
-  - Word character [a-zA-Z0-9_]
+  - Word character (any Unicode letter, digit or _)
   - Zero or more (lazy)
   - End of line/string
 ```
@@ -356,7 +356,7 @@ Explanation:
 - The contents of a group are indented two more spaces. `End of group` is printed at the indentation of the group's contents, and the lines after it move back out.
 - Every line ends with `Environment.NewLine`, including the last one.
 - An empty pattern returns only the header: `Pattern: `, a blank line and `Explanation:`.
-- `Explain()` builds a new string on every call. It does not compile the pattern.
+- `Explain()` builds a new string on every call. It parses the pattern once with `Regex` to learn its groups, and still works when the pattern is invalid.
 
 Groups nest as deeply as the pattern does:
 
@@ -386,7 +386,7 @@ Explanation:
   - Zero or more (lazy)
   - Backreference to named group 'quote'
   - Negative lookahead (must NOT follow)
-    - Word character [a-zA-Z0-9_]
+    - Word character (any Unicode letter, digit or _)
     - End of group
 ```
 
@@ -398,37 +398,73 @@ Explanation:
 | `.` | `Any character (except newline)` |
 | `*`, `*?` | `Zero or more`, `Zero or more (lazy)` |
 | `+`, `+?` | `One or more`, `One or more (lazy)` |
-| `?` | `Optional (zero or one)` |
+| `?`, `??` | `Optional (zero or one)`, `Optional (lazy)` |
 | `{3}` | `Exactly 3 times` |
 | `{2,}` | `At least 2 times` |
 | `{2,5}` | `Between 2 and 5 times` |
-| `{,3}` | `At most 3 times` |
 | `{...}?` | The same text followed by ` (lazy)`, for example `Between 2 and 5 times (lazy)` |
-| `\d`, `\D` | `Digit [0-9]`, `Non-digit [^0-9]` |
-| `\w`, `\W` | `Word character [a-zA-Z0-9_]`, `Non-word character` |
+| Any other `{`, such as in `{,3}` | `Character '{'`. .NET reads it as a literal brace, not a quantifier. |
+| `\d`, `\D` | `Digit (any Unicode decimal digit)`, `Non-digit`. With `RegexOptions.ECMAScript`: `Digit [0-9]`, `Non-digit [^0-9]`. |
+| `\w`, `\W` | `Word character (any Unicode letter, digit or _)`, `Non-word character`. With `RegexOptions.ECMAScript`: `Word character [a-zA-Z0-9_]`. |
 | `\s`, `\S` | `Whitespace`, `Non-whitespace` |
 | `\b`, `\B` | `Word boundary`, `Non-word boundary` |
-| `\t`, `\n`, `\r` | `Tab`, `Newline`, `Carriage return` |
-| `\` followed by one digit | `Backreference to group 1` and so on (even `\0`, which .NET reads as an octal escape) |
-| `\k<name>` | `Backreference to named group 'name'` |
+| `\A`, `\z`, `\Z`, `\G` | `Start of string`, `End of string`, `End of string (or before a final newline)`, `Where the previous match ended` |
+| `\t`, `\n`, `\r`, `\f`, `\v`, `\a`, `\e` | `Tab`, `Newline`, `Carriage return`, `Form feed`, `Vertical tab`, `Bell character`, `Escape character (U+001B)` |
+| `\x41`, `é`, `\101`, `\cM` | `Character 'A' (U+0041)`, `Character 'é' (U+00E9)`, `Character 'A' (U+0041)`, `Control character Ctrl+M`. Invisible characters show only the code point, such as `Character U+000A`. |
+| `\p{Lu}`, `\P{Lu}` | `Any character in Unicode category or block 'Lu'`, `Any character NOT in Unicode category or block 'Lu'` |
+| `\` followed by digits | `Backreference to group 12` when that group exists. A single digit is always a backreference. Otherwise the digits are an octal escape, as in .NET: `\12` with fewer than 12 groups is `Character U+000A`. `\0` is always octal. |
+| `\k<name>`, `\k'name'` | `Backreference to named group 'name'` |
 | Any other escape, such as `\.` | `Escaped literal '.'` |
-| `[a-z]`, `[^a-z]` | `Any character in: [a-z]`, `Any character NOT in: [a-z]` |
+| `[a-z]`, `[^a-z]` | `Any character in: [a-z]`, `Any character NOT in: [a-z]`. Escaped `]`, a `]` right after `[`, and subtractions such as `[a-z-[aeiou]]` stay inside the set. |
 | `(` | `Capturing group` |
-| `(?<name>` | `Named capturing group 'name'` |
+| `(?<name>`, `(?'name'` | `Named capturing group 'name'` |
+| `(?<close-open>` | `Balancing group 'close' (captures the text since the last capture of 'open' and removes it)` |
 | `(?:` | `Non-capturing group` |
 | `(?=`, `(?!` | `Positive lookahead (must follow)`, `Negative lookahead (must NOT follow)` |
 | `(?<=`, `(?<!` | `Positive lookbehind (must precede)`, `Negative lookbehind (must NOT precede)` |
 | `(?>` | `Atomic group (no backtracking)` |
+| `(?i:`, `(?i)` | `Group with inline options (on: ignore case)`, `Inline options for the rest of the group (on: ignore case)`. Turned-off options are listed after `off:`. |
+| `(?#note)` | `Comment: note` |
+| `(?(1)`, `(?(name)` | `Conditional: if group 1 has matched, use the first branch`. The `\|` that starts the other branch is shown as `Otherwise`. |
+| `(?(?=...)` | `Conditional: if the lookaround below matches, use the first branch`, followed by the lookaround itself |
 | `)` | `End of group` |
 | `\|` | `OR (alternation)` |
 | A letter or digit (any script, such as `é`) | `Literal 'a'` |
 | Any other character, including `_` and space | `Character '-'` |
 
-When a construct is cut off, `Explain()` falls back to a generic line: a `\` at the end gives `Escape character`, `\k` without `<name>` gives `Backreference`, a `[` without a closing `]` gives `Character class start`, a `{` without a closing `}` gives `Quantifier`, `(?` at the end gives `Group start`, and an unfinished `(?<` gives `Lookbehind or named group`. The scan then continues with the next character.
+When a construct is cut off, `Explain()` falls back to a generic line: a `\` at the end gives `Escape character`, `\k` without a name gives `Backreference`, a `[` without a closing `]` gives `Character class start`, `(?` at the end gives `Group start`, and an unfinished `(?<` gives `Lookbehind or named group`. The scan then continues with the next character.
 
-### Limits of Explain
+### Group-aware explanations
 
-`Explain()` reads the regex text from left to right and describes each character it recognizes. It does not parse the pattern the way the regex engine does, so some constructs come out wrong:
+`Explain()` knows which groups the pattern has, so it can tell a backreference from an octal escape and a group condition from an expression condition. Here is a conditional that requires a closing parenthesis only when an opening one matched:
+
+```csharp
+using System;
+using Masterly.FluentRegex;
+
+Pattern areaCode = Pattern.FromRegex(@"(\()?\d{3}(?(1)\))");
+
+Console.WriteLine(areaCode.Explain());
+```
+
+Output:
+
+```text
+Pattern: (\()?\d{3}(?(1)\))
+
+Explanation:
+  - Capturing group
+    - Escaped literal '('
+    - End of group
+  - Optional (zero or one)
+  - Digit (any Unicode decimal digit)
+  - Exactly 3 times
+  - Conditional: if group 1 has matched, use the first branch
+    - Escaped literal ')'
+    - End of group
+```
+
+### Anchors, Unicode categories and inline options
 
 ```csharp
 using System;
@@ -450,28 +486,23 @@ Output:
 Pattern: \A\p{Lu}(?i:ab)\d{2}
 
 Explanation:
-  - Escaped literal 'A'
-  - Escaped literal 'p'
-  - Exactly Lu times
-  - Special group
-    - Literal 'i'
-    - Character ':'
+  - Start of string
+  - Any character in Unicode category or block 'Lu'
+  - Group with inline options (on: ignore case)
     - Literal 'a'
     - Literal 'b'
     - End of group
-  - Digit [0-9]
+  - Digit (any Unicode decimal digit)
   - Exactly 2 times
 ```
 
-Keep these limits in mind:
+### Limits of Explain
 
-- **Escapes it does not know** are shown as `Escaped literal`. That includes `\A`, `\z`, `\Z`, `\G`, `\p{...}`, `\P{...}` and `\e`. Only the first character after the `\` is consumed, so `\x41` becomes `Escaped literal 'x'`, `Literal '4'` and `Literal '1'`, and the braces of `\p{Lu}` are read as a quantifier.
-- **Inline options** such as `(?i:...)` are shown as `Special group`, followed by the option letters as literals.
-- **Character sets** end at the first `]`, even an escaped one. `[\]a]` is explained as `Any character in: [\]`, then `Literal 'a'` and `Character ']'`.
-- **Lazy optional** `??` is shown as two `Optional (zero or one)` lines.
-- **Backreferences** above 9: `\12` is shown as `Backreference to group 1` and then `Literal '2'`.
-- **`\d` is not only 0-9.** The line says `Digit [0-9]`, but .NET's `\d` matches every Unicode decimal digit, such as the Arabic-Indic `٣`. Use `WithAsciiDigits()` when you mean 0-9 only. See [Character classes](./character-classes.md).
-- **Options are ignored.** `Explain()` does not show `WithOptions(...)`. With `RegexOptions.Multiline`, `^` and `$` match at every line, and `Start of line/string` does not tell you which one applies.
+`Explain()` reads the regex text from left to right. Keep these limits in mind:
+
+- **`\d` matches more than 0-9.** .NET's `\d` matches every Unicode decimal digit, such as the Arabic-Indic `٣`, and the line says so. Use `WithAsciiDigits()` or `RegexOptions.ECMAScript` when you mean 0-9 only. See [Character classes](./character-classes.md).
+- **`^` and `$` do not show the mode.** They are always `Start of line/string` and `End of line/string`. With `RegexOptions.Multiline` they match at every line; without it, only at the start and end of the input.
+- **Whitespace mode is not applied.** With `RegexOptions.IgnorePatternWhitespace`, spaces and `#` comments in the pattern are still listed as characters.
 - **It never validates.** `Explain()` never throws, even for an invalid pattern. `(unclosed` is explained as `Capturing group` with eight `Literal` lines and no `End of group`. Do not use it to check a pattern. Use [`TryValidate`](#tryvalidate-and-the-error-message).
 
 :::tip
@@ -494,12 +525,12 @@ Pattern: ^(?<year>\d{4})-(?<month>\d{2})$
 Explanation:
   - Start of line/string
   - Named capturing group 'year'
-    - Digit [0-9]
+    - Digit (any Unicode decimal digit)
     - Exactly 4 times
     - End of group
   - Character '-'
   - Named capturing group 'month'
-    - Digit [0-9]
+    - Digit (any Unicode decimal digit)
     - Exactly 2 times
     - End of group
   - End of line/string

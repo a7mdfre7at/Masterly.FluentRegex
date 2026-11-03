@@ -596,7 +596,7 @@ Console.WriteLine(price.Explain());
 //   - Positive lookbehind (must precede)
 //     - Escaped literal '$'
 //     - End of group
-//   - Digit [0-9]
+//   - Digit (any Unicode decimal digit)
 //   - One or more
 
 Console.WriteLine(Pattern.FromRegex(@"(?<!\d)\d{3}(?=px)").ToFluentCode());

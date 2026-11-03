@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace Masterly.FluentRegex.Tests;
 
@@ -411,8 +412,8 @@ public class DebuggingTests
     [InlineData("*?", "Zero or more (lazy)")]
     [InlineData("+?", "One or more (lazy)")]
     [InlineData(@"\", "Escape character")]
-    [InlineData(@"\D", "Non-digit [^0-9]")]
-    [InlineData(@"\w", "Word character [a-zA-Z0-9_]")]
+    [InlineData(@"\D", "Non-digit")]
+    [InlineData(@"\w", "Word character (any Unicode letter, digit or _)")]
     [InlineData(@"\W", "Non-word character")]
     [InlineData(@"\s", "Whitespace")]
     [InlineData(@"\S", "Non-whitespace")]
@@ -435,12 +436,35 @@ public class DebuggingTests
     [InlineData("(?<=", "Positive lookbehind (must precede)")]
     [InlineData("(?<!", "Negative lookbehind (must NOT precede)")]
     [InlineData("(?<word>", "Named capturing group 'word'")]
-    [InlineData("{", "Quantifier")]
+    [InlineData("{", "Character '{'")]
     [InlineData("{3}", "Exactly 3 times")]
     [InlineData("{3}?", "Exactly 3 times (lazy)")]
     [InlineData("{2,5}?", "Between 2 and 5 times (lazy)")]
     [InlineData("{2,}?", "At least 2 times (lazy)")]
-    [InlineData("{,3}", "At most 3 times")]
+    [InlineData("??", "Optional (lazy)")]
+    [InlineData(@"\A", "Start of string")]
+    [InlineData(@"\z", "End of string")]
+    [InlineData(@"\Z", "End of string (or before a final newline)")]
+    [InlineData(@"\G", "Where the previous match ended")]
+    [InlineData(@"\f", "Form feed")]
+    [InlineData(@"\v", "Vertical tab")]
+    [InlineData(@"\a", "Bell character")]
+    [InlineData(@"\e", "Escape character (U+001B)")]
+    [InlineData(@"\x41", "Character 'A' (U+0041)")]
+    [InlineData("\\u00e9", "Character 'é' (U+00E9)")]
+    [InlineData(@"\x0A", "Character U+000A")]
+    [InlineData(@"\cM", "Control character Ctrl+M")]
+    [InlineData(@"\0", "Character U+0000")]
+    [InlineData(@"\101", "Character 'A' (U+0041)")]
+    [InlineData(@"\p{Lu}", "Any character in Unicode category or block 'Lu'")]
+    [InlineData(@"\P{IsArabic}", "Any character NOT in Unicode category or block 'IsArabic'")]
+    [InlineData(@"\k'name'", "Backreference to named group 'name'")]
+    [InlineData(@"[\]a]", @"Any character in: [\]a]")]
+    [InlineData("[]a]", "Any character in: []a]")]
+    [InlineData("[a-z-[aeiou]]", "Any character in: [a-z-[aeiou]]")]
+    [InlineData("(?#note)", "Comment: note")]
+    [InlineData("(?i)", "Inline options for the rest of the group (on: ignore case)")]
+    [InlineData("(?s-im)", "Inline options for the rest of the group (on: single line; off: ignore case, multiline)")]
     [InlineData("|", "OR (alternation)")]
     [InlineData("a", "Literal 'a'")]
     [InlineData("7", "Literal '7'")]
@@ -459,8 +483,8 @@ public class DebuggingTests
     {
         { "[]", new[] { "  - Character class start", "  - Character ']'" } },
         { "[abc", new[] { "  - Character class start", "  - Literal 'a'", "  - Literal 'b'", "  - Literal 'c'" } },
-        { "{}", new[] { "  - Quantifier", "  - Character '}'" } },
-        { "{3", new[] { "  - Quantifier", "  - Literal '3'" } },
+        { "{}", new[] { "  - Character '{'", "  - Character '}'" } },
+        { "{3", new[] { "  - Character '{'", "  - Literal '3'" } },
         { @"\k<x", new[] { "  - Backreference", "  - Character '<'", "  - Literal 'x'" } },
         { "(?<ab", new[] { "  - Lookbehind or named group", "    - Literal 'a'", "    - Literal 'b'" } },
         { "(?<>", new[] { "  - Lookbehind or named group", "    - Character '>'" } },
@@ -478,6 +502,176 @@ public class DebuggingTests
         string explanation = pattern.Explain();
 
         explanation.ShouldBe(ExpectedExplanation(regex, expectedLines));
+    }
+
+    [Fact]
+    public void Explain_DigitAndWordClasses_WithoutEcmaScript_AreDescribedAsUnicodeAware()
+    {
+        Pattern pattern = Pattern.FromRegex(@"\d\D\w");
+
+        string explanation = pattern.Explain();
+
+        explanation.ShouldBe(ExpectedExplanation(
+            @"\d\D\w",
+            "  - Digit (any Unicode decimal digit)",
+            "  - Non-digit",
+            "  - Word character (any Unicode letter, digit or _)"));
+    }
+
+    [Fact]
+    public void Explain_DigitAndWordClasses_WithEcmaScript_AreDescribedAsAscii()
+    {
+        Pattern pattern = Pattern.FromRegex(@"\d\D\w").WithOptions(RegexOptions.ECMAScript);
+
+        string explanation = pattern.Explain();
+
+        explanation.ShouldBe(ExpectedExplanation(
+            @"\d\D\w",
+            "  - Digit [0-9]",
+            "  - Non-digit [^0-9]",
+            "  - Word character [a-zA-Z0-9_]"));
+    }
+
+    [Fact]
+    public void Explain_GroupConditional_DescribesConditionAndOtherwiseBranch()
+    {
+        Pattern pattern = Pattern.FromRegex(@"(\()?(?(1)\)|x)");
+
+        string explanation = pattern.Explain();
+
+        explanation.ShouldBe(ExpectedExplanation(
+            @"(\()?(?(1)\)|x)",
+            "  - Capturing group",
+            "    - Escaped literal '('",
+            "    - End of group",
+            "  - Optional (zero or one)",
+            "  - Conditional: if group 1 has matched, use the first branch",
+            "    - Escaped literal ')'",
+            "    - Otherwise",
+            "    - Literal 'x'",
+            "    - End of group"));
+    }
+
+    [Fact]
+    public void Explain_NamedGroupConditional_NamesTheGroup()
+    {
+        Pattern pattern = Pattern.FromRegex("(?<open>a)?(?(open)b|c)");
+
+        string explanation = pattern.Explain();
+
+        explanation.ShouldContain("  - Conditional: if group 'open' has matched, use the first branch");
+        explanation.ShouldContain("    - Otherwise");
+        explanation.ShouldNotContain("Special group");
+        explanation.ShouldNotContain("OR (alternation)");
+    }
+
+    [Fact]
+    public void Explain_ExpressionConditional_ExplainsTheLookaroundAsTheCondition()
+    {
+        Pattern pattern = Pattern.FromRegex(@"(?(?=\d)\d{3}|[a-z]+)");
+
+        string explanation = pattern.Explain();
+
+        explanation.ShouldBe(ExpectedExplanation(
+            @"(?(?=\d)\d{3}|[a-z]+)",
+            "  - Conditional: if the lookaround below matches, use the first branch",
+            "    - Positive lookahead (must follow)",
+            "      - Digit (any Unicode decimal digit)",
+            "      - End of group",
+            "    - Digit (any Unicode decimal digit)",
+            "    - Exactly 3 times",
+            "    - Otherwise",
+            "    - Any character in: [a-z]",
+            "    - One or more",
+            "    - End of group"));
+    }
+
+    [Fact]
+    public void Explain_AlternationInsideAGroupWithinAConditional_StaysAnAlternation()
+    {
+        Pattern pattern = Pattern.FromRegex("(a)?(?(1)(?:b|c)|d)");
+
+        string explanation = pattern.Explain();
+
+        explanation.ShouldContain("      - OR (alternation)");
+        explanation.ShouldContain("    - Otherwise");
+    }
+
+    [Fact]
+    public void Explain_ScopedInlineOptions_IsAGroupWithOptions()
+    {
+        Pattern pattern = Pattern.FromRegex("(?i:ab)c");
+
+        string explanation = pattern.Explain();
+
+        explanation.ShouldBe(ExpectedExplanation(
+            "(?i:ab)c",
+            "  - Group with inline options (on: ignore case)",
+            "    - Literal 'a'",
+            "    - Literal 'b'",
+            "    - End of group",
+            "  - Literal 'c'"));
+    }
+
+    [Fact]
+    public void Explain_QuotedNamedAndBalancingGroups_AreNamed()
+    {
+        Pattern pattern = Pattern.FromRegex("(?'open'<)(?<close-open>>)");
+
+        string explanation = pattern.Explain();
+
+        explanation.ShouldContain("  - Named capturing group 'open'");
+        explanation.ShouldContain(
+            "  - Balancing group 'close' (captures the text since the last capture of 'open' and removes it)");
+    }
+
+    [Fact]
+    public void Explain_TwoDigitBackreference_WhenTheGroupExists_IsOneBackreference()
+    {
+        Pattern pattern = Pattern.FromRegex(@"(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)\12");
+
+        string explanation = pattern.Explain();
+
+        explanation.ShouldEndWith($"  - Backreference to group 12{Environment.NewLine}");
+    }
+
+    [Fact]
+    public void Explain_TwoDigitEscape_WhenTheGroupDoesNotExist_IsAnOctalCharacter()
+    {
+        Pattern pattern = Pattern.FromRegex(@"(a)\12");
+
+        string explanation = pattern.Explain();
+
+        explanation.ShouldEndWith($"  - Character U+000A{Environment.NewLine}");
+    }
+
+    [Fact]
+    public void Explain_UnicodeCategoryBraces_AreNotAQuantifier()
+    {
+        Pattern pattern = Pattern.FromRegex(@"\p{Lu}{2}");
+
+        string explanation = pattern.Explain();
+
+        explanation.ShouldBe(ExpectedExplanation(
+            @"\p{Lu}{2}",
+            "  - Any character in Unicode category or block 'Lu'",
+            "  - Exactly 2 times"));
+    }
+
+    [Fact]
+    public void Explain_BracesThatAreNotAQuantifier_AreLiteralCharacters()
+    {
+        Pattern pattern = Pattern.FromRegex("a{,3}");
+
+        string explanation = pattern.Explain();
+
+        explanation.ShouldBe(ExpectedExplanation(
+            "a{,3}",
+            "  - Literal 'a'",
+            "  - Character '{'",
+            "  - Character ','",
+            "  - Literal '3'",
+            "  - Character '}'"));
     }
 
     [Fact]
@@ -502,7 +696,7 @@ public class DebuggingTests
         explanation.ShouldContain($"{Environment.NewLine}  - Atomic group (no backtracking){Environment.NewLine}");
         explanation.ShouldContain($"{Environment.NewLine}    - Non-capturing group{Environment.NewLine}");
         explanation.ShouldContain($"{Environment.NewLine}      - Any character (except newline){Environment.NewLine}");
-        explanation.ShouldEndWith($"{Environment.NewLine}  - Non-digit [^0-9]{Environment.NewLine}");
+        explanation.ShouldEndWith($"{Environment.NewLine}  - Non-digit{Environment.NewLine}");
     }
 
     [Fact]

@@ -283,12 +283,12 @@ Console.WriteLine(pattern.Explain());
 //
 // Explanation:
 //   - Named capturing group 'year'
-//     - Digit [0-9]
+//     - Digit (any Unicode decimal digit)
 //     - Exactly 4 times
 //     - End of group
 //   - Character '-'
 //   - Capturing group
-//     - Digit [0-9]
+//     - Digit (any Unicode decimal digit)
 //     - Exactly 2 times
 //     - End of group
 ```

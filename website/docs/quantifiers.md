@@ -548,7 +548,7 @@ Console.WriteLine(Pattern.With.Digit.Repeat.Times(2, 4).Explain());
 // Pattern: \d{2,4}
 //
 // Explanation:
-//   - Digit [0-9]
+//   - Digit (any Unicode decimal digit)
 //   - Between 2 and 4 times
 
 Console.WriteLine(Pattern.With.Anything.Repeat.ZeroOrMore.Lazy.Explain());

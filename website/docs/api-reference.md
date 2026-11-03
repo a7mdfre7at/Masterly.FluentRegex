@@ -436,7 +436,7 @@ public sealed record Version3(int Major, int Minor, [RegexGroup("patch")] int Bu
 | `TryValidate(out string errorMessage)` | `bool` | The same, with the parser's error message when it is invalid. |
 | `GetGroupNames()` | `string[]` | The names of the named capturing groups. |
 | `GetGroupCount()` | `int` | The number of capturing groups, not counting group 0 (the whole match). |
-| `Explain()` | `string` | A plain-English, line-by-line description of the pattern. The wording is approximate: `\d` is described as `Digit [0-9]` even though it matches every Unicode decimal digit. |
+| `Explain()` | `string` | A plain-English, line-by-line description of the pattern. Conditionals, inline options, Unicode categories and escapes such as `\x41` are described, and `\d`/`\w` are described as Unicode-aware unless the pattern uses `RegexOptions.ECMAScript`. |
 | `Must(Func<string, bool> rule, string? description = null)` | `ConstrainedPattern` | Adds a rule the whole match must also pass, such as a checksum. See [ConstrainedPattern](#constrainedpattern-and-constraintresult). |
 | `Must(string groupName, Func<string, bool> rule, string? description = null)` | `ConstrainedPattern` | Adds a rule for the value of a named group. Skipped when the group did not take part in the match. Throws `ArgumentException` when the pattern has no such group. |
 
@@ -456,7 +456,7 @@ Console.WriteLine(Pattern.With.Digit.Repeat.Times(3).Explain());
 // Pattern: \d{3}
 //
 // Explanation:
-//   - Digit [0-9]
+//   - Digit (any Unicode decimal digit)
 //   - Exactly 3 times
 ```
 

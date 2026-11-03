@@ -520,18 +520,18 @@ Pattern: ^(?<year>\d{4})-(?<month>\d{2})$
 Explanation:
   - Start of line/string
   - Named capturing group 'year'
-    - Digit [0-9]
+    - Digit (any Unicode decimal digit)
     - Exactly 4 times
     - End of group
   - Character '-'
   - Named capturing group 'month'
-    - Digit [0-9]
+    - Digit (any Unicode decimal digit)
     - Exactly 2 times
     - End of group
   - End of line/string
 ```
 
-The explanation describes `\d` as `Digit [0-9]`, but without `--ascii-digits` .NET's `\d` also matches other Unicode digits. Use [`compare`](#proving-two-regexes-equivalent-compare) when the exact meaning matters.
+The explanation describes `\d` as `Digit (any Unicode decimal digit)`, which is how .NET matches it. With `--ascii-digits`, the tool rewrites `\d` to `[0-9]` first, so the line becomes `Any character in: [0-9]`. Use [`compare`](#proving-two-regexes-equivalent-compare) when the exact meaning matters.
 
 ### Tracing a match: trace
 

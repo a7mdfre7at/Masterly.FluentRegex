@@ -13,7 +13,7 @@ public sealed class ExplainCommandTests : CliTestBase
         result.ExitCode.ShouldBe(Ok);
         result.Output.ShouldStartWith(@"Pattern: \d+");
         result.Output.ShouldContain("Explanation:");
-        result.Output.ShouldContain("  - Digit [0-9]");
+        result.Output.ShouldContain("  - Digit (any Unicode decimal digit)");
         result.Output.ShouldContain("  - One or more");
         result.Error.ShouldBeEmpty();
     }

@@ -336,7 +336,7 @@ Pattern: ^\d{3}$
 
 Explanation:
   - Start of line/string
-  - Digit [0-9]
+  - Digit (any Unicode decimal digit)
   - Exactly 3 times
   - End of line/string
 ```
