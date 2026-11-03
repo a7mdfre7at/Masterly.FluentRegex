@@ -18,6 +18,7 @@ internal static class StreamMatchEnumerator
     /// <summary>Reads <paramref name="reader"/> synchronously and yields every match.</summary>
     public static IEnumerable<StreamMatch> Enumerate(StreamMatchScanner scanner, TextReader reader)
     {
+        scanner.BeginEnumeration();
         char[] chunk = new char[scanner.BufferSize];
         while (true)
         {
@@ -43,6 +44,7 @@ internal static class StreamMatchEnumerator
         TextReader reader,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        scanner.BeginEnumeration();
         char[] chunk = new char[scanner.BufferSize];
         while (true)
         {

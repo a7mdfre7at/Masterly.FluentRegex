@@ -5,6 +5,39 @@ namespace Masterly.FluentRegex.Tests;
 
 public class StreamingTests
 {
+    [Fact]
+    public void Matches_EnumeratedTwice_ThrowsInsteadOfContinuingMidStream()
+    {
+        IEnumerable<StreamMatch> matches = Pattern.With.Digit.Repeat.OneOrMore.Matches(new StringReader("1 22 333"));
+
+        string first = matches.First().Value;
+
+        first.ShouldBe("1");
+        InvalidOperationException exception = Should.Throw<InvalidOperationException>(() => matches.First());
+        exception.Message.ShouldContain("only once");
+    }
+
+    [Fact]
+    public async Task MatchesAsync_EnumeratedTwice_ThrowsInsteadOfContinuingMidStream()
+    {
+        IAsyncEnumerable<StreamMatch> matches = Pattern.With.Digit.Repeat.OneOrMore.MatchesAsync(new StringReader("1 22"));
+
+        List<string> first = new List<string>();
+        await foreach (StreamMatch match in matches)
+        {
+            first.Add(match.Value);
+        }
+
+        first.ShouldBe(new[] { "1", "22" });
+        await Should.ThrowAsync<InvalidOperationException>(async () =>
+        {
+            await foreach (StreamMatch match in matches)
+            {
+                first.Add(match.Value);
+            }
+        });
+    }
+
     private const int SeedsPerPattern = 20;
     private const int RandomInputLength = 400;
 

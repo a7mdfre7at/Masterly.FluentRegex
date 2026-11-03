@@ -27,7 +27,8 @@ public partial class Pattern
     /// <returns>
     /// The matches in input order, identical to <see cref="Matches(string)"/> on the whole text whenever every
     /// match fits within <see cref="StreamMatchOptions.MaxMatchLength"/> characters. The sequence is lazy:
-    /// the reader is consumed as it is enumerated.
+    /// the reader is consumed as it is enumerated. It can be enumerated only once, because the reader cannot be
+    /// read again; a second enumeration throws <see cref="InvalidOperationException"/>.
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="reader"/> is null.</exception>
     /// <exception cref="NotSupportedException">
@@ -60,7 +61,10 @@ public partial class Pattern
     /// <param name="reader">The text to scan. It is read to the end but not disposed.</param>
     /// <param name="options">Buffering limits; see <see cref="StreamMatchOptions"/> for the exactness contract.</param>
     /// <param name="cancellationToken">Cancels reading. It is checked before every read and every match.</param>
-    /// <returns>The matches in input order, identical to <see cref="Matches(string)"/> on the whole text.</returns>
+    /// <returns>
+    /// The matches in input order, identical to <see cref="Matches(string)"/> on the whole text. The sequence can be
+    /// enumerated only once; a second enumeration throws <see cref="InvalidOperationException"/>.
+    /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="reader"/> is null.</exception>
     /// <exception cref="NotSupportedException">
     /// The pattern uses <see cref="RegexOptions.RightToLeft"/> or the <c>\G</c> anchor.
@@ -92,7 +96,10 @@ public partial class Pattern
     /// </param>
     /// <param name="options">Buffering limits; see <see cref="StreamMatchOptions"/> for the exactness contract.</param>
     /// <param name="cancellationToken">Cancels reading. It is checked before every read and every match.</param>
-    /// <returns>The matches in input order, with indexes counted in characters, not bytes.</returns>
+    /// <returns>
+    /// The matches in input order, with indexes counted in characters, not bytes. The sequence can be enumerated only
+    /// once; a second enumeration throws <see cref="InvalidOperationException"/>.
+    /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="stream"/> is null.</exception>
     /// <exception cref="ArgumentException"><paramref name="stream"/> is not readable.</exception>
     /// <exception cref="NotSupportedException">

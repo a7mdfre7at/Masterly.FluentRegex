@@ -32,6 +32,7 @@ All three:
 - Are lazy. Nothing is read until you start enumerating. After that the input is read one chunk (`BufferSize` characters) at a time, and only when the next match needs more text.
 - Check their arguments at the call, not at enumeration: a `null` input, an unreadable stream or an unsupported pattern throws as soon as you call the method (see [Errors and when they are thrown](#errors-and-when-they-are-thrown)).
 - Never dispose the input. They read it up to its end when you enumerate the whole sequence, and stop reading when you stop enumerating. You own the reader or stream and should dispose it yourself.
+- Can be enumerated only once, because the input cannot be read again. A second `foreach` (or a second `First()`, `Count()` and so on) throws `InvalidOperationException`. Call `ToList()` when you need the matches more than once, or call the method again with a new reader.
 - Use the pattern's options (`IgnoreCase`, `Multiline`, ...) and its timeout.
 
 ## Scanning a file
@@ -492,6 +493,7 @@ Some errors are thrown when you call the method, others only while you enumerate
 | `NotSupportedException` | At the call | The pattern uses `RegexOptions.RightToLeft` or the `\G` anchor |
 | `ArgumentOutOfRangeException` | When you set an option | `MaxMatchLength`, `LookbehindContext` or `BufferSize` is zero or negative |
 | `InvalidOperationException` | During enumeration | A match is longer than `MaxMatchLength` and does not end at the end of the input |
+| `InvalidOperationException` | At the start of a second enumeration | The same sequence is enumerated again |
 | `RegexMatchTimeoutException` | During enumeration | A match attempt exceeded the pattern's timeout |
 | `OperationCanceledException` | During async enumeration | The cancellation token was cancelled |
 | Any exception from the reader | During enumeration | For example `IOException` or a decoder error, passed through unchanged |

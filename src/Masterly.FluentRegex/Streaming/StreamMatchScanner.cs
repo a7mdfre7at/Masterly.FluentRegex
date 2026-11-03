@@ -45,6 +45,7 @@ internal sealed class StreamMatchScanner
     private long _offset;
     private int _position;
     private bool _inputComplete;
+    private bool _enumerationStarted;
 
     /// <summary>Creates a scanner that snapshots the given options.</summary>
     /// <param name="regex">The compiled regex to run.</param>
@@ -62,6 +63,23 @@ internal sealed class StreamMatchScanner
 
     /// <summary>Gets how many characters the caller should read per chunk.</summary>
     public int BufferSize { get; }
+
+    /// <summary>
+    /// Marks the start of the one enumeration this scanner serves. The reader behind it cannot be rewound, so a
+    /// second enumeration would silently continue in the middle of the text; it throws instead.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The matches were already enumerated.</exception>
+    public void BeginEnumeration()
+    {
+        if (_enumerationStarted)
+        {
+            throw new InvalidOperationException(
+                "Matches read from a TextReader or Stream can be enumerated only once, because the text cannot be read again. " +
+                "Call ToList() to keep them, or call Matches or MatchesAsync again with a new reader.");
+        }
+
+        _enumerationStarted = true;
+    }
 
     /// <summary>Gets a value indicating whether every match has been returned.</summary>
     public bool IsFinished => _inputComplete && _position > _length;
