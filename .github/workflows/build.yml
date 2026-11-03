@@ -18,7 +18,9 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: |
+            8.0.x
+            10.0.x
 
       - name: Cache NuGet packages
         uses: actions/cache@v4
@@ -35,10 +37,18 @@ jobs:
         run: dotnet build --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage"
+        run: dotnet test --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage" --filter "FullyQualifiedName!~Containers"
+
+      # PostgreSQL, MySQL, MariaDB and SQL Server 2025 in Docker. One target framework at a time: running both
+      # starts two SQL Server containers at once, which can starve the runner.
+      - name: Test against real databases
+        run: dotnet test test/Masterly.FluentRegex.EntityFrameworkCore.Tests --configuration Release --no-build --verbosity normal --filter "FullyQualifiedName~Containers" -p:TestTfmsInParallel=false
+
+      - name: Scan for ReDoS-prone regex literals
+        run: dotnet run --project tools/Masterly.FluentRegex.Cli --configuration Release --no-build -- scan . --fail-on high
 
       - name: Upload coverage reports
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         with:
           fail_ci_if_error: false

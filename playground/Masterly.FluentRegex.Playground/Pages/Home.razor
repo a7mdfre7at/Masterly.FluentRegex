@@ -1,0 +1,278 @@
+﻿@page "/"
+@using System.Text.RegularExpressions
+@using Masterly.FluentRegex.Analysis
+@using Masterly.FluentRegex.Tracing
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>FluentRegex Playground</PageTitle>
+
+<header class="topbar">
+    <div class="brand">FluentRegex <span>playground</span></div>
+    <div class="topbar-actions">
+        <button class="btn" @onclick="CopyLinkAsync">@(_copied ? "Link copied" : "Copy share link")</button>
+        <a class="btn ghost" href="https://github.com/a7mdfre7at/Masterly.FluentRegex" target="_blank" rel="noopener">GitHub</a>
+    </div>
+</header>
+
+<main class="workspace">
+    <section class="inputs">
+        <label class="field-label" for="regex">Regular expression (.NET syntax)</label>
+        <textarea id="regex" class="code-input @(_bench.BuildError != null ? "invalid" : "")" rows="3" spellcheck="false"
+                  @bind="_state.Regex" @bind:event="oninput" @bind:after="Refresh"></textarea>
+        @if (_bench.BuildError != null)
+        {
+            <div class="error">@_bench.BuildError</div>
+        }
+
+        <div class="options">
+            @foreach (RegexOptions option in ToggleableOptions)
+            {
+                <label class="option">
+                    <input type="checkbox" checked="@_state.Options.HasFlag(option)" @onchange="e => ToggleOption(option, (bool)e.Value!)" />
+                    @option
+                </label>
+            }
+            <label class="option" title="By default .NET's \d matches every Unicode digit, such as ٢ and ९">
+                <input type="checkbox" checked="@_state.AsciiDigits" @onchange="e => ToggleAsciiDigits((bool)e.Value!)" />
+                ASCII digits only
+            </label>
+        </div>
+
+        <label class="field-label" for="text">Test text</label>
+        <textarea id="text" class="code-input" rows="10" spellcheck="false"
+                  @bind="_state.TestText" @bind:event="oninput" @bind:after="Refresh"></textarea>
+
+        @* Highlight(Html) encodes all text and group names, so rendering it as markup is safe. *@
+        <div class="preview">
+            @if (_bench.HighlightedHtml.Value is { } html)
+            {
+                @((MarkupString)html)
+            }
+        </div>
+    </section>
+
+    <section class="panels">
+        <nav class="tabs">
+            @foreach ((string Key, string Title) tab in Tabs)
+            {
+                <button class="tab @(_state.Tab == tab.Key ? "active" : "")" @onclick="() => SelectTab(tab.Key)">@tab.Title</button>
+            }
+        </nav>
+
+        <div class="panel">
+            @switch (_state.Tab)
+            {
+                case "matches":
+                    <PanelView Result="_bench.Matches" Context="matches">
+                        <p class="hint">@matches.Count match(es)</p>
+                        @foreach (MatchView match in matches)
+                        {
+                            <div class="match-card">
+                                <div><code>@match.Value</code> <span class="muted">at @match.Index</span></div>
+                                @foreach (GroupView group in match.Groups)
+                                {
+                                    <div class="group-row"><span class="group-name">@group.Name</span> <code>@group.Value</code></div>
+                                }
+                            </div>
+                        }
+                    </PanelView>
+                    break;
+                case "explain":
+                    <PanelView Result="_bench.Explanation" Context="text"><pre>@text</pre></PanelView>
+                    break;
+                case "diagram":
+                    <PanelView Result="_bench.RailroadSvg" Context="svg">
+                        <div class="diagram">@((MarkupString)svg)</div>
+                    </PanelView>
+                    <details>
+                        <summary>Mermaid source</summary>
+                        <PanelView Result="_bench.Mermaid" Context="mermaid"><pre>@mermaid</pre></PanelView>
+                    </details>
+                    break;
+                case "code":
+                    <PanelView Result="_bench.FluentCode" Context="fluent"><pre>@fluent</pre></PanelView>
+                    break;
+                case "samples":
+                    <div class="columns">
+                        <div>
+                            <h3>Matching</h3>
+                            <PanelView Result="_bench.MatchingSamples" Context="samples">
+                                <ul class="samples">@foreach (string s in samples) { <li><code>@Visible(s)</code></li> }</ul>
+                            </PanelView>
+                        </div>
+                        <div>
+                            <h3>Not matching</h3>
+                            <PanelView Result="_bench.NonMatchingSamples" Context="samples">
+                                <ul class="samples">@foreach (string s in samples) { <li><code>@Visible(s)</code></li> }</ul>
+                            </PanelView>
+                        </div>
+                    </div>
+                    break;
+                case "safety":
+                    <PanelView Result="_bench.Safety" Context="report">
+                        <p class="verdict @(report.IsSafe ? "ok" : "bad")">Risk: @report.Risk</p>
+                        @foreach (SafetyIssue issue in report.Issues)
+                        {
+                            <div class="issue">
+                                <div><strong>@issue.Kind</strong> at @issue.Position: <code>@issue.Fragment</code> (@issue.Risk)</div>
+                                <div>@issue.Description</div>
+                                <div class="muted">@issue.Suggestion</div>
+                                @if (issue.Confirmed == true)
+                                {
+                                    <div class="bad">Confirmed: the attack input timed out.</div>
+                                }
+                            </div>
+                        }
+                    </PanelView>
+                    break;
+                case "trace":
+                    <label class="field-label" for="trace">Input to trace</label>
+                    <input id="trace" class="code-input" @bind="_traceInput" @bind:event="oninput" />
+                    <PanelView Result="_bench.Trace(_traceInput)" Context="trace">
+                        @if (trace.IsMatch)
+                        {
+                            <p class="verdict ok">Matched <code>@trace.Value</code> at @trace.Index</p>
+                        }
+                        else if (trace.Failure != null)
+                        {
+                            <p class="verdict bad">No match. @trace.Failure.Description at position @trace.Failure.Position, found <code>@trace.Failure.Found</code></p>
+                        }
+                        <pre>@trace.ToString()</pre>
+                    </PanelView>
+                    break;
+                case "compare":
+                    <label class="field-label" for="other">Compare with (same options)</label>
+                    <textarea id="other" class="code-input" rows="2" spellcheck="false" @bind="_compareRegex" @bind:event="oninput"></textarea>
+                    <PanelView Result="_bench.Compare(_compareRegex)" Context="comparison">
+                        <p class="verdict @(comparison.Relation == PatternRelation.Equivalent ? "ok" : "bad")">@comparison.Relation</p>
+                        <pre>@comparison.ToString()</pre>
+                    </PanelView>
+                    break;
+                case "optimize":
+                    <PanelView Result="_bench.Optimization" Context="optimized">
+                        <p class="verdict @(optimized.VerifiedEquivalent ? "ok" : "")">
+                            @(optimized.VerifiedEquivalent ? "Proven equivalent" : "Checked on samples (pattern is outside the provable subset)")
+                        </p>
+                        <pre>@optimized.Optimized.ToString()</pre>
+                        <ul class="samples">@foreach (string rewrite in optimized.AppliedRewrites) { <li>@rewrite</li> }</ul>
+                    </PanelView>
+                    break;
+                case "profile":
+                    <label class="field-label" for="profile">Input to profile</label>
+                    <input id="profile" class="code-input" @bind="_traceInput" @bind:event="oninput" />
+                    <PanelView Result="_bench.Profile(_traceInput)" Context="profile">
+                        <p class="verdict @(profile.BudgetExhausted ? "bad" : "ok")">@profile.Steps.ToString("N0") steps, @profile.Backtracks.ToString("N0") backtracks</p>
+                        <pre>@profile.ToString()</pre>
+                    </PanelView>
+                    break;
+                case "coverage":
+                    <p class="hint">Each line of the test text is one input.</p>
+                    <PanelView Result="_bench.Coverage" Context="coverage">
+                        <pre>@coverage.ToString()</pre>
+                    </PanelView>
+                    break;
+                case "export":
+                    <h3>JavaScript</h3>
+                    <PanelView Result="_bench.JavaScript" Context="js">
+                        <pre>@js.ToLiteral()</pre>
+                        @foreach (string warning in js.Warnings) { <div class="muted">⚠ @warning</div> }
+                    </PanelView>
+                    <h3>JSON Schema / OpenAPI</h3>
+                    <PanelView Result="_bench.JsonSchema" Context="schema">
+                        <pre>@schema.Pattern</pre>
+                        @foreach (string warning in schema.Warnings) { <div class="muted">⚠ @warning</div> }
+                    </PanelView>
+                    <h3>SQL</h3>
+                    <label class="field-label" for="sql-flavor">Database</label>
+                    <select id="sql-flavor" class="code-input" @bind="_sqlFlavor">
+                        <option value="@RegexFlavor.PostgreSql">PostgreSQL</option>
+                        <option value="@RegexFlavor.MySql">MySQL</option>
+                        <option value="@RegexFlavor.MariaDb">MariaDB</option>
+                        <option value="@RegexFlavor.SqlServer">SQL Server 2025</option>
+                        <option value="@RegexFlavor.Sqlite">SQLite (EF Core)</option>
+                    </select>
+                    <p class="hint">Regex condition with the exact .NET meaning, for raw SQL, Dapper or EF Core.</p>
+                    <PanelView Result="_bench.Sql(_sqlFlavor)" Context="sql">
+                        <pre>@sql.Condition</pre>
+                        @foreach (string warning in sql.Warnings) { <div class="muted">⚠ @warning</div> }
+                    </PanelView>
+                    <p class="hint">LIKE, for databases without regex or as an index-friendly prefilter. Exactness is proven by language algebra.</p>
+                    <PanelView Result="_bench.Like(_sqlFlavor)" Context="like">
+                        <p class="verdict @(like.IsExact ? "ok" : "")">@(like.IsExact ? "Proven exact" : "Proven superset: keeps every match, may keep more")</p>
+                        <pre>@like.ToSql(PatternWorkbench.SampleColumn)</pre>
+                        @foreach (string warning in like.Warnings) { <div class="muted">⚠ @warning</div> }
+                    </PanelView>
+                    <p class="hint">What every matching string has in common.</p>
+                    <PanelView Result="_bench.Facts" Context="facts">
+                        <pre>@facts.ToString()</pre>
+                    </PanelView>
+                    break;
+            }
+        </div>
+    </section>
+</main>
+
+@code {
+    private static readonly RegexOptions[] ToggleableOptions =
+    {
+        RegexOptions.IgnoreCase, RegexOptions.Multiline, RegexOptions.Singleline,
+        RegexOptions.ExplicitCapture, RegexOptions.IgnorePatternWhitespace, RegexOptions.CultureInvariant
+    };
+
+    private static readonly (string Key, string Title)[] Tabs =
+    {
+        ("matches", "Matches"), ("explain", "Explain"), ("diagram", "Diagram"), ("code", "Fluent C#"),
+        ("samples", "Samples"), ("safety", "Safety"), ("trace", "Trace"), ("profile", "Profile"),
+        ("coverage", "Coverage"), ("compare", "Compare"), ("optimize", "Optimize"), ("export", "Export")
+    };
+
+    private PlaygroundState _state = new PlaygroundState();
+    private PatternWorkbench _bench = null!; // assigned in OnInitialized before the first render
+    private string _traceInput = string.Empty;
+    private string _compareRegex = @"^[\w.+-]+@[\w-]+\.[\w.-]+$";
+    private RegexFlavor _sqlFlavor = RegexFlavor.PostgreSql;
+    private bool _copied;
+
+    protected override void OnInitialized()
+    {
+        _state = PlaygroundState.FromUri(Navigation.Uri);
+        _traceInput = _state.TestText.Split('\n').FirstOrDefault() ?? string.Empty;
+        _bench = new PatternWorkbench(_state);
+    }
+
+    private async Task Refresh()
+    {
+        _bench = new PatternWorkbench(_state);
+        _copied = false;
+        await JS.InvokeVoidAsync("frx.setHash", _state.ToFragment());
+    }
+
+    private async Task ToggleOption(RegexOptions option, bool enabled)
+    {
+        _state.Options = enabled ? _state.Options | option : _state.Options & ~option;
+        await Refresh();
+    }
+
+    private async Task ToggleAsciiDigits(bool enabled)
+    {
+        _state.AsciiDigits = enabled;
+        await Refresh();
+    }
+
+    private async Task SelectTab(string key)
+    {
+        _state.Tab = key;
+        await JS.InvokeVoidAsync("frx.setHash", _state.ToFragment());
+    }
+
+    private async Task CopyLinkAsync()
+    {
+        string link = Navigation.Uri.Split('#')[0] + _state.ToFragment();
+        await JS.InvokeVoidAsync("frx.copy", link);
+        _copied = true;
+    }
+
+    private static string Visible(string sample) =>
+        sample.Replace("\r", "\\r").Replace("\n", "\\n").Replace("\t", "\\t");
+}

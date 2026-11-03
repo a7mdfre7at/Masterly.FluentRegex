@@ -1,3 +1,4 @@
+using System;
 using System.Text.RegularExpressions;
 
 namespace Masterly.FluentRegex.Tests;
@@ -240,14 +241,237 @@ public class MatchingTests
     }
 
     [Fact]
-    public void WithOptions_InvalidatesCache()
+    public void WithOptions_ReturnsNewPattern_AndLeavesOriginalUnchanged()
     {
         Pattern pattern = Pattern.With.Literal("abc");
 
         pattern.IsMatch("ABC").ShouldBeFalse();
 
-        pattern.WithOptions(RegexOptions.IgnoreCase);
+        Pattern ignoreCase = pattern.WithOptions(RegexOptions.IgnoreCase);
 
-        pattern.IsMatch("ABC").ShouldBeTrue();
+        ignoreCase.IsMatch("ABC").ShouldBeTrue();
+        pattern.IsMatch("ABC").ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Cache_NeverGoesStale_BecausePatternsAreImmutable()
+    {
+        Pattern digit = Pattern.With.Digit;
+        digit.IsMatch("1").ShouldBeTrue();
+
+        Pattern extended = digit.Literal("x");
+
+        extended.IsMatch("1").ShouldBeFalse();
+        extended.IsMatch("1x").ShouldBeTrue();
+        digit.ToString().ShouldBe(@"\d");
+    }
+
+    [Fact]
+    public void WithOptions_Multiline_AnchorsMatchAtLineBoundaries()
+    {
+        Pattern pattern = Pattern.With.StartOfLine.Digit.Repeat.OneOrMore.EndOfLine
+            .WithOptions(RegexOptions.Multiline);
+
+        MatchCollection matches = pattern.Matches("12\n34\nab");
+
+        matches.Count.ShouldBe(2);
+        matches[1].Value.ShouldBe("34");
+    }
+
+    [Fact]
+    public void IsMatch_WithOptionsOverload_DoesNotChangeDefaultOptions()
+    {
+        Pattern pattern = Pattern.With.Literal("abc");
+        bool withIgnoreCase = pattern.IsMatch("ABC", RegexOptions.IgnoreCase);
+
+        bool withDefaults = pattern.IsMatch("ABC");
+
+        withIgnoreCase.ShouldBeTrue();
+        withDefaults.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ToRegex_CalledTwice_ReturnsNewInstanceEachTime()
+    {
+        Pattern pattern = Pattern.With.Digit;
+
+        Regex first = pattern.ToRegex();
+        Regex second = pattern.ToRegex();
+
+        first.ShouldNotBeSameAs(second);
+    }
+
+    [Fact]
+    public void ToRegex_InvalidPattern_ThrowsArgumentException()
+    {
+        Pattern pattern = Pattern.With.RegEx("(unclosed");
+
+        Should.Throw<ArgumentException>(() => pattern.ToRegex());
+    }
+
+    [Fact]
+    public void IsMatch_InvalidPattern_ThrowsArgumentException()
+    {
+        Pattern pattern = Pattern.With.RegEx("[unclosed");
+
+        Should.Throw<ArgumentException>(() => pattern.IsMatch("abc"));
+    }
+
+    [Fact]
+    public void IsMatch_NullInput_ThrowsArgumentNullException()
+    {
+        Pattern pattern = Pattern.With.Digit;
+
+        Should.Throw<ArgumentNullException>(() => pattern.IsMatch(null));
+    }
+
+    [Fact]
+    public void Match_NullInput_ThrowsArgumentNullException()
+    {
+        Pattern pattern = Pattern.With.Digit;
+
+        Should.Throw<ArgumentNullException>(() => pattern.Match(null));
+    }
+
+    [Fact]
+    public void Replace_NullInput_ThrowsArgumentNullException()
+    {
+        Pattern pattern = Pattern.With.Digit;
+
+        Should.Throw<ArgumentNullException>(() => pattern.Replace(null, "X"));
+    }
+
+    [Fact]
+    public void Split_NullInput_ThrowsArgumentNullException()
+    {
+        Pattern pattern = Pattern.With.Digit;
+
+        Should.Throw<ArgumentNullException>(() => pattern.Split(null));
+    }
+
+    [Fact]
+    public void Match_StartAtBeyondInputLength_ThrowsArgumentOutOfRangeException()
+    {
+        Pattern pattern = Pattern.With.Digit;
+
+        Should.Throw<ArgumentOutOfRangeException>(() => pattern.Match("123", 4));
+    }
+
+    [Fact]
+    public void Match_StartAtInputLength_ReturnsUnsuccessfulMatch()
+    {
+        Pattern pattern = Pattern.With.Digit;
+
+        Match match = pattern.Match("123", 3);
+
+        match.Success.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Matches_ReturnsMatchIndexes()
+    {
+        Pattern pattern = Pattern.With.Digit.Repeat.OneOrMore;
+
+        MatchCollection matches = pattern.Matches("abc123def456");
+
+        matches.Count.ShouldBe(2);
+        matches[0].Index.ShouldBe(3);
+        matches[1].Index.ShouldBe(9);
+    }
+
+    [Fact]
+    public void Replace_CountMinusOne_ReplacesAllOccurrences()
+    {
+        Pattern pattern = Pattern.With.Digit;
+
+        string result = pattern.Replace("a1b2c3d4", "X", -1);
+
+        result.ShouldBe("aXbXcXdX");
+    }
+
+    [Fact]
+    public void Replace_CountZero_ReturnsInputUnchanged()
+    {
+        Pattern pattern = Pattern.With.Digit;
+
+        string result = pattern.Replace("a1b2", "X", 0);
+
+        result.ShouldBe("a1b2");
+    }
+
+    [Fact]
+    public void Replace_NoMatch_ReturnsInputUnchanged()
+    {
+        Pattern pattern = Pattern.With.Digit;
+
+        string result = pattern.Replace("abc", "X");
+
+        result.ShouldBe("abc");
+    }
+
+    [Fact]
+    public void Replace_NamedGroupSubstitution_SwapsGroups()
+    {
+        Pattern pattern = Pattern.With
+            .NamedGroup("first", Pattern.With.Word.Repeat.OneOrMore)
+            .Whitespace
+            .NamedGroup("last", Pattern.With.Word.Repeat.OneOrMore);
+
+        string result = pattern.Replace("John Doe", "${last}, ${first}");
+
+        result.ShouldBe("Doe, John");
+    }
+
+    [Fact]
+    public void Replace_EvaluatorWithGroups_ReordersDateParts()
+    {
+        Pattern pattern = Pattern.With
+            .Group(Pattern.With.Digit.Repeat.Times(4))
+            .Literal("-")
+            .Group(Pattern.With.Digit.Repeat.Times(2))
+            .Literal("-")
+            .Group(Pattern.With.Digit.Repeat.Times(2));
+
+        string result = pattern.Replace("2024-01-15", m => $"{m.Groups[2]}/{m.Groups[3]}/{m.Groups[1]}");
+
+        result.ShouldBe("01/15/2024");
+    }
+
+    [Fact]
+    public void Split_CapturingGroupDelimiter_IncludesDelimitersInResult()
+    {
+        Pattern pattern = Pattern.With.Group(Pattern.With.Literal(","));
+
+        string[] parts = pattern.Split("a,b,c");
+
+        parts.ShouldBe(new[] { "a", ",", "b", ",", "c" });
+    }
+
+    [Fact]
+    public void Split_NoMatch_ReturnsWholeInput()
+    {
+        Pattern pattern = Pattern.With.Literal(",");
+
+        string[] parts = pattern.Split("abc");
+
+        parts.ShouldBe(new[] { "abc" });
+    }
+
+    [Fact]
+    public void Split_CountOne_ReturnsWholeInput()
+    {
+        Pattern pattern = Pattern.With.Literal(",");
+
+        string[] parts = pattern.Split("a,b,c", 1);
+
+        parts.ShouldBe(new[] { "a,b,c" });
+    }
+
+    [Fact]
+    public void Split_NegativeCount_ThrowsArgumentOutOfRangeException()
+    {
+        Pattern pattern = Pattern.With.Literal(",");
+
+        Should.Throw<ArgumentOutOfRangeException>(() => pattern.Split("a,b", -1));
     }
 }

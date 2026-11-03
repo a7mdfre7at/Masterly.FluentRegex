@@ -1,3 +1,6 @@
+using System;
+using System.Linq;
+
 namespace Masterly.FluentRegex.Tests;
 
 public class DebuggingTests
@@ -402,5 +405,198 @@ public class DebuggingTests
         explanation.ShouldContain("End of line");
     }
 
+    [Theory]
+    [InlineData(".", "Any character (except newline)")]
+    [InlineData("*", "Zero or more")]
+    [InlineData("*?", "Zero or more (lazy)")]
+    [InlineData("+?", "One or more (lazy)")]
+    [InlineData(@"\", "Escape character")]
+    [InlineData(@"\D", "Non-digit [^0-9]")]
+    [InlineData(@"\w", "Word character [a-zA-Z0-9_]")]
+    [InlineData(@"\W", "Non-word character")]
+    [InlineData(@"\s", "Whitespace")]
+    [InlineData(@"\S", "Non-whitespace")]
+    [InlineData(@"\b", "Word boundary")]
+    [InlineData(@"\B", "Non-word boundary")]
+    [InlineData(@"\t", "Tab")]
+    [InlineData(@"\n", "Newline")]
+    [InlineData(@"\r", "Carriage return")]
+    [InlineData(@"\.", "Escaped literal '.'")]
+    [InlineData(@"\2", "Backreference to group 2")]
+    [InlineData(@"\k", "Backreference")]
+    [InlineData(@"\k<name>", "Backreference to named group 'name'")]
+    [InlineData("[^a-z]", "Any character NOT in: [a-z]")]
+    [InlineData("[", "Character class start")]
+    [InlineData("(", "Capturing group")]
+    [InlineData("(?", "Group start")]
+    [InlineData("(?:", "Non-capturing group")]
+    [InlineData("(?>", "Atomic group (no backtracking)")]
+    [InlineData("(?<", "Lookbehind or named group")]
+    [InlineData("(?<=", "Positive lookbehind (must precede)")]
+    [InlineData("(?<!", "Negative lookbehind (must NOT precede)")]
+    [InlineData("(?<word>", "Named capturing group 'word'")]
+    [InlineData("{", "Quantifier")]
+    [InlineData("{3}", "Exactly 3 times")]
+    [InlineData("{3}?", "Exactly 3 times (lazy)")]
+    [InlineData("{2,5}?", "Between 2 and 5 times (lazy)")]
+    [InlineData("{2,}?", "At least 2 times (lazy)")]
+    [InlineData("{,3}", "At most 3 times")]
+    [InlineData("|", "OR (alternation)")]
+    [InlineData("a", "Literal 'a'")]
+    [InlineData("7", "Literal '7'")]
+    [InlineData("-", "Character '-'")]
+    [InlineData(" ", "Character ' '")]
+    public void Explain_SingleConstruct_ProducesExactExplanation(string regex, string expectedLine)
+    {
+        Pattern pattern = Pattern.With.RegEx(regex);
+
+        string explanation = pattern.Explain();
+
+        explanation.ShouldBe(ExpectedExplanation(regex, $"  - {expectedLine}"));
+    }
+
+    public static TheoryData<string, string[]> MalformedConstructs => new TheoryData<string, string[]>
+    {
+        { "[]", new[] { "  - Character class start", "  - Character ']'" } },
+        { "[abc", new[] { "  - Character class start", "  - Literal 'a'", "  - Literal 'b'", "  - Literal 'c'" } },
+        { "{}", new[] { "  - Quantifier", "  - Character '}'" } },
+        { "{3", new[] { "  - Quantifier", "  - Literal '3'" } },
+        { @"\k<x", new[] { "  - Backreference", "  - Character '<'", "  - Literal 'x'" } },
+        { "(?<ab", new[] { "  - Lookbehind or named group", "    - Literal 'a'", "    - Literal 'b'" } },
+        { "(?<>", new[] { "  - Lookbehind or named group", "    - Character '>'" } },
+        { "(?i", new[] { "  - Special group", "    - Literal 'i'" } },
+        { ")a", new[] { "  - End of group", "  - Literal 'a'" } },
+        { "))a", new[] { "  - End of group", "  - End of group", "  - Literal 'a'" } },
+    };
+
+    [Theory]
+    [MemberData(nameof(MalformedConstructs))]
+    public void Explain_MalformedOrUnbalancedConstruct_FallsBackWithoutThrowing(string regex, string[] expectedLines)
+    {
+        Pattern pattern = Pattern.With.RegEx(regex);
+
+        string explanation = pattern.Explain();
+
+        explanation.ShouldBe(ExpectedExplanation(regex, expectedLines));
+    }
+
+    [Fact]
+    public void Explain_EmptyPattern_ReturnsHeaderOnly()
+    {
+        Pattern pattern = Pattern.With;
+
+        string explanation = pattern.Explain();
+
+        explanation.ShouldBe(ExpectedExplanation(string.Empty));
+    }
+
+    [Fact]
+    public void Explain_NestedGroups_IndentsInnerConstructsPerLevel()
+    {
+        Pattern pattern = Pattern.With
+            .AtomicGroup(Pattern.With.NonCapturingGroup(Pattern.With.Anything))
+            .NonDigit;
+
+        string explanation = pattern.Explain();
+
+        explanation.ShouldContain($"{Environment.NewLine}  - Atomic group (no backtracking){Environment.NewLine}");
+        explanation.ShouldContain($"{Environment.NewLine}    - Non-capturing group{Environment.NewLine}");
+        explanation.ShouldContain($"{Environment.NewLine}      - Any character (except newline){Environment.NewLine}");
+        explanation.ShouldEndWith($"{Environment.NewLine}  - Non-digit [^0-9]{Environment.NewLine}");
+    }
+
+    [Fact]
+    public void Explain_EscapedSpecialCharacterFromLiteral_DescribesEscapedLiteral()
+    {
+        Pattern pattern = Pattern.With.Literal("{");
+
+        string explanation = pattern.Explain();
+
+        explanation.ShouldBe(ExpectedExplanation(@"\{", "  - Escaped literal '{'"));
+    }
+
+    [Fact]
+    public void Explain_InvalidPattern_ExplainsCharactersWithoutThrowing()
+    {
+        Pattern pattern = Pattern.With.RegEx("[x(");
+
+        string explanation = pattern.Explain();
+
+        explanation.ShouldBe(ExpectedExplanation("[x(", "  - Character class start", "  - Literal 'x'", "  - Capturing group"));
+    }
+
     #endregion
+
+    #region Validation Edge Cases
+
+    [Fact]
+    public void IsValid_EmptyPattern_ReturnsTrue()
+    {
+        Pattern pattern = Pattern.With;
+
+        bool isValid = pattern.IsValid();
+
+        isValid.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void IsValid_TrailingBackslash_ReturnsFalse()
+    {
+        Pattern pattern = Pattern.With.Digit.RegEx(@"\");
+
+        bool isValid = pattern.IsValid();
+
+        isValid.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GetGroupNames_InvalidPattern_ThrowsArgumentException()
+    {
+        Pattern pattern = Pattern.With.RegEx("(unclosed");
+
+        Should.Throw<ArgumentException>(() => pattern.GetGroupNames());
+    }
+
+    [Fact]
+    public void GetGroupCount_InvalidPattern_ThrowsArgumentException()
+    {
+        Pattern pattern = Pattern.With.RegEx("(unclosed");
+
+        Should.Throw<ArgumentException>(() => pattern.GetGroupCount());
+    }
+
+    [Fact]
+    public void GetGroupNames_MultipleNamedGroups_ReturnsNamesInDeclarationOrder()
+    {
+        Pattern pattern = Pattern.With
+            .NamedGroup("year", Pattern.With.Digit.Repeat.Times(4))
+            .Group(Pattern.With.Literal("-"))
+            .NamedGroup("month", Pattern.With.Digit.Repeat.Times(2));
+
+        string[] names = pattern.GetGroupNames();
+
+        names.ShouldBe(new[] { "year", "month" });
+    }
+
+    [Fact]
+    public void GetGroupCount_LookaroundsAndAtomicGroups_AreNotCounted()
+    {
+        Pattern pattern = Pattern.With
+            .PositiveLookahead(Pattern.With.Digit)
+            .NegativeLookbehind(Pattern.With.Word)
+            .AtomicGroup(Pattern.With.Digit)
+            .Group(Pattern.With.Digit);
+
+        int count = pattern.GetGroupCount();
+
+        count.ShouldBe(1);
+    }
+
+    #endregion
+
+    private static string ExpectedExplanation(string regex, params string[] lines)
+    {
+        string body = string.Concat(lines.Select(line => line + Environment.NewLine));
+        return $"Pattern: {regex}{Environment.NewLine}{Environment.NewLine}Explanation:{Environment.NewLine}{body}";
+    }
 }

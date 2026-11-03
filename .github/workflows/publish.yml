@@ -1,5 +1,14 @@
 name: Publish to NuGet
 
+# Publishes every package with NuGet Trusted Publishing: GitHub issues this job an OIDC token, nuget.org exchanges it
+# for an API key that lives for minutes, and no long-lived NuGet secret exists.
+#
+# One-time setup on nuget.org (signed in as the account that owns the packages):
+#   Username menu > Trusted Publishing > Add policy:
+#     Repository Owner: a7mdfre7at   Repository: Masterly.FluentRegex   Workflow File: publish.yml   Environment: (empty)
+# and in this repository: Settings > Secrets and variables > Actions > New secret
+#     NUGET_USER = the nuget.org username (profile name, not the email) of the account that created the policy.
+
 on:
   workflow_dispatch:
   workflow_run:
@@ -11,44 +20,136 @@ jobs:
   publish:
     name: Publish to NuGet
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    # Publish only what Build verified on a push to this repository's master. The branches filter alone is not enough:
+    # a pull request from a fork whose branch is named master also completes Build with head_branch "master".
+    # A manual run must start from master too, because nuget.org checks the workflow file, not the branch.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    # Job-level, so runs whose jobs are skipped (fork pull requests, failed builds) never cancel a pending publish.
+    concurrency:
+      group: publish-nuget
+      cancel-in-progress: false
     permissions:
-      contents: write
+      contents: write   # create the version tag and the GitHub Release
+      id-token: write   # request the GitHub OIDC token that NuGet Trusted Publishing exchanges for an API key
+    env:
+      # workflow_run runs on the latest master commit; check out exactly the commit Build tested instead.
+      COMMIT: ${{ github.event.workflow_run.head_sha || github.sha }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ env.COMMIT }}
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: |
+            8.0.x
+            10.0.x
 
-      - name: Cache NuGet packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-          restore-keys: |
-            ${{ runner.os }}-nuget-
+      # No NuGet cache here: Build writes the same cache key, and this job can mint NuGet API keys, so every
+      # dependency is restored fresh from nuget.org.
 
-      - name: Publish to NuGet
-        id: publish_nuget
-        uses: alirezanet/publish-nuget@v3.1.0
+      - name: Read version
+        id: version
+        run: |
+          version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' src/Masterly.FluentRegex/Masterly.FluentRegex.csproj | head -n 1)
+          if [ -z "$version" ]; then
+            echo "::error::No <Version> found in src/Masterly.FluentRegex/Masterly.FluentRegex.csproj."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # Packing everything before signing in keeps the short-lived API key's lifetime for the pushes alone.
+      - name: Pack
+        run: |
+          projects=(
+            src/Masterly.FluentRegex/Masterly.FluentRegex.csproj
+            tools/Masterly.FluentRegex.Cli/Masterly.FluentRegex.Cli.csproj
+            src/Masterly.FluentRegex.AspNetCore/Masterly.FluentRegex.AspNetCore.csproj
+            src/Masterly.FluentRegex.Xunit/Masterly.FluentRegex.Xunit.csproj
+            src/Masterly.FluentRegex.AI/Masterly.FluentRegex.AI.csproj
+            src/Masterly.FluentRegex.EntityFrameworkCore/Masterly.FluentRegex.EntityFrameworkCore.csproj
+          )
+          for project in "${projects[@]}"; do
+            dotnet pack "$project" --configuration Release --output artifacts
+          done
+
+      - name: Check that every package has the release version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          find artifacts -maxdepth 1 -name '*.nupkg' -print
+          expected=6
+          actual=$(find artifacts -maxdepth 1 -name "*.$VERSION.nupkg" | wc -l)
+          if [ "$actual" -ne "$expected" ]; then
+            echo "::error::Expected $expected packages at version $VERSION, found $actual. Keep every <Version> in sync."
+            exit 1
+          fi
+
+      # Remembered before pushing, so that the release below is created only by the run that published the version.
+      - name: Check whether this version is new on nuget.org
+        id: check
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if curl -sf https://api.nuget.org/v3-flatcontainer/masterly.fluentregex/index.json | grep -q "\"$VERSION\""; then
+            echo "Masterly.FluentRegex $VERSION is already on nuget.org."
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sign in to NuGet (Trusted Publishing)
+        id: login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         with:
-          PROJECT_FILE_PATH: src/Masterly.FluentRegex/Masterly.FluentRegex.csproj
-          VERSION_REGEX: ^\s*<Version>(.*)<\/Version>\s*$
-          TAG_COMMIT: true
-          TAG_FORMAT: v*
-          NUGET_KEY: ${{ secrets.NUGET_API_KEY }}
-          INCLUDE_SYMBOLS: false
+          user: ${{ secrets.NUGET_USER }}
+
+      # --skip-duplicate makes reruns safe: versions already on nuget.org are left alone.
+      - name: Push packages
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        run: >-
+          dotnet nuget push "artifacts/*.nupkg"
+          --api-key "$NUGET_API_KEY"
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate
+
+      # Created here rather than by release.yml: a tag created with GITHUB_TOKEN does not start other workflows.
+      # A manual run can also create a release that is missing for the current version.
+      - name: Tag and create the GitHub Release
+        if: steps.check.outputs.new == 'true' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          tag="v$VERSION"
+          if gh release view "$tag" > /dev/null 2>&1; then
+            echo "Release $tag already exists."
+            exit 0
+          fi
+          prerelease=()
+          case "$VERSION" in
+            *-*) prerelease=(--prerelease) ;;
+          esac
+          gh release create "$tag" --target "$COMMIT" --title "Release $tag" --notes-file RELEASE-NOTES.md "${prerelease[@]}"
 
   on-failure:
     name: Build Failed
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event == 'push'
     steps:
       - name: Report failure
         run: |
-          echo "::error::Build workflow failed. NuGet publish skipped."
+          echo "::error::Build workflow failed on master. NuGet publish skipped."
           exit 1

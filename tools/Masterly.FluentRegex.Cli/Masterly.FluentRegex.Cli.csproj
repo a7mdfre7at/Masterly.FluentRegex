@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RollForward>Major</RollForward>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>fluentregex</AssemblyName>
+    <RootNamespace>Masterly.FluentRegex.Cli</RootNamespace>
+    <!-- Roslyn ships translated compiler messages; the tool only reports its own English output. -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>fluentregex</ToolCommandName>
+    <PackageId>Masterly.FluentRegex.Tool</PackageId>
+    <Version>3.1.0</Version>
+    <Authors>Ahmad Al-Freihat</Authors>
+    <Description>Command-line companion for Masterly.FluentRegex: prove two regexes equivalent, optimize, learn from examples, profile backtracking, measure coverage, export to JavaScript and to the regex dialects of PostgreSQL, MySQL, MariaDB, SQL Server and SQLite, compile to SQL LIKE with a proof of exactness, print proven language facts, convert to fluent C#, scan codebases for ReDoS, generate test data, trace matches and draw railroad diagrams.</Description>
+    <PackageProjectUrl>https://github.com/a7mdfre7at/Masterly.FluentRegex</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/a7mdfre7at/Masterly.FluentRegex</RepositoryUrl>
+    <PackageTags>Regex;FluentRegex;ReDoS;CLI;DotnetTool</PackageTags>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <PackageIcon>repo_image.png</PackageIcon>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Masterly.FluentRegex\Masterly.FluentRegex.csproj" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\LICENSE.txt" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="..\..\repo_image.png" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Masterly.FluentRegex.Cli.Tests" />
+  </ItemGroup>
+
+</Project>

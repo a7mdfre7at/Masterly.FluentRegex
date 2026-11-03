@@ -1,0 +1,60 @@
+name: Playground
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'src/Masterly.FluentRegex/**'
+      - 'playground/**'
+      - '.github/workflows/playground.yml'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+
+      - name: Publish playground
+        run: dotnet publish playground/Masterly.FluentRegex.Playground -c Release -o publish
+
+      - name: Prepare for GitHub Pages
+        run: |
+          # The site is served from /<repository>/, not from the domain root.
+          sed -i 's|<base href="/" />|<base href="/${{ github.event.repository.name }}/" />|' publish/wwwroot/index.html
+          # Single-page app: unknown paths fall back to the app shell.
+          cp publish/wwwroot/index.html publish/wwwroot/404.html
+          # Serve folders starting with '_' such as _framework.
+          touch publish/wwwroot/.nojekyll
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: publish/wwwroot
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

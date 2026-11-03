@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Tests for the playground's plain C# logic. PatternWorkbench and PlaygroundState have no Blazor
+    dependencies, so they are link-compiled here instead of referencing the Blazor WebAssembly project.
+    Because the code under test therefore lives in this test assembly, coverage.runsettings tells
+    coverlet to instrument the test assembly too.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <RunSettingsFilePath>$(MSBuildThisFileDirectory)coverage.runsettings</RunSettingsFilePath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
+    <PackageReference Include="Shouldly" Version="4.3.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector" Version="6.0.4">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="xunit.v3" Version="3.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\playground\Masterly.FluentRegex.Playground\PatternWorkbench.cs" Link="Playground\PatternWorkbench.cs" />
+    <Compile Include="..\..\playground\Masterly.FluentRegex.Playground\PlaygroundState.cs" Link="Playground\PlaygroundState.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Masterly.FluentRegex\Masterly.FluentRegex.csproj" />
+  </ItemGroup>
+
+</Project>
