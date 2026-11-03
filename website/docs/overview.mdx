@@ -1,0 +1,95 @@
+---
+id: overview
+title: "Overview"
+description: "What Masterly.FluentRegex is, the six packages, what is new in 3.1, and a map of everything you can do with it."
+sidebar_label: "Overview"
+---
+
+import ConceptFlow from '@site/src/components/docs/ConceptFlow';
+import LinkCards from '@site/src/components/docs/LinkCards';
+
+Masterly.FluentRegex is a library for building .NET regular expressions you can read. Instead of writing `^\d{3}-\d{4}$` by hand, you write `Pattern.With.StartOfLine.Digit.Repeat.Times(3).Literal("-")...` and the library writes the regex for you, escaping every special character along the way.
+
+A pattern is more than a builder, though. The same immutable `Pattern` matches and extracts text, explains itself in plain English, proves whether two patterns accept the same strings, finds ReDoS risks, generates test data, and exports itself to JavaScript, JSON Schema and the regex dialects of five databases. Every call returns a new pattern, so building blocks are safe to share.
+
+The core package targets .NET Standard 2.1, .NET 8 and .NET 10 and has no dependencies. It also ships a source generator and analyzers that check your patterns while you type. Five optional packages add Entity Framework Core, ASP.NET Core, xUnit, AI drafting and a command-line tool.
+
+## How it works
+
+Working with patterns has four stages. Most projects use the first two every day and reach for the last two when a pattern matters: when it guards input, runs in a database, or must behave the same in a browser. Select a stage to read its guide.
+
+<ConceptFlow />
+
+## The packages
+
+All six packages ship together with one version number. Install the core first; add a companion package only when you use the framework it plugs into.
+
+| Package | What it adds | Targets |
+|---|---|---|
+| `Masterly.FluentRegex` | The fluent builder, matching, extraction, templates, pattern algebra, optimizer, ReDoS analysis, export and SQL dialects, plus the bundled source generator and analyzers. No dependencies. | .NET Standard 2.1, .NET 8, .NET 10 |
+| `Masterly.FluentRegex.EntityFrameworkCore` | `UseFluentRegex()`: patterns in LINQ run as the database's own regex, with proven index hints and `CHECK` constraints. | .NET 8 (EF Core 8), .NET 10 (EF Core 10) |
+| `Masterly.FluentRegex.AspNetCore` | `AddFluentPatterns(...)` and the `pattern(name)` route constraint. | .NET 8, .NET 10 |
+| `Masterly.FluentRegex.Xunit` | `[MatchingData]` and `[NonMatchingData]` theory data for xUnit v3. | .NET 8, .NET 10 |
+| `Masterly.FluentRegex.AI` | `PatternAssistant`, which drafts patterns from plain-language descriptions with Claude and verifies every draft locally. | .NET 8, .NET 10 |
+| `Masterly.FluentRegex.Tool` | The `fluentregex` .NET tool: compare, optimize, export, scan a codebase for ReDoS, and more. | .NET 8 |
+
+See [Installation](/docs/installation) for the install commands.
+
+## What's new in 3.1
+
+Version 3.1 can prove things about your patterns, learn them from examples, and take them beyond .NET into browsers, databases, tests and logs.
+
+| Feature | In one line |
+|---|---|
+| [Pattern algebra](/docs/pattern-algebra) | `Pattern.Compare(a, b)` proves two patterns equivalent, or returns the shortest string that tells them apart. |
+| [Verified optimizer](/docs/optimizer) | `Optimize()` rewrites `cat\|car\|cab` to `ca[trb]` and proves that nothing changed. |
+| [Typed templates](/docs/templates) | `Template.Of<T>("{Date:yyyy-MM-dd} [{Level}] {Message}")` parses and formats typed values. |
+| [Learning from examples](/docs/learning-from-examples) | `Pattern.Learn(match, reject)` infers a readable, anchored pattern. |
+| [Regex coverage](/docs/regex-coverage) | `MeasureCoverage(inputs)` shows the branches and limits your tests never reach. |
+| [Property testing](/docs/property-testing) | `PatternProperty.ForMatching(...)` finds and shrinks counterexamples to a property. |
+| [Semantic rules](/docs/semantic-rules) and [PII redaction](/docs/pii-redaction) | `.Must(Validators.Luhn)` adds checks a regex cannot express; `Redactor` masks personal data. |
+| [Export](/docs/export), [SQL dialects](/docs/sql-dialects) and [SQL LIKE](/docs/sql-like) | JavaScript, JSON Schema, PostgreSQL, MySQL, MariaDB, SQL Server 2025 and SQLite, each with the exact .NET meaning. |
+| [Language facts](/docs/language-facts) | `GetLanguageFacts()` proves length bounds and the prefix and suffix every match must have. |
+| [Backtracking profiler](/docs/backtracking-profiler) | `Profile(input)` counts backtracking steps per construct. |
+| [Streaming](/docs/streaming) | `MatchesAsync(stream)` matches input of any size in constant memory. |
+| [Unicode](/docs/unicode) | Unicode scripts, script-specific digits, graphemes, `IgnoreDiacritics()` and an ASCII digit mode. |
+| [Entity Framework Core](/docs/entity-framework-core), [ASP.NET Core](/docs/aspnetcore), [xUnit](/docs/xunit), [AI drafting](/docs/ai-drafting) | Four new companion packages. |
+
+Coming from 2.x? Version 3.0 made patterns immutable. Read [Upgrading from 2.x](/docs/upgrading-from-2x) before you update.
+
+## What you can do
+
+<LinkCards
+  columns={3}
+  items={[
+    {icon: 'regex', title: 'Build patterns', text: 'Anchors, character classes, quantifiers, groups and lookarounds, one readable call at a time.', to: '/docs/core-concepts'},
+    {icon: 'code', title: 'Convert existing regexes', text: 'Turn a cryptic regex into fluent C# with ToFluentCode(), then maintain it like any other code.', to: '/docs/regex-to-fluent-code'},
+    {icon: 'book', title: 'Use ready-made patterns', text: 'Email, URL, IP addresses, dates, credit cards and more, each one a normal Pattern you can extend.', to: '/docs/common-patterns'},
+    {icon: 'search', title: 'Match, replace and split', text: 'Test, find, replace and split text, with replacements built from validated group names.', to: '/docs/matching'},
+    {icon: 'braces', title: 'Extract typed values', text: 'Bind named groups onto records and classes, or describe a whole line with a typed template.', to: '/docs/typed-extraction'},
+    {icon: 'eyeOff', title: 'Redact personal data', text: 'Mask emails, phone numbers and card numbers in text, and get a report of what was found.', to: '/docs/pii-redaction'},
+    {icon: 'compare', title: 'Prove patterns equivalent', text: 'Compare two patterns exactly, and get the shortest string that shows how they differ.', to: '/docs/pattern-algebra'},
+    {icon: 'zap', title: 'Optimize safely', text: 'Simplify a pattern and get a proof that it still matches exactly the same strings.', to: '/docs/optimizer'},
+    {icon: 'shield', title: 'Find ReDoS risks', text: 'Detect catastrophic backtracking, and confirm each risk with a timed attack input.', to: '/docs/redos-safety'},
+    {icon: 'route', title: 'Explain, trace and draw', text: 'Describe a pattern in English, trace a match step by step, or draw it as a railroad diagram.', to: '/docs/match-tracing'},
+    {icon: 'target', title: 'Test your patterns', text: 'Measure coverage, generate matching and near-miss data, and run property tests.', to: '/docs/regex-coverage'},
+    {icon: 'sparkles', title: 'Learn from examples', text: 'Give strings that must and must not match; get a readable pattern back.', to: '/docs/learning-from-examples'},
+    {icon: 'globe', title: 'Export everywhere', text: 'Write the same pattern for JavaScript, JSON Schema and five SQL regex dialects.', to: '/docs/export'},
+    {icon: 'database', title: 'Query the database', text: 'Run patterns inside Entity Framework Core queries, with index hints and CHECK constraints.', to: '/docs/entity-framework-core'},
+    {icon: 'code', title: 'Catch mistakes at build time', text: 'The bundled analyzers flag invalid patterns, ReDoS risks and group-name typos as you type.', to: '/docs/compile-time-checks'},
+  ]}
+/>
+
+## Where to go next
+
+<LinkCards
+  columns={2}
+  items={[
+    {eyebrow: 'New here', title: 'Quick Start', text: 'Build a first pattern, test it, extract matches with named groups and explain it.', to: '/docs/quick-start'},
+    {eyebrow: 'See it in context', title: 'Real-world examples', text: 'Complete, working patterns for real validation and parsing tasks.', to: '/docs/examples'},
+    {eyebrow: 'Try it now', title: 'Playground', text: 'Build, explain, test and secure patterns in your browser, with shareable links.', to: '/docs/playground'},
+    {eyebrow: 'Coming from 2.x', title: 'Upgrading from 2.x', text: 'What changed when patterns became immutable, and how to update your code.', to: '/docs/upgrading-from-2x'},
+    {eyebrow: 'Looking something up', title: 'API reference', text: 'Every public type and member, one package at a time.', to: '/docs/api-reference'},
+    {eyebrow: 'Need a refresher', title: 'Regex cheat sheet', text: 'A one-page reference for regular expression syntax.', to: '/docs/regex-cheat-sheet'},
+  ]}
+/>
