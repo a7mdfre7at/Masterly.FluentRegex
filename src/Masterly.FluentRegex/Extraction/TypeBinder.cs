@@ -96,13 +96,15 @@ namespace Masterly.FluentRegex
                     arguments[i] = parameter.HasDefaultValue ? parameter.DefaultValue : DefaultOf(parameter.ParameterType);
             }
 
-            var instance = (T)plan.Constructor.Invoke(arguments);
+            // Kept boxed while the properties are set: for a struct, setting them on an unboxed T would change a
+            // temporary copy each time and lose every value. A struct without a public constructor starts as default.
+            object instance = plan.Constructor != null ? plan.Constructor.Invoke(arguments) : default(T);
             foreach (KeyValuePair<PropertyInfo, string> property in plan.Properties)
             {
                 Group group = match.Groups[property.Value];
                 if (group.Success) property.Key.SetValue(instance, Convert(group.Value, property.Key.PropertyType, property.Value, provider, converter));
             }
-            return instance;
+            return (T)instance;
         }
 
         private static Plan CreatePlan(Regex regex)
@@ -143,14 +145,17 @@ namespace Masterly.FluentRegex
             }
 
             var properties = new List<KeyValuePair<PropertyInfo, string>>();
+            bool hasSettableProperty = false;
             foreach (PropertyInfo property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
             {
                 if (boundNames.Contains(property.Name) || !IsSettable(property)) continue;
+                hasSettableProperty = true;
                 string wanted = GroupNameOf(property);
                 if (groups.TryGetValue(wanted, out string actual)) properties.Add(new KeyValuePair<PropertyInfo, string>(property, actual));
             }
 
-            if (constructor == null)
+            // Only a struct can get here without a constructor. It is built from default and its settable properties.
+            if (constructor == null && !hasSettableProperty)
                 throw new InvalidOperationException("Value type '" + type.FullName + "' needs a public constructor or settable properties.");
 
             return new Plan { Constructor = constructor, Parameters = parameters, ParameterGroups = parameterGroups, Properties = properties };

@@ -65,7 +65,7 @@ The binder looks at your type once and makes a plan. It follows these rules, in 
 |------|------|
 | 1. Pick a constructor | The public constructor with the most parameters. A record's primary constructor wins over its copy constructor, which is not public. When two constructors have the same number of parameters, the first one that reflection returns wins, which is usually the first one declared. |
 | 2. Fill the constructor parameters | Each parameter reads the group with the same name (case-insensitive), or the name from `[RegexGroup]`. |
-| 3. Fill the properties | After construction, each public settable property that is not already a constructor parameter reads its group. `init` setters count as settable. This step has no effect on structs (see [Structs](#structs)). |
+| 3. Fill the properties | After construction, each public settable property that is not already a constructor parameter reads its group. `init` setters count as settable. Structs get their properties too (see [Structs](#structs)). |
 | 4. Skip the rest | Read-only properties, properties with a private setter, indexers and members with no matching group are left alone. |
 
 ### Constructor parameters
@@ -224,7 +224,7 @@ The second call used the two-parameter constructor too. `high` did not take part
 
 ### Structs
 
-A struct needs a public constructor with parameters, such as the primary constructor of a `record struct`:
+Structs bind the same way as classes: through the constructor with the most parameters, then through settable properties. A struct with no declared constructor starts as `default` and gets only its settable properties.
 
 ```csharp
 public readonly record struct GridCell(int Row, int Column);
@@ -235,33 +235,7 @@ public struct PlainPoint
 
     public int Y { get; set; }
 }
-```
 
-```csharp
-Pattern cell = Pattern.FromRegex(@"(?<row>\d+):(?<column>\d+)");
-
-Console.WriteLine(cell.Extract<GridCell>("3:4")); // prints: GridCell { Row = 3, Column = 4 }
-
-try
-{
-    Pattern point = Pattern.FromRegex(@"(?<x>\d+),(?<y>\d+)");
-    point.Extract<PlainPoint>("1,2");
-}
-catch (InvalidOperationException ex)
-{
-    Console.WriteLine(ex.Message); // prints: Value type 'PlainPoint' needs a public constructor or settable properties.
-}
-```
-
-:::warning
-
-A struct with only settable properties and no declared constructor cannot be extracted, even though the message mentions settable properties. Add a public constructor that takes the values, or use a `record struct` with a primary constructor.
-
-:::
-
-A struct only receives values through its constructor. The binder sets properties on a boxed copy of the struct, so settable properties of a struct are never filled, and no error is reported:
-
-```csharp
 public struct Coordinate
 {
     public Coordinate(int x)
@@ -276,12 +250,19 @@ public struct Coordinate
 ```
 
 ```csharp
-Coordinate coordinate = Pattern.FromRegex(@"(?<x>\d+),(?<y>\d+)").Extract<Coordinate>("1,2");
+Pattern cell = Pattern.FromRegex(@"(?<row>\d+):(?<column>\d+)");
+Console.WriteLine(cell.Extract<GridCell>("3:4")); // prints: GridCell { Row = 3, Column = 4 }
 
-Console.WriteLine($"{coordinate.X},{coordinate.Y}"); // prints: 1,0 (Y was never set)
+Pattern pair = Pattern.FromRegex(@"(?<x>\d+),(?<y>\d+)");
+
+PlainPoint point = pair.Extract<PlainPoint>("1,2");
+Console.WriteLine($"{point.X},{point.Y}"); // prints: 1,2
+
+Coordinate coordinate = pair.Extract<Coordinate>("1,2");
+Console.WriteLine($"{coordinate.X},{coordinate.Y}"); // prints: 1,2 (X from the constructor, Y from the property)
 ```
 
-The same happens with a struct that declares a public parameterless constructor and only settable properties: it extracts without an error, and every property keeps its default. Put every value a struct needs in its constructor, or use a class or record class instead.
+A struct that has neither a public constructor nor a settable property has nothing to bind, so extracting it throws `InvalidOperationException` with the message `Value type '...' needs a public constructor or settable properties.`
 
 ## Optional groups and missing values
 
@@ -661,7 +642,7 @@ The `out` parameter is not annotated with `[NotNullWhen(true)]`. If you declare 
 | `FormatException` | A group's text cannot be converted. The original exception is the `InnerException`. | `Group 'width' value "abc" cannot be converted to Int32: ...` |
 | `InvalidOperationException` | A non-nullable value-type constructor parameter without a default has no group in the pattern. | `Cannot extract 'Size': the pattern has no group for Height (group 'Height'). Available groups: 0, width. ...` |
 | `InvalidOperationException` | `T` is a class without a public constructor. | `Type 'NoPublicConstructor' has no public constructor.` |
-| `InvalidOperationException` | `T` is a struct without a public constructor. | `Value type 'PlainPoint' needs a public constructor or settable properties.` |
+| `InvalidOperationException` | `T` is a struct with neither a public constructor nor a settable property. | `Value type 'Opaque' needs a public constructor or settable properties.` |
 | `RegexMatchTimeoutException` | The pattern has a timeout and matching takes longer. | The standard .NET message. |
 
 ```csharp

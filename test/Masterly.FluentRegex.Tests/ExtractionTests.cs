@@ -226,6 +226,19 @@ public class TypedExtractionTests
         public int High { get; }
     }
 
+    public struct MeasuredRow
+    {
+        public MeasuredRow(int row)
+        {
+            Row = row;
+            Unit = string.Empty;
+        }
+
+        public int Row { get; }
+
+        public string Unit { get; set; }
+    }
+
     public struct PlainPoint
     {
         public int X { get; set; }
@@ -418,6 +431,38 @@ public class TypedExtractionTests
 
         cell.Row.ShouldBe(3);
         cell.Column.ShouldBe(4);
+    }
+
+    [Fact]
+    public void Extract_StructWithOnlySettableProperties_SetsTheProperties()
+    {
+        Pattern pattern = Pattern.FromRegex(@"(?<x>\d+),(?<y>\d+)");
+
+        PlainPoint point = pattern.Extract<PlainPoint>("3,4");
+
+        point.X.ShouldBe(3);
+        point.Y.ShouldBe(4);
+    }
+
+    [Fact]
+    public void Extract_StructWithConstructorAndSettableProperty_SetsBoth()
+    {
+        Pattern pattern = Pattern.FromRegex(@"(?<row>\d+)(?<unit>[a-z]+)");
+
+        MeasuredRow row = pattern.Extract<MeasuredRow>("12cm");
+
+        row.Row.ShouldBe(12);
+        row.Unit.ShouldBe("cm");
+    }
+
+    [Fact]
+    public void ExtractAll_StructWithOnlySettableProperties_SetsThePropertiesOfEveryMatch()
+    {
+        Pattern pattern = Pattern.FromRegex(@"(?<x>\d+),(?<y>\d+)");
+
+        List<PlainPoint> points = pattern.ExtractAll<PlainPoint>("1,2 3,4").ToList();
+
+        points.Select(point => (point.X, point.Y)).ShouldBe(new[] { (1, 2), (3, 4) });
     }
 
     [Fact]
