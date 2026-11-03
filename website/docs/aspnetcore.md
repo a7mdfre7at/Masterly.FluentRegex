@@ -118,10 +118,10 @@ Console.WriteLine(string.Join(", ", patterns.Names)); // prints: card, sku
 
 :::warning
 
-Do not register a `PatternRegistry` yourself. Always let `AddFluentPatterns` create it.
+Let `AddFluentPatterns` create the registry, or register your own instance **before** it.
 
-- `services.AddSingleton(new PatternRegistry())` **before** `AddFluentPatterns`: your patterns go into that instance, but the route constraint registration is skipped. The first request fails with `InvalidOperationException: The constraint reference 'pattern' could not be resolved to a type.`
-- `services.AddSingleton<PatternRegistry>()` **after** `AddFluentPatterns`: the later registration wins, so the constraint receives a new, empty registry. The first request fails with a `RouteCreationException` whose base exception reads `No fluent pattern named 'sku' is registered (registered: none).`
+- `services.AddSingleton(new PatternRegistry())` **before** `AddFluentPatterns` works: your patterns go into that instance, and the `pattern` constraint is registered as usual.
+- `services.AddSingleton<PatternRegistry>()` **after** `AddFluentPatterns` breaks routing: the later registration wins, so the constraint receives a new, empty registry. The first request fails with a `RouteCreationException` whose base exception reads `No fluent pattern named 'sku' is registered (registered: none).`
 
 :::
 

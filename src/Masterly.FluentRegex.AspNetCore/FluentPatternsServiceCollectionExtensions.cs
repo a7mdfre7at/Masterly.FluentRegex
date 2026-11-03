@@ -29,6 +29,9 @@ public static class FluentPatternsServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(configure);
 
         PatternRegistry registry = ExistingRegistry(services) ?? RegisterRegistry(services);
+
+        // Registered separately from the registry: an app may have added its own PatternRegistry instance first.
+        RegisterConstraintOnce(services);
         configure(registry);
         return services;
     }
@@ -43,7 +46,22 @@ public static class FluentPatternsServiceCollectionExtensions
     {
         PatternRegistry registry = new PatternRegistry();
         services.AddSingleton(registry);
-        services.Configure<RouteOptions>(options => options.SetParameterPolicy<PatternRouteConstraint>(ConstraintName));
         return registry;
+    }
+
+    private static void RegisterConstraintOnce(IServiceCollection services)
+    {
+        if (services.Any(descriptor => descriptor.ServiceType == typeof(ConstraintRegistered)))
+        {
+            return;
+        }
+
+        services.AddSingleton<ConstraintRegistered>();
+        services.Configure<RouteOptions>(options => options.SetParameterPolicy<PatternRouteConstraint>(ConstraintName));
+    }
+
+    /// <summary>Marks a service collection whose route options already know the <c>pattern</c> constraint.</summary>
+    private sealed class ConstraintRegistered
+    {
     }
 }

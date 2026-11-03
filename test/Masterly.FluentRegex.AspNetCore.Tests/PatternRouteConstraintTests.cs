@@ -55,6 +55,25 @@ public sealed class PatternRouteConstraintTests
     }
 
     [Fact]
+    public async Task Get_RegistryRegisteredBeforeAddFluentPatterns_StillRegistersTheConstraint()
+    {
+        WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
+        builder.WebHost.UseTestServer();
+        PatternRegistry ownRegistry = new PatternRegistry();
+        builder.Services.AddSingleton(ownRegistry);
+        builder.Services.AddFluentPatterns(registry => registry.Add("sku", Sku));
+        await using WebApplication app = builder.Build();
+        app.MapGet("/items/{id:pattern(sku)}", (string id) => $"item {id}");
+        await app.StartAsync(TestContext.Current.CancellationToken);
+        using HttpClient client = app.GetTestClient();
+
+        string body = await client.GetStringAsync("/items/ABC-1234", TestContext.Current.CancellationToken);
+
+        body.ShouldBe("item ABC-1234");
+        ownRegistry.Contains("sku").ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task Get_MatchingValue_BindsTheParameter()
     {
         await using WebApplication app = await StartCatalogAsync();
