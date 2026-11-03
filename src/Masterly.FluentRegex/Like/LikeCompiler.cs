@@ -29,7 +29,7 @@ internal sealed class LikeCompiler
     private const string CodePointWarning =
         "Positions that can match a surrogate (such as '.', '[^a]', '\\W', or a lone surrogate) can pair up into one supplementary character, which UTF-8 and supplementary-character-aware collations count as one character, so a run of them became one '_' per two positions plus '%' (on SQL Server under a case-insensitive collation, whose legacy versions give supplementary characters no weight, just '%').";
     private const string SetWarning =
-        "A character class became '_' because it cannot be written as a SQL Server set (it would need a negated set under a case-insensitive collation, contains set syntax or surrogates, or has too many ranges).";
+        "A character class became a wildcard ('_', or '%' after the surrogate widening below) because it cannot be written as a SQL Server set (it would need a negated set under a case-insensitive collation, contains set syntax or surrogates, or has too many ranges).";
 
     private readonly LikeDialect _dialect;
     private readonly LikeCollation _collation;

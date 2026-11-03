@@ -390,7 +390,8 @@ Console.WriteLine(Pattern.FromRegex(@"^123-\z").ToLike(LikeDialect.Standard, Mat
 - A case-insensitive pattern on a binary collation needs a set per letter. Only SQL Server has sets, so the other dialects fall back to `_`.
 - On a case-insensitive collation the letters can stay plain text, and the result is exact.
 - A case-sensitive pattern with cased letters is **never** exact on a case-insensitive collation: `LIKE 'abc'` also accepts `ABC`. Patterns without letters, such as `^123-\z`, can still be exact.
-- In that case `Warnings` is empty even though `IsExact` is `false` (`abc (superset)` above has no warning). A dropped leading lookahead, such as `^(?=ab)[a-z]{3}\z` on SQL Server, is another silent case. Check `IsExact`, not the warning count.
+- `Warnings` says why: "The pattern is case-sensitive, but a case-insensitive collation also matches other casings of its letters, so the LIKE pattern accepts more strings. Add RegexOptions.IgnoreCase to the pattern, or use LikeCollation.Binary with a case-sensitive column, for an exact translation."
+- Every result that is not exact has at least one warning. When no specific construct is to blame, as for a dropped leading lookahead such as `^(?=ab)[a-z]{3}\z` on SQL Server, the warning is "The LIKE pattern accepts some strings that the pattern rejects."
 
 ### What every case-insensitive collation folds
 
@@ -523,7 +524,9 @@ Console.WriteLine(sku.ToLike(LikeDialect.PostgreSql));                  // SKU-_
 | Warning starts with | Cause | How to get closer to exact |
 |---------------------|-------|----------------------------|
 | `A character class became '_' (any character); only SQL Server LIKE can express sets.` | A class on a dialect without sets. | Use `LikeDialect.SqlServer`, or accept the superset. |
-| `A character class became '_' because it cannot be written as a SQL Server set` | `SqlServer` only: too many ranges or members, set syntax members, surrogates, or a negated set under `CaseInsensitive`. It replaces the two case warnings below when a letter's set cannot be written. | Narrow the class, for example `[a-z]` instead of `\w`. |
+| `A character class became a wildcard ('_', or '%' after the surrogate widening below) because it cannot be written as a SQL Server set` | `SqlServer` only: too many ranges or members, set syntax members, surrogates, or a negated set under `CaseInsensitive`. It replaces the two case warnings below when a letter's set cannot be written. | Narrow the class, for example `[a-z]` instead of `\w`. |
+| `The pattern is case-sensitive, but a case-insensitive collation also matches other casings` | A pattern without `IgnoreCase` under `CaseInsensitive`, when it has cased letters. | Add `RegexOptions.IgnoreCase` to the pattern, or use `Binary` with a case-sensitive column. |
+| `The LIKE pattern accepts some strings that the pattern rejects.` | The result is a superset, but no single construct is to blame, for example a dropped leading lookahead. | Check the other warnings; simplify the pattern where the data allows it. |
 | `A case-insensitive letter under a binary collation became '_'` | `IgnoreCase` under `Binary` on a dialect without sets. | Use `CaseInsensitive` if the column folds case, or `SqlServer`. |
 | `A case-insensitive letter has .NET case variants` | `IgnoreCase` under `CaseInsensitive` on a dialect without sets, for a letter whose .NET variants go beyond its ASCII partner: `k` (Kelvin sign), `i`, and non-ASCII letters such as `é`. | Accept the superset, or use `SqlServer`, which lists the variants in a set. |
 | `A variable repeat (?, *, +, {m,n}) can only be covered by '%'` | An optional or repeated part. | Use a fixed count where the data allows it. |

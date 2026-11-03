@@ -6,6 +6,44 @@ namespace Masterly.FluentRegex.Tests;
 
 public class LikeTests
 {
+    [Theory]
+    [InlineData(@"^abc\z", LikeDialect.Standard)]
+    [InlineData(@"^a{3}\z", LikeDialect.SqlServer)]
+    [InlineData(@"^[aeiou]\z", LikeDialect.SqlServer)]
+    public void ToLike_CaseSensitivePatternUnderCaseInsensitiveCollation_SaysWhyItIsASuperset(string regex, LikeDialect dialect)
+    {
+        LikeConversion like = Pattern.FromRegex(regex).ToLike(dialect, MatchScope.Substring, LikeCollation.CaseInsensitive);
+
+        like.IsExact.ShouldBeFalse();
+        like.Warnings.ShouldContain(warning => warning.Contains("case-insensitive collation also matches other casings"));
+    }
+
+    [Fact]
+    public void ToLike_InexactTranslation_AlwaysHasAWarning()
+    {
+        LikeConversion like = Pattern.FromRegex(@"^abc\z").ToLike(LikeDialect.Standard, MatchScope.Substring, LikeCollation.CaseInsensitive);
+
+        like.IsExact.ShouldBeFalse();
+        like.Warnings.ShouldNotBeEmpty();
+    }
+
+    [Fact]
+    public void ToLike_IgnoreCasePatternUnderCaseInsensitiveCollation_HasNoCaseWarning()
+    {
+        LikeConversion like = Pattern.FromRegex(@"^abc\z", RegexOptions.IgnoreCase)
+            .ToLike(LikeDialect.Standard, MatchScope.Substring, LikeCollation.CaseInsensitive);
+
+        like.Warnings.ShouldNotContain(warning => warning.Contains("case-insensitive collation also matches other casings"));
+    }
+
+    [Fact]
+    public void ToSql_WithoutCharactersToEscape_HasNoEscapeClause()
+    {
+        string sql = Pattern.FromRegex(@"^INV-[0-9]").ToLike(LikeDialect.SqlServer).ToSql("[Email]");
+
+        sql.ShouldBe("[Email] LIKE N'INV-[0-9]%'");
+    }
+
     // ------------------------------------------------------------------
     // Exactness proofs
     // ------------------------------------------------------------------

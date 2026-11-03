@@ -26,6 +26,9 @@ internal static class LikeTranslator
         "'_' and negated sets match one database character, which in UTF-8 and supplementary-character-aware collations can be a whole surrogate pair, so the LIKE pattern also accepts strings the regex counts as longer.";
     private const string RejectedWarning =
         "The direct translation is not a proven superset under this collation, so a weaker LIKE pattern was used.";
+    private const string CaseInsensitiveCollationWarning =
+        "The pattern is case-sensitive, but a case-insensitive collation also matches other casings of its letters, so the LIKE pattern accepts more strings. Add RegexOptions.IgnoreCase to the pattern, or use LikeCollation.Binary with a case-sensitive column, for an exact translation.";
+    private const string SupersetWarning = "The LIKE pattern accepts some strings that the pattern rejects.";
     private const string PercentOnly = "%";
 
     /// <summary>Translates <paramref name="pattern"/>.</summary>
@@ -53,6 +56,15 @@ internal static class LikeTranslator
 
         AddCodePointReason(reasons, syntacticProof, factsProof);
         Candidate chosen = Choose(syntactic, syntacticProof, fromFacts, factsProof, reasons, dialect, collation);
+
+        // An inexact result always says why, even when no construct needed a wider wildcard.
+        if (reasons.Count == 0)
+        {
+            reasons.Add(collation == LikeCollation.CaseInsensitive && (pattern.Options & RegexOptions.IgnoreCase) == 0
+                ? CaseInsensitiveCollationWarning
+                : SupersetWarning);
+        }
+
         reasons.AddRange(notes);
         return chosen.ToConversion(dialect, scope, collation, isExact: false, reasons);
     }

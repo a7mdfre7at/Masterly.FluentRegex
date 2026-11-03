@@ -78,7 +78,8 @@ public sealed class LikeConversion
     internal string RegexText { get; }
 
     /// <summary>
-    /// Writes the condition for raw SQL, for example <c>[Email] LIKE N'INV-[0-9]%' ESCAPE '\'</c>.
+    /// Writes the condition for raw SQL, for example <c>[Email] LIKE N'INV-[0-9]%'</c>. An <c>ESCAPE</c> clause,
+    /// such as <c>ESCAPE '\'</c>, is added only when the LIKE text contains a character that had to be escaped.
     /// The literal has its quotes doubled, and for <see cref="LikeDialect.MySql"/> its backslashes too.
     /// For <see cref="LikeDialect.SqlServer"/> the pattern is a Unicode literal (<c>N'...'</c>): non-ASCII
     /// characters survive, and the comparison is a Unicode one, under which trailing blanks are significant
