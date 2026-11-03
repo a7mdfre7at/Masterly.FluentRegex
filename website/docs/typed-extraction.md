@@ -745,7 +745,7 @@ LogEntry entry = LogPatterns.ShortLine.Extract<LogEntry>("2024-05-17 INFO");
 ```
 
 ```text
-warning FRX008: 'LogEntry.Message' has no matching group 'Message' in the pattern, so it will never be set. Available groups: 0, timestamp, level. (https://github.com/a7mdfre7at/Masterly.FluentRegex#compile-time-checks)
+warning FRX008: 'LogEntry.Message' has no matching group 'Message' in the pattern, so it is always null. Available groups: 0, timestamp, level. (https://a7mdfre7at.github.io/Masterly.FluentRegex/docs/compile-time-checks)
 ```
 
 - The analyzer applies the same rules as the binder: the constructor with the most parameters, case-insensitive names and `[RegexGroup]`.

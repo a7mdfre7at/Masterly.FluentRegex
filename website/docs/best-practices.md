@@ -241,7 +241,7 @@ Pattern unbalanced = Pattern.With.RegEx("(abc");
 ```
 
 ```text
-error FRX003: The pattern produces an invalid regular expression '(abc': Invalid pattern '(abc' at offset 4. Not enough )'s. (https://github.com/a7mdfre7at/Masterly.FluentRegex#compile-time-checks)
+error FRX003: The pattern produces an invalid regular expression '(abc': Invalid pattern '(abc' at offset 4. Not enough )'s. (https://a7mdfre7at.github.io/Masterly.FluentRegex/docs/compile-time-checks)
 ```
 
 - Treat FRX004 as a bug, not as noise. Consider `<WarningsAsErrors>FRX004</WarningsAsErrors>` in your project file.

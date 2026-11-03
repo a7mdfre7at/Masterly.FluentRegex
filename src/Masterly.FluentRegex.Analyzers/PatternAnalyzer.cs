@@ -73,6 +73,10 @@ namespace Masterly.FluentRegex.Analyzers
                 context.ReportDiagnostic(Diagnostic.Create(Diagnostics.ConstructionThrows, location, ex.InnerException.GetType().Name, ex.Message));
                 return;
             }
+            catch (Exception ex) when (!(ex is OperationCanceledException))
+            {
+                return; // an expression the evaluator cannot handle is treated like a dynamic pattern, never as a crash
+            }
 
             ReportPatternProblems(pattern, operation.Syntax.GetLocation(), context.ReportDiagnostic);
         }
@@ -194,9 +198,18 @@ namespace Masterly.FluentRegex.Analyzers
                 if (parameter.HasExplicitDefaultValue) continue;
                 string wanted = GroupNameOf(parameter) ?? GroupNameOf(target.GetMembers(parameter.Name).OfType<IPropertySymbol>().FirstOrDefault()) ?? parameter.Name;
                 if (!available.Contains(wanted))
-                    context.ReportDiagnostic(Diagnostic.Create(Diagnostics.ExtractMissingGroup, location, target.Name, parameter.Name, wanted, availableText));
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        Diagnostics.ExtractMissingGroup, location, target.Name, parameter.Name, wanted, availableText, MissingGroupConsequence(parameter.Type)));
+                }
             }
         }
+
+        /// <summary>What the binder does at run time with a constructor parameter whose group is missing.</summary>
+        private static string MissingGroupConsequence(ITypeSymbol type) =>
+            type.IsReferenceType || type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T
+                ? "it is always null"
+                : "extracting throws InvalidOperationException";
 
         private static string GroupNameOf(ISymbol symbol)
         {
@@ -232,11 +245,22 @@ namespace Masterly.FluentRegex.Analyzers
             }
 
             if (!modifiers.Any(SyntaxKind.StaticKeyword)) return;
-            if (!(context.Node.Parent is TypeDeclarationSyntax containing) || !containing.Modifiers.Any(SyntaxKind.PartialKeyword)) return;
+            if (!(context.Node.Parent is TypeDeclarationSyntax containing)) return;
+
+            // The code fix adds a partial method, which compiles only when every enclosing type is partial.
+            for (SyntaxNode node = containing; node is TypeDeclarationSyntax typeDeclaration; node = node.Parent)
+            {
+                if (!typeDeclaration.Modifiers.Any(SyntaxKind.PartialKeyword)) return;
+            }
             if (!ChainEvaluator.IsPatternType(context.SemanticModel.GetTypeInfo(type, context.CancellationToken).Type)) return;
 
+            INamedTypeSymbol containingType = context.SemanticModel.GetDeclaredSymbol(containing, context.CancellationToken);
             foreach ((SyntaxToken identifier, SyntaxNode declaration) in declarations)
             {
+                // [GeneratePattern] already generates a cached regex for the member.
+                ISymbol member = context.SemanticModel.GetDeclaredSymbol(declaration, context.CancellationToken);
+                if (member != null && HasAttribute(member, "GeneratePatternAttribute", ChainEvaluator.LibraryNamespace)) continue;
+
                 ExpressionSyntax expression = ChainEvaluator.BodyExpression(declaration);
                 if (expression == null) continue;
                 IOperation operation = context.SemanticModel.GetOperation(expression, context.CancellationToken);
@@ -253,6 +277,9 @@ namespace Masterly.FluentRegex.Analyzers
                     continue;
                 }
 
+                // The code fix was already applied: the type has a [GeneratedRegex] method for this exact regex.
+                if (containingType != null && HasGeneratedRegexFor(containingType, pattern)) continue;
+
                 ImmutableDictionary<string, string> properties = ImmutableDictionary<string, string>.Empty
                     .Add(PatternProperty, pattern.ToString())
                     .Add(OptionsProperty, ((int)pattern.Options).ToString(CultureInfo.InvariantCulture))
@@ -262,6 +289,40 @@ namespace Masterly.FluentRegex.Analyzers
 
                 context.ReportDiagnostic(Diagnostic.Create(Diagnostics.UseGeneratedRegex, identifier.GetLocation(), properties, identifier.Text));
             }
+        }
+
+        private static bool HasAttribute(ISymbol symbol, string name, string containingNamespace) =>
+            symbol.GetAttributes().Any(a => a.AttributeClass?.Name == name && a.AttributeClass.ContainingNamespace?.ToDisplayString() == containingNamespace);
+
+        /// <summary>
+        /// True when <paramref name="type"/> has a <c>[GeneratedRegex]</c> method with the same regex text and the same
+        /// options (ignoring Compiled, which the .NET generator implies), such as the one the FRX007 code fix adds.
+        /// </summary>
+        private static bool HasGeneratedRegexFor(INamedTypeSymbol type, Pattern pattern)
+        {
+            string text = pattern.ToString();
+            int options = (int)(pattern.Options & ~RegexOptions.Compiled);
+            foreach (IMethodSymbol method in type.GetMembers().OfType<IMethodSymbol>())
+            {
+                foreach (AttributeData attribute in method.GetAttributes())
+                {
+                    if (attribute.AttributeClass?.Name != "GeneratedRegexAttribute"
+                        || attribute.AttributeClass.ContainingNamespace?.ToDisplayString() != "System.Text.RegularExpressions"
+                        || attribute.ConstructorArguments.Length == 0
+                        || !(attribute.ConstructorArguments[0].Value is string generatedText)
+                        || generatedText != text)
+                    {
+                        continue;
+                    }
+
+                    int generatedOptions = attribute.ConstructorArguments.Length > 1 && attribute.ConstructorArguments[1].Value is int value
+                        ? value & ~(int)RegexOptions.Compiled
+                        : 0;
+                    if (generatedOptions == options) return true;
+                }
+            }
+
+            return false;
         }
     }
 }

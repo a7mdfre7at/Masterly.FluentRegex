@@ -581,7 +581,7 @@ public sealed record DateParts(int Year, int Month, int Day);
 
 - `[RegexGroup("name")]` maps a member to a group with a different name, and `ExtractionConverters` registers parsers for your own types.
 - With a plain replacement string, .NET copies a misspelled group reference into the output: `date.Replace("Due 2026-11-03", "${Dya}")` returns `Due ${Dya}`. The fluent builder throws instead.
-- For a constant pattern, the build warns (FRX008) when a member of `T` has no matching group, so it would never be set.
+- For a constant pattern, the build warns (FRX008) when a constructor parameter of `T` has no matching group, so extracting would throw or the value would always be `null`.
 - See [Typed Extraction](./typed-extraction.md) and [Fluent Replacements](./fluent-replacements.md).
 
 ### Understanding and testing patterns

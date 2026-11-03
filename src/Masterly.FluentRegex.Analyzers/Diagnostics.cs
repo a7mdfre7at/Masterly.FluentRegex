@@ -5,7 +5,7 @@ namespace Masterly.FluentRegex.Analyzers
     internal static class Diagnostics
     {
         private const string Category = "Masterly.FluentRegex";
-        private const string HelpLink = "https://github.com/a7mdfre7at/Masterly.FluentRegex#compile-time-checks";
+        private const string HelpLink = "https://a7mdfre7at.github.io/Masterly.FluentRegex/docs/compile-time-checks";
 
         public static readonly DiagnosticDescriptor CannotEvaluate = new DiagnosticDescriptor(
             "FRX001",
@@ -58,7 +58,7 @@ namespace Masterly.FluentRegex.Analyzers
         public static readonly DiagnosticDescriptor ExtractMissingGroup = new DiagnosticDescriptor(
             "FRX008",
             "Extract target member has no matching group",
-            "'{0}.{1}' has no matching group '{2}' in the pattern, so it will never be set. Available groups: {3}.",
+            "'{0}.{1}' has no matching group '{2}' in the pattern, so {4}. Available groups: {3}.",
             Category, DiagnosticSeverity.Warning, isEnabledByDefault: true, helpLinkUri: HelpLink);
 
         public static readonly DiagnosticDescriptor MustBeStatic = new DiagnosticDescriptor(

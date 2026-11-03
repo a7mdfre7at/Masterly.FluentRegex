@@ -497,7 +497,7 @@ Console.WriteLine(risky); // ^(\w+\s?)*$
 The build succeeds and reports a warning:
 
 ```text
-warning FRX004: ReDoS risk in '(\w+\s?)*': The repetition '\w+' is nested inside the repetition '*'. The same text can be split between iterations in exponentially many ways, so a failing match backtracks through all of them. Fix: Make the inner repetition possessive (.Possessive), wrap it in AtomicGroup(...), or remove one of the quantifiers. For untrusted input also use WithTimeout(...) or UseNonBacktracking(). (https://github.com/a7mdfre7at/Masterly.FluentRegex#compile-time-checks)
+warning FRX004: ReDoS risk in '(\w+\s?)*': The repetition '\w+' is nested inside the repetition '*'. The same text can be split between iterations in exponentially many ways, so a failing match backtracks through all of them. Fix: Make the inner repetition possessive (.Possessive), wrap it in AtomicGroup(...), or remove one of the quantifiers. For untrusted input also use WithTimeout(...) or UseNonBacktracking(). (https://a7mdfre7at.github.io/Masterly.FluentRegex/docs/compile-time-checks)
 ```
 
 | ID | Severity | Reported when |

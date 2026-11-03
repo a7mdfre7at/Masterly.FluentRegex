@@ -21,6 +21,9 @@ namespace Masterly.FluentRegex.Analyzers
     {
         private const string AttributeName = "Masterly.FluentRegex.GeneratePatternAttribute";
 
+        // The analyzer project takes its version from the core library project, so this matches the package.
+        private static readonly string GeneratorVersion = typeof(PatternGenerator).Assembly.GetName().Version.ToString(3);
+
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
             IncrementalValuesProvider<GenerationModel> models = context.SyntaxProvider.ForAttributeWithMetadataName(
@@ -29,6 +32,13 @@ namespace Masterly.FluentRegex.Analyzers
                 static (ctx, ct) => CreateModel(ctx, ct));
 
             context.RegisterSourceOutput(models, static (spc, model) => Emit(spc, model));
+
+            // Diagnostics are resolved against the compilation's own syntax trees, so #pragma warning disable and
+            // .editorconfig severities apply to them. Only members with a diagnostic pay for the compilation input.
+            IncrementalValuesProvider<DiagnosticInfo> diagnostics = models.SelectMany(static (model, _) => model.Diagnostics);
+            context.RegisterSourceOutput(
+                diagnostics.Combine(context.CompilationProvider),
+                static (spc, pair) => spc.ReportDiagnostic(pair.Left.ToDiagnostic(pair.Right)));
         }
 
         private static GenerationModel CreateModel(GeneratorAttributeSyntaxContext context, CancellationToken cancellationToken)
@@ -85,6 +95,12 @@ namespace Masterly.FluentRegex.Analyzers
             {
                 // Reported by the analyzer (FRX006); nothing can be generated.
             }
+            catch (Exception ex) when (!(ex is OperationCanceledException))
+            {
+                // An unexpected evaluation failure must not stop generation for every other member in the project.
+                model.Diagnostics.Add(DiagnosticInfo.Create(
+                    Diagnostics.CannotEvaluate, location, member.Name, "evaluation failed with " + ex.GetType().Name + ": " + ex.Message));
+            }
             return model;
         }
 
@@ -126,7 +142,6 @@ namespace Masterly.FluentRegex.Analyzers
 
         private static void Emit(SourceProductionContext context, GenerationModel model)
         {
-            foreach (DiagnosticInfo diagnostic in model.Diagnostics) context.ReportDiagnostic(diagnostic.ToDiagnostic());
             if (model.Regex == null) return;
 
             var sb = new StringBuilder();
@@ -163,7 +178,8 @@ namespace Masterly.FluentRegex.Analyzers
             sb.Append(indent).Append("/// A cached, compiled regex for <see cref=\"").Append(model.MemberName).AppendLine("\"/>:");
             sb.Append(indent).Append("/// <c>").Append(XmlEscape(model.Regex)).AppendLine("</c>");
             sb.Append(indent).AppendLine("/// </summary>");
-            sb.Append(indent).AppendLine("[global::System.CodeDom.Compiler.GeneratedCode(\"Masterly.FluentRegex.Analyzers\", \"3.0.0\")]");
+            sb.Append(indent).Append("[global::System.CodeDom.Compiler.GeneratedCode(\"Masterly.FluentRegex.Analyzers\", \"")
+              .Append(GeneratorVersion).AppendLine("\")]");
             sb.Append(indent).Append(model.Accessibility).Append(" static global::System.Text.RegularExpressions.Regex ").Append(model.MethodName).AppendLine("() =>");
             sb.Append(indent).Append("    ").Append(field).Append(" ??= new global::System.Text.RegularExpressions.Regex(")
               .Append(model.MemberName).Append("Source, (global::System.Text.RegularExpressions.RegexOptions)").Append(options.ToString(CultureInfo.InvariantCulture))
@@ -240,9 +256,23 @@ namespace Masterly.FluentRegex.Analyzers
             };
         }
 
-        public Diagnostic ToDiagnostic()
+        /// <summary>
+        /// Creates the diagnostic at its place in <paramref name="compilation"/>. A location in one of the compilation's
+        /// syntax trees is what lets #pragma and .editorconfig change or suppress the diagnostic.
+        /// </summary>
+        public Diagnostic ToDiagnostic(Compilation compilation)
         {
-            Location location = _path.Length == 0 && _span.IsEmpty ? Location.None : Location.Create(_path, _span, _lineSpan);
+            Location location;
+            if (_path.Length == 0 && _span.IsEmpty)
+            {
+                location = Location.None;
+            }
+            else
+            {
+                SyntaxTree tree = compilation.SyntaxTrees.FirstOrDefault(t => t.FilePath == _path);
+                location = tree != null ? Location.Create(tree, _span) : Location.Create(_path, _span, _lineSpan);
+            }
+
             return Diagnostic.Create(_descriptor, location, _arguments.Cast<object>().ToArray());
         }
 

@@ -87,7 +87,7 @@ namespace MyApp.Validation
         /// A cached, compiled regex for <see cref="ProductCode"/>:
         /// <c>^[A-Z]{3}-\d{4}$</c>
         /// </summary>
-        [global::System.CodeDom.Compiler.GeneratedCode("Masterly.FluentRegex.Analyzers", "3.0.0")]
+        [global::System.CodeDom.Compiler.GeneratedCode("Masterly.FluentRegex.Analyzers", "3.1.1")]
         public static global::System.Text.RegularExpressions.Regex ProductCodeRegex() =>
             __fluentRegex_ProductCode ??= new global::System.Text.RegularExpressions.Regex(ProductCodeSource, (global::System.Text.RegularExpressions.RegexOptions)8, global::System.Text.RegularExpressions.Regex.InfiniteMatchTimeout);
     }
@@ -104,7 +104,7 @@ namespace MyApp.Validation
 - The cache uses `??=` without a lock. Two threads that call the method for the very first time at the same moment may each build a `Regex`; one of them is kept. Both are identical, so this is harmless.
 - The generator is incremental. Editing a comment or an unrelated member does not regenerate the file. Changing the chain does.
 - The generator does not check the regex text. A chain that builds but produces an invalid regex, such as `Pattern.With.RegEx("[a-z")`, is still generated, and the method would throw `ArgumentException` on its first call. The analyzer reports that chain as the error [`FRX003`](#frx003-pattern-produces-an-invalid-regular-expression), so the build fails unless you lowered that rule.
-- The `[GeneratedCode]` attribute always says version `3.0.0`. The string is fixed in the generator and does not follow the package version.
+- The `[GeneratedCode]` attribute carries the version of the package that generated the file.
 
 ### Naming the generated method
 
@@ -242,15 +242,13 @@ Anything else stops the evaluation and reports [`FRX001`](#frx001-pattern-cannot
 | A method with parameters that is not part of the fluent API | `method 'Text' is not part of the fluent API` |
 | An instance member of another object, such as `new Holder().Inst` | `instance member 'Inst' is not a compile-time constant` |
 | A helper whose body has more than one statement | `'Make' has no single-expression initializer or body` |
-| `TimeSpan.Parse("5")` (text that happens to be a plain number) | `TimeSpan factory parameter 's' is not supported` |
+| `TimeSpan.Parse("00:00:01")` or any other `TimeSpan` method that is not a `From...` factory | `TimeSpan.Parse is not evaluated at compile time; use a factory such as TimeSpan.FromSeconds` |
 | A member of a result object, such as `Pattern.With.Digit.Optimize().Optimized` | `instance member 'Optimized' is not a compile-time constant` |
 | An expression that is not a `Pattern`, such as `null` | `the expression does not produce a Pattern` |
 
-:::warning
+Only the `TimeSpan.From...` factories are evaluated, because `TimeSpan.Parse` reads the text with the culture of the machine that runs the code. Write `TimeSpan.FromSeconds(1)` instead of `TimeSpan.Parse("00:00:01")`.
 
-`TimeSpan.Parse("00:00:01")`, or another `TimeSpan` parsing method with non-numeric text, crashes the add-ons instead of reporting `FRX001`. In a `[GeneratePattern]` member the build prints `CS8785: Generator 'PatternGenerator' failed to generate source ... FormatException`, and the generator then emits nothing for **any** member in the project. Anywhere else it prints `AD0001: Analyzer 'Masterly.FluentRegex.Analyzers.PatternAnalyzer' threw an exception of type 'System.FormatException'`, and that chain is not checked. Use `TimeSpan.FromSeconds(1)` and the other `From...` factories instead.
-
-:::
+If evaluating a member fails in a way the evaluator did not expect, the generator reports `FRX001` with `evaluation failed with ...` for that member and still generates every other member. The analyzer treats such a chain like a dynamic one and skips it.
 
 ### Members that cannot run at compile time
 
@@ -273,7 +271,7 @@ Workarounds:
 
 ## The analyzer rules
 
-All rules use the category `Masterly.FluentRegex`, and each message links to the project's README.
+All rules use the category `Masterly.FluentRegex`, and each message links to this page.
 
 | ID | Default severity | Title | Reported by |
 |----|------------------|-------|-------------|
@@ -467,17 +465,13 @@ info FRX007: 'Number' is a compile-time constant pattern and can be backed by a 
 It is reported only when all of these hold:
 
 - the member is `static` and its declared type is `Pattern`,
-- the type that declares it is `partial` (outer types are not checked, see the warning below),
+- the type that declares it, and every type around that one, is `partial`, so the method the code fix adds compiles,
 - the member has a single expression that evaluates to a valid regex,
+- the member does not have `[GeneratePattern]`, which already generates a cached regex,
+- the type has no `[GeneratedRegex]` method with the same regex text and options yet,
 - the project targets a framework with `System.Text.RegularExpressions.GeneratedRegexAttribute` (.NET 7 or later). On `netstandard2.1` the rule is never reported.
 
-It is also reported on `[GeneratePattern]` members and on helper fragments such as `Year` above. If you use `[GeneratePattern]` throughout, turn the rule off (see [Configuring severity](#configuring-severity)).
-
-:::warning
-
-`FRX007` only checks that the type declaring the member is `partial`. For a `partial class Inner` nested in a non-partial `class Outer`, the rule is still reported, but the method the code fix adds does not compile: `CS0260: Missing partial modifier on declaration of type 'Outer'; another partial declaration of this type exists`. Make the outer types `partial` before you apply the fix.
-
-:::
+It is also reported on helper fragments such as `Year` above, which are only building blocks. Silence it for those members, or turn the rule off (see [Configuring severity](#configuring-severity)).
 
 ### FRX008: Extract target member has no matching group
 
@@ -502,7 +496,7 @@ public static class Frx008
 ```
 
 ```text
-warning FRX008: 'Size.Height' has no matching group 'Height' in the pattern, so it will never be set. Available groups: 0, width, heigth.
+warning FRX008: 'Size.Height' has no matching group 'Height' in the pattern, so extracting throws InvalidOperationException. Available groups: 0, width, heigth.
 ```
 
 - The warning sits on the method name (`Extract<Size>`).
@@ -512,7 +506,8 @@ warning FRX008: 'Size.Height' has no matching group 'Height' in the pattern, so 
 - The analyzer checks the public constructor with the most parameters. A class with only a parameterless constructor and settable properties is not checked.
 - If the regex is invalid, only `FRX003` is reported.
 - The pattern must be a constant chain, like `Digits` above, which is a `static readonly` field. If a fragment comes from a local variable or a parameter, for example `NamedGroup("width", digits)` with a `Pattern digits` parameter, the call is not checked and no `FRX008` is reported.
-- **At run time** the same mismatch makes `Extract<T>` throw instead of leaving the value unset: `InvalidOperationException: Cannot extract 'Size': the pattern has no group for Height (group 'Height'). Available groups: 0, width, heigth. Add NamedGroup(...) to the pattern, give the parameter a default value, or use [RegexGroup("name")].` See [Typed Extraction](./typed-extraction.md).
+- The message says what happens at run time. For a non-nullable value type, such as `int`, extracting throws `InvalidOperationException`. For a reference type or a `Nullable<T>`, the message says the value is always `null`.
+- **At run time** the exception reads: `InvalidOperationException: Cannot extract 'Size': the pattern has no group for Height (group 'Height'). Available groups: 0, width, heigth. Add NamedGroup(...) to the pattern, give the parameter a default value, or use [RegexGroup("name")].` See [Typed Extraction](./typed-extraction.md).
 
 ### FRX009: Member must be static
 
@@ -615,9 +610,9 @@ For example, `Pattern.With.Digit.WithTimeout(TimeSpan.FromSeconds(2))` and `Patt
 - The method is always `private static partial`, named `<Member>Regex`. When a method with that name already exists in the same type declaration, the fix adds the first free number: `NumberRegex2`, `NumberRegex3`, and so on. Methods in other `partial` parts of the type are not looked at.
 - The method is inserted directly after the member. The member stays, because the method's `<see cref>` refers to it.
 
-:::warning
+:::note
 
-The fix copies the regex text **once**. If you later edit the fluent chain, the `[GeneratedRegex]` attribute keeps the old text. Also, `FRX007` keeps reporting the member after the fix, so running the fix again adds a second method (`NumberRegex2`) with the same regex. After you apply the fix, delete the fluent member or silence `FRX007` for it, for example with `#pragma warning disable FRX007`. If you want the regex to follow the chain on every build, use `[GeneratePattern]` instead.
+The fix copies the regex text **once**. `FRX007` stays quiet while the type has a `[GeneratedRegex]` method with the same regex text and options, so the fix is offered only once. If you later edit the fluent chain, the old method no longer matches and `FRX007` appears again: update or delete the old `[GeneratedRegex]` method. If you want the regex to follow the chain on every build, use `[GeneratePattern]` instead.
 
 :::
 
@@ -636,11 +631,11 @@ Choose `[GeneratePattern]` while the pattern is still changing, or when you targ
 
 ## Configuring severity
 
-You can raise, lower or turn off every rule. The analyzer rules and the generator rules are configured in different files.
+You can raise, lower or turn off every rule, the generator rules `FRX001`, `FRX002` and `FRX009` included.
 
-### Analyzer rules in .editorconfig
+### Rules in .editorconfig
 
-`FRX003` to `FRX008` are analyzer rules. Set them in `.editorconfig`, like any other analyzer:
+Set the rules in `.editorconfig`, like any other analyzer:
 
 ```ini
 root = true
@@ -666,11 +661,11 @@ To change the whole category at once:
 dotnet_analyzer_diagnostic.category-Masterly.FluentRegex.severity = warning
 ```
 
-This also lowers the error rules `FRX003` and `FRX006` to warnings, so add per-rule lines after it for the rules you want to keep as errors. It does not affect the generator rules.
+This also lowers the error rules `FRX003` and `FRX006` to warnings, so add per-rule lines after it for the rules you want to keep as errors. The category setting does not reach the generator rules `FRX001`, `FRX002` and `FRX009`; set those per rule, as in `dotnet_diagnostic.FRX009.severity = warning`.
 
-### Generator rules in .globalconfig
+### Rules in .globalconfig
 
-`FRX001`, `FRX002` and `FRX009` come from the source generator. Their locations are not tied to a source file in the way analyzer diagnostics are, so `[*.cs]` sections in `.editorconfig` and `#pragma warning disable` do **not** affect them. Use a `.globalconfig` file next to the project file (or in a parent folder) instead:
+A `.globalconfig` file next to the project file (or in a parent folder) applies to every file of the project, including generated ones:
 
 ```ini
 is_global = true
@@ -678,12 +673,6 @@ is_global = true
 # Fail the build when a [GeneratePattern] chain cannot be evaluated
 dotnet_diagnostic.FRX001.severity = error
 ```
-
-:::warning
-
-`dotnet_diagnostic.FRX001.severity = none` in an `.editorconfig` `[*.cs]` section has no effect: the warning is still printed. Put generator rules in `.globalconfig`, or use the MSBuild properties below.
-
-:::
 
 ### MSBuild properties
 
@@ -702,7 +691,7 @@ The usual compiler switches work for every rule:
 
 ### Suppressing one occurrence
 
-For analyzer rules, `#pragma` works on a single declaration. Say why in the comment:
+`#pragma` works on a single declaration for every rule. Say why in the comment:
 
 ```csharp
 #pragma warning disable FRX004 // input is length-limited before matching
@@ -736,11 +725,7 @@ public static readonly Pattern Risky = Pattern.With.StartOfLine
 - **Unicode script members in a generated chain.** `Script(...)`, `LetterIn(...)`, `DigitIn(...)`, `AsciiDigit`, `CodePoint`, `Grapheme` and `IgnoreDiacritics()` cannot run at compile time (`FRX001`).
 - **Extra anchors.** `CommonPatterns` methods already start with `^` and end with `$`. Wrapping them in `StartOfLine` and `EndOfLine` gives `^^...$$`.
 - **A name clash.** A hand-written `CodeRegex()` method next to a `[GeneratePattern] Code` member fails with `CS0111`. Pass a different name to the attribute.
-- **Configuring `FRX001`, `FRX002` or `FRX009` in `.editorconfig`.** It is ignored. Use `.globalconfig`.
-- **Applying the `FRX007` fix twice.** The suggestion stays after the fix, and a second run adds `NumberRegex2`. Silence the rule for that member after the first fix.
-- **`TimeSpan.Parse` with text in a constant chain.** `WithTimeout(TimeSpan.Parse("00:00:01"))` crashes the generator (`CS8785`) or the analyzer (`AD0001`) instead of reporting a diagnostic. Use `TimeSpan.FromSeconds(1)`.
-- **A nested type in a non-partial outer type.** `FRX007` is still reported, but the code fix's output fails with `CS0260`. Make every enclosing type `partial`.
-- **A null-forgiving `!` at the root of a `[GeneratePattern]` expression.** `[GeneratePattern] public static Pattern P => Pattern.With.Word!;` crashes the generator with `CS8785: Generator 'PatternGenerator' failed to generate source ... NullReferenceException`. The generator then emits nothing for **any** member in the project, so every `...Regex()` call fails with `CS0103`. A `Pattern` chain never needs `!`; remove it.
+- **`TimeSpan.Parse` in a constant chain.** It is not evaluated at compile time (`FRX001`). Use `TimeSpan.FromSeconds(1)` and the other `From...` factories.
 - **Expecting the `[GeneratedRegex]` copy to follow the chain.** It does not. Only `[GeneratePattern]` is regenerated on every build.
 
 For catching problems in patterns that are built at run time, see [Validation and Debugging](./validation-and-debugging.md). To scan plain regex string literals in C# files, see the `scan` command of the [Command-Line Tool](./command-line-tool.md).

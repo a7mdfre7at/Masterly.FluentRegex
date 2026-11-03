@@ -64,6 +64,9 @@ namespace Masterly.FluentRegex.Analyzers
         {
             _cancellationToken.ThrowIfCancellationRequested();
 
+            if (operation == null)
+                throw new NotEvaluableException("the expression has no value the compiler can evaluate", null);
+
             if (operation.ConstantValue.HasValue)
                 return ConvertConstant(operation.ConstantValue.Value, operation.Type, operation);
 
@@ -168,16 +171,34 @@ namespace Masterly.FluentRegex.Analyzers
 
         private object EvaluateTimeSpan(IMethodSymbol method, IInvocationOperation operation)
         {
+            // Only the From... factories are evaluated. Parse and ParseExact depend on the culture at run time.
+            if (!method.Name.StartsWith("From", StringComparison.Ordinal))
+                throw new NotEvaluableException(
+                    "TimeSpan." + method.Name + " is not evaluated at compile time; use a factory such as TimeSpan.FromSeconds",
+                    operation);
+
             // .NET 9 added overloads such as FromMilliseconds(long milliseconds, long microseconds = 0),
             // so each argument is weighted by its parameter name rather than assuming one argument.
             double ticks = 0;
             foreach (IArgumentOperation argument in operation.Arguments)
             {
-                double value = Convert.ToDouble(Evaluate(argument.Value), CultureInfo.InvariantCulture);
                 string unit = argument.Parameter.Name == "value" ? method.Name.Substring(4).ToLowerInvariant() : argument.Parameter.Name;
-                ticks += value * TicksPer(unit, operation);
+                double ticksPerUnit = TicksPer(unit, operation);
+                ticks += ToDouble(Evaluate(argument.Value), argument) * ticksPerUnit;
             }
             return TimeSpan.FromTicks((long)Math.Round(ticks));
+        }
+
+        private static double ToDouble(object value, IOperation operation)
+        {
+            try
+            {
+                return Convert.ToDouble(value, CultureInfo.InvariantCulture);
+            }
+            catch (Exception ex) when (ex is FormatException || ex is InvalidCastException || ex is OverflowException)
+            {
+                throw new NotEvaluableException("'" + operation.Syntax + "' is not a number", operation);
+            }
         }
 
         private static double TicksPer(string unit, IOperation operation)
@@ -223,7 +244,32 @@ namespace Masterly.FluentRegex.Analyzers
             }
         }
 
+        /// <summary>
+        /// The single expression a field, property or method produces, without any null-forgiving <c>!</c> or
+        /// parentheses around it. The semantic model has no operation for <c>x!</c> or <c>(x)</c> itself, only for <c>x</c>.
+        /// </summary>
         public static ExpressionSyntax BodyExpression(SyntaxNode declaration)
+        {
+            ExpressionSyntax expression = DeclaredExpression(declaration);
+            while (true)
+            {
+                if (expression is PostfixUnaryExpressionSyntax suppression
+                    && suppression.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.SuppressNullableWarningExpression))
+                {
+                    expression = suppression.Operand;
+                }
+                else if (expression is ParenthesizedExpressionSyntax parenthesized)
+                {
+                    expression = parenthesized.Expression;
+                }
+                else
+                {
+                    return expression;
+                }
+            }
+        }
+
+        private static ExpressionSyntax DeclaredExpression(SyntaxNode declaration)
         {
             switch (declaration)
             {

@@ -1203,7 +1203,7 @@ The core package includes Roslyn analyzers and a code fix. They run for every ta
 | `FRX005` | Info | A pattern may backtrack polynomially (medium risk). |
 | `FRX006` | Error | Building the pattern throws, for example `.Lazy` without a quantifier. |
 | `FRX007` | Info | A compile-time constant pattern can be backed by a `[GeneratedRegex]` method. A code fix generates it. |
-| `FRX008` | Warning | An `Extract<T>` target member has no matching group, so it will never be set. |
+| `FRX008` | Warning | An `Extract<T>` constructor parameter has no matching group. The message says what happens at run time: extracting throws, or the value is always `null`. |
 | `FRX009` | Error | A `[GeneratePattern]` member is not `static`. |
 
 ### Target framework availability

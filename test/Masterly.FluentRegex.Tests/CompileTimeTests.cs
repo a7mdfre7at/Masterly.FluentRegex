@@ -150,6 +150,50 @@ public class SourceGeneratorTests
     private static AnalyzerHarness.GeneratorResult Generate(string members) => GenerateIn("public partial class C", members);
 
     [Theory]
+    [InlineData("[GeneratePattern] public static Pattern P => Pattern.With.Word!;")]
+    [InlineData("[GeneratePattern] public static Pattern P => (Pattern.With.Word!);")]
+    [InlineData("static Pattern Helper => Pattern.With.Word!;\n[GeneratePattern] public static Pattern P => Helper;")]
+    public void Generate_NullForgivingExpression_IsEvaluatedThroughTheOperator(string members)
+    {
+        AnalyzerHarness.GeneratorResult result = Generate(members);
+
+        result.GeneratorDiagnostics.ShouldBeEmpty();
+        result.GeneratedSources.Single().ShouldContain(@"public const string PSource = @""\w"";");
+    }
+
+    [Fact]
+    public void Generate_OneMemberThatCannotBeEvaluated_StillGeneratesTheOthers()
+    {
+        AnalyzerHarness.GeneratorResult result = Generate(
+            "[GeneratePattern] public static Pattern Bad => Pattern.With.Digit.WithTimeout(TimeSpan.Parse(\"abc\"));\n" +
+            "[GeneratePattern] public static Pattern Good => Pattern.With.Digit;");
+
+        result.GeneratorDiagnostics.Single().Id.ShouldBe("FRX001");
+        result.GeneratedSources.Single().ShouldContain("GoodSource");
+    }
+
+    [Fact]
+    public void Generate_GeneratedCodeAttribute_CarriesThePackageVersion()
+    {
+        string version = typeof(Pattern).Assembly.GetName().Version!.ToString(3);
+
+        AnalyzerHarness.GeneratorResult result = Generate("[GeneratePattern] public static Pattern P => Pattern.With.Digit;");
+
+        result.GeneratedSources.Single().ShouldContain(
+            $"[global::System.CodeDom.Compiler.GeneratedCode(\"Masterly.FluentRegex.Analyzers\", \"{version}\")]");
+    }
+
+    [Fact]
+    public void Generate_Diagnostic_IsLocatedInTheUserSyntaxTree_SoPragmaAndEditorConfigApply()
+    {
+        AnalyzerHarness.GeneratorResult result = Generate("[GeneratePattern] public Pattern Instance => Pattern.With.Digit;");
+
+        Diagnostic diagnostic = result.GeneratorDiagnostics.Single();
+        diagnostic.Location.IsInSource.ShouldBeTrue();
+        result.Output.SyntaxTrees.ShouldContain(diagnostic.Location.SourceTree!);
+    }
+
+    [Theory]
     [InlineData("public", "public static global::System.Text.RegularExpressions.Regex PRegex() =>")]
     [InlineData("internal", "internal static global::System.Text.RegularExpressions.Regex PRegex() =>")]
     [InlineData("protected", "protected static global::System.Text.RegularExpressions.Regex PRegex() =>")]
@@ -280,7 +324,10 @@ public class SourceGeneratorTests
     [InlineData("static string Text(int n) => \"x\";", "Pattern.With.Literal(Text(1))", "method 'Text' is not part of the fluent API")]
     [InlineData("", "Pattern.With.Digit.WithTimeout(TimeSpan.FromSeconds(1.0).Duration())", "method 'Duration' is not part of the fluent API")]
     [InlineData("", "Pattern.With.Digit.WithTimeout(TimeSpan.Zero)", "'TimeSpan.Zero' is not a compile-time constant")]
-    [InlineData("", "Pattern.With.Digit.WithTimeout(TimeSpan.Parse(\"5\"))", "TimeSpan factory parameter 's' is not supported")]
+    [InlineData("", "Pattern.With.Digit.WithTimeout(TimeSpan.Parse(\"5\"))", "TimeSpan.Parse is not evaluated at compile time; use a factory such as TimeSpan.FromSeconds")]
+    [InlineData("", "Pattern.With.Digit.WithTimeout(TimeSpan.Parse(\"abc\"))", "TimeSpan.Parse is not evaluated at compile time; use a factory such as TimeSpan.FromSeconds")]
+    [InlineData("", "Pattern.With.Digit.WithTimeout(TimeSpan.Parse(\"00:00:01\"))", "TimeSpan.Parse is not evaluated at compile time; use a factory such as TimeSpan.FromSeconds")]
+    [InlineData("", "null!", "the expression does not produce a Pattern")]
     [InlineData("", "new Repeat(Pattern.With.Digit).OneOrMore", "'new Repeat(Pattern.With.Digit)' is not a compile-time constant")]
     [InlineData("static readonly int Count = 2;", "Pattern.With.Digit.Repeat.Times(Count + 1)", "'Count + 1' is not a compile-time constant")]
     [InlineData("", "Pattern.With.AsciiDigit", "'AsciiDigit' cannot be evaluated at compile time")]
@@ -385,13 +432,20 @@ public class SourceGeneratorTests
         result.GeneratedSources.Single().ShouldContain("/// <c>&lt;a&amp;b&gt;</c>");
     }
 
+    // The outputs are the generated source, then (only for a member with a diagnostic) the diagnostic. The diagnostic
+    // is reported against the current compilation, so that output runs again after every edit.
     [Theory]
-    [InlineData("[GeneratePattern] public static Pattern P => Pattern.With.Digit;", "[GeneratePattern] public static Pattern P => Pattern.With.Digit; // edited", IncrementalStepRunReason.Cached)]
-    [InlineData("[GeneratePattern] public Pattern P => Pattern.With.Digit;", "[GeneratePattern] public Pattern P => Pattern.With.Digit; // edited", IncrementalStepRunReason.Cached)]
-    [InlineData("[GeneratePattern] public static Pattern P => Pattern.With.Digit;", "[GeneratePattern] public static Pattern P => Pattern.With.Word;", IncrementalStepRunReason.Modified)]
+    [InlineData("[GeneratePattern] public static Pattern P => Pattern.With.Digit;", "[GeneratePattern] public static Pattern P => Pattern.With.Digit; // edited",
+        IncrementalStepRunReason.Cached)]
+    [InlineData("[GeneratePattern] public Pattern P => Pattern.With.Digit;", "[GeneratePattern] public Pattern P => Pattern.With.Digit; // edited",
+        IncrementalStepRunReason.Cached, IncrementalStepRunReason.Modified)]
+    [InlineData("[GeneratePattern] public static Pattern P => Pattern.With.Digit;", "[GeneratePattern] public static Pattern P => Pattern.With.Word;",
+        IncrementalStepRunReason.Modified)]
     [InlineData("[GeneratePattern] public static Pattern P => Pattern.With.Literal(Environment.MachineName);",
-        "[GeneratePattern] public static Pattern P => Pattern.With.Literal(Environment.CommandLine);", IncrementalStepRunReason.Modified)]
-    public void Generate_RerunAfterEdit_ReusesOutputOnlyWhenTheModelIsEqual(string originalMember, string editedMember, IncrementalStepRunReason expected)
+        "[GeneratePattern] public static Pattern P => Pattern.With.Literal(Environment.CommandLine);",
+        IncrementalStepRunReason.Unchanged, IncrementalStepRunReason.Modified)]
+    public void Generate_RerunAfterEdit_ReusesOutputOnlyWhenTheModelIsEqual(
+        string originalMember, string editedMember, params IncrementalStepRunReason[] expected)
     {
         CSharpParseOptions parseOptions = new(LanguageVersion.Latest);
         CSharpCompilation compilation = AnalyzerHarness.CreateCompilation(Usings + "public partial class C\n{\n" + originalMember + "\n}");
@@ -405,7 +459,12 @@ public class SourceGeneratorTests
         driver = driver.RunGenerators(compilation.ReplaceSyntaxTree(compilation.SyntaxTrees.Single(), edited), TestContext.Current.CancellationToken);
 
         GeneratorRunResult run = driver.GetRunResult().Results.Single();
-        run.TrackedOutputSteps["SourceOutput"].SelectMany(step => step.Outputs).Select(output => output.Reason).ShouldBe(new[] { expected });
+        IncrementalStepRunReason[] reasons = run.TrackedOutputSteps["SourceOutput"]
+            .SelectMany(step => step.Outputs)
+            .Select(output => output.Reason)
+            .ToArray();
+
+        reasons.ShouldBe(expected);
     }
 }
 
@@ -539,6 +598,86 @@ public class AnalyzerTests
         diagnostic.Properties["Pattern"].ShouldBe(@"^\d+$");
     }
 
+    [Theory]
+    [InlineData("int Height", "so extracting throws InvalidOperationException")]
+    [InlineData("int? Height", "so it is always null")]
+    [InlineData("string Height", "so it is always null")]
+    public async Task Extract_MissingGroup_StatesWhatHappensAtRunTime(string parameter, string expectedConsequence)
+    {
+        var diagnostics = await AnalyzerHarness.AnalyzeAsync(Usings + "public record Size(int Width, " + parameter + ");\n" + """
+            public static class C
+            {
+                static Size M(string s) => Pattern.With.NamedGroup("width", Pattern.With.Digit).Extract<Size>(s);
+            }
+            """);
+
+        Diagnostic diagnostic = diagnostics.Single();
+        diagnostic.Id.ShouldBe("FRX008");
+        diagnostic.GetMessage().ShouldContain("'Size.Height' has no matching group 'Height' in the pattern, " + expectedConsequence + ".");
+    }
+
+    [Fact]
+    public async Task GeneratedRegexOpportunity_AfterTheCodeFixWasApplied_IsNotSuggestedAgain()
+    {
+        var diagnostics = await AnalyzerHarness.AnalyzeAsync(Usings + """
+            public static partial class C
+            {
+                static readonly Pattern Number = Pattern.With.StartOfLine.Digit.Repeat.OneOrMore.EndOfLine;
+
+                [GeneratedRegex(@"^\d+$")]
+                private static partial Regex NumberRegex();
+            }
+            """);
+
+        diagnostics.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GeneratedRegexOpportunity_WithDifferentOptionsInTheExistingMethod_IsStillSuggested()
+    {
+        var diagnostics = await AnalyzerHarness.AnalyzeAsync(Usings + """
+            public static partial class C
+            {
+                static readonly Pattern Number = Pattern.With.StartOfLine.Digit.Repeat.OneOrMore.EndOfLine;
+
+                [GeneratedRegex(@"^\d+$", RegexOptions.IgnoreCase)]
+                private static partial Regex NumberRegex();
+            }
+            """);
+
+        diagnostics.Single().Id.ShouldBe("FRX007");
+    }
+
+    [Fact]
+    public async Task GeneratedRegexOpportunity_InsideANonPartialOuterType_IsNotSuggested()
+    {
+        var diagnostics = await AnalyzerHarness.AnalyzeAsync(Usings + """
+            public class Outer
+            {
+                public static partial class Inner
+                {
+                    static readonly Pattern Number = Pattern.With.StartOfLine.Digit.Repeat.OneOrMore.EndOfLine;
+                }
+            }
+            """);
+
+        diagnostics.ShouldNotContain(diagnostic => diagnostic.Id == "FRX007");
+    }
+
+    [Fact]
+    public async Task GeneratedRegexOpportunity_OnAGeneratePatternMember_IsNotSuggested()
+    {
+        var diagnostics = await AnalyzerHarness.AnalyzeAsync(Usings + """
+            public static partial class C
+            {
+                [GeneratePattern]
+                static Pattern Number => Pattern.With.StartOfLine.Digit.Repeat.OneOrMore.EndOfLine;
+            }
+            """);
+
+        diagnostics.ShouldNotContain(diagnostic => diagnostic.Id == "FRX007");
+    }
+
     private static string TextAt(Diagnostic diagnostic) =>
         diagnostic.Location.SourceTree!.GetText().ToString(diagnostic.Location.SourceSpan);
 
@@ -620,7 +759,7 @@ public class AnalyzerTests
         Diagnostic diagnostic = diagnostics.Single();
         diagnostic.Id.ShouldBe("FRX008");
         diagnostic.Severity.ShouldBe(DiagnosticSeverity.Warning);
-        diagnostic.GetMessage().ShouldBe("'Size.Height' has no matching group 'Height' in the pattern, so it will never be set. Available groups: 0, Width.");
+        diagnostic.GetMessage().ShouldBe("'Size.Height' has no matching group 'Height' in the pattern, so extracting throws InvalidOperationException. Available groups: 0, Width.");
         TextAt(diagnostic).ShouldBe(expectedLocation);
     }
 
