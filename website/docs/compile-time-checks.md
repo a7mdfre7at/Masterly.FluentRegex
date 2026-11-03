@@ -412,7 +412,7 @@ public static class Frx005
 ```
 
 ```text
-warning FRX005: Polynomial backtracking in '\d+\d+': The repetitions '\d+' and '\d+' can match the same characters, so a failing match tries every way of dividing them (polynomial time). Fix: Merge the repetitions into one, make the first one possessive (.Possessive), or make their character sets disjoint.
+warning FRX005: Polynomial backtracking in '\d+\d+': The repetitions '\d+' and '\d+' can match the same characters, so a failing match tries every way of dividing them (polynomial time). Fix: Merge the repetitions into one, for example \d+\d+ into \d{2,}, or make their character sets disjoint.
 ```
 
 - `FRX005` is **Info** by default. The IDE lists it, but `dotnet build` does not print it. The output above was captured after raising it to a warning (see [Configuring severity](#configuring-severity)).

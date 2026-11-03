@@ -263,7 +263,7 @@ src\Validation\Legacy.cs(10,71): warning FRX-NestedQuantifier: Regex.IsMatch "^(
     Fix: Make the inner repetition possessive (.Possessive), wrap it in AtomicGroup(...), or remove one of the quantifiers. For untrusted input also use WithTimeout(...) or UseNonBacktracking().
 src\Validation\Legacy.cs(12,81): info FRX-AdjacentOverlappingQuantifiers: Regex.Replace "\d+\d+$"
     The repetitions '\d+' and '\d+' can match the same characters, so a failing match tries every way of dividing them (polynomial time).
-    Fix: Merge the repetitions into one, make the first one possessive (.Possessive), or make their character sets disjoint.
+    Fix: Merge the repetitions into one, for example \d+\d+ into \d{2,}, or make their character sets disjoint.
 
 Scanned 5 regex literal(s): 2 high, 1 medium risk finding(s).
 ```

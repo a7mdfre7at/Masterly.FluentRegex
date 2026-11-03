@@ -20,6 +20,9 @@ namespace Masterly.FluentRegex.Analysis
     /// </remarks>
     internal sealed class SafetyAnalyzer
     {
+        // RegexOptions.NonBacktracking, which the netstandard builds do not define.
+        private const RegexOptions NonBacktrackingOption = (RegexOptions)1024;
+
         private const int LargeBound = 10;
         private const int ExponentialAttackLength = 32;
         private const int PolynomialAttackLength = 30000;
@@ -34,6 +37,12 @@ namespace Masterly.FluentRegex.Analysis
 
         public static SafetyReport Analyze(RegexTree tree, RegexOptions options, bool confirm, TimeSpan confirmationBudget)
         {
+            // The non-backtracking engine runs in time linear in the input, so no construct can backtrack at all.
+            if ((options & NonBacktrackingOption) != 0)
+            {
+                return new SafetyReport(tree.Pattern, Array.Empty<SafetyIssue>());
+            }
+
             var analyzer = new SafetyAnalyzer(tree);
             analyzer.WalkRoot();
             analyzer._issues.Sort((a, b) => b.Risk != a.Risk ? b.Risk.CompareTo(a.Risk) : a.Position.CompareTo(b.Position));
@@ -112,7 +121,7 @@ namespace Masterly.FluentRegex.Analysis
                     SafetyIssueKind.NestedQuantifier, RiskLevel.High, outer.Start, outer.Source,
                     "The repetitions '" + competing[0].Source + "' and '" + competing[1].Source + "' compete for the same characters inside the repetition '" +
                     outer.QuantifierText + "'. Every iteration can be divided in several ways, so a failing match backtracks exponentially.",
-                    "Merge the inner repetitions into one, make the first one possessive (.Possessive), or wrap the body in AtomicGroup(...).",
+                    "Merge the inner repetitions into one, or wrap the body in AtomicGroup(...).",
                     BuildAttack(topLevelIndex, overlap, ExponentialAttackLength)));
                 return;
             }
@@ -257,7 +266,7 @@ namespace Masterly.FluentRegex.Analysis
                                 SafetyIssueKind.AdjacentOverlappingQuantifiers, RiskLevel.Medium, start, fragment,
                                 "The repetitions '" + first.Source + "' and '" + second.Source + "' can match the same characters, " +
                                 "so a failing match tries every way of dividing them (polynomial time).",
-                                "Merge the repetitions into one, make the first one possessive (.Possessive), or make their character sets disjoint.",
+                                @"Merge the repetitions into one, for example \d+\d+ into \d{2,}, or make their character sets disjoint.",
                                 BuildAttack(topLevelIndex >= 0 ? topLevelIndex : i, overlap, PolynomialAttackLength)));
                             break;
                         }

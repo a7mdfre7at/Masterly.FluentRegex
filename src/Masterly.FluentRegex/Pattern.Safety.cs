@@ -16,7 +16,10 @@ namespace Masterly.FluentRegex
         /// slowdown is real. This costs up to <paramref name="confirmationBudget"/> per finding.
         /// </param>
         /// <param name="confirmationBudget">The timeout per confirmation run. Defaults to 250 ms.</param>
-        /// <returns>A report listing each risky construct, its severity, a fix and an attack input.</returns>
+        /// <returns>
+        /// A report listing each risky construct, its severity, a fix and an attack input. A pattern that uses
+        /// <c>RegexOptions.NonBacktracking</c> runs in linear time, so its report has no issues.
+        /// </returns>
         /// <example>
         /// var report = Pattern.FromRegex(@"^(\w+\s?)*$").AnalyzeSafety(confirm: true);
         /// // report.Risk == RiskLevel.High

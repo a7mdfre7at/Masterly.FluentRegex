@@ -89,7 +89,7 @@ RiskLevel separated = Pattern.FromRegex(@"^(\d+\.)+\d+$").AnalyzeSafety().Risk; 
 - The result is **High** only when the outer repetition is unbounded and the inner one is unbounded or has a maximum of 10 or more, such as `(a{1,10})+`. Everything else is **Medium**: an inner repetition with a smaller maximum, such as `(a{1,3})+`, or an outer repetition with any upper bound, even a large one such as `(a+){1,1000}`.
 - The inner repetition must be able to match the whole iteration on its own, because everything around it can match empty. In `(\w+\s?)*` the `\s?` is optional, so `\w+` alone can fill an iteration. In `(\d+\.)+` every iteration must end with a dot, so there is only one way to split the text. It is safe.
 - Fixed counts such as `{4}` match text in exactly one way, so `(?:[A-Za-z0-9+/]{4})*` (Base64 blocks) is safe.
-- Two unbounded repetitions that compete inside an unbounded repetition, such as `(x+x+)+`, are also reported as a High `NestedQuantifier`. Its fix text differs: "Merge the inner repetitions into one, make the first one possessive (.Possessive), or wrap the body in AtomicGroup(...)."
+- Two unbounded repetitions that compete inside an unbounded repetition, such as `(x+x+)+`, are also reported as a High `NestedQuantifier`. Its fix text differs: "Merge the inner repetitions into one, or wrap the body in AtomicGroup(...)."
 
 ### Overlapping alternation
 
@@ -245,7 +245,7 @@ Risk:    High
 
 - The time in the `CONFIRMED` line is the measured `ConfirmationTime`, so it is close to the budget but varies from run to run.
 - A finding that finished in time shows `Not confirmed: the attack input finished quickly.`
-- The confirmation runs with the pattern's own options (except `RegexOptions.Compiled`), so `IgnoreCase` and `NonBacktracking` are respected. The pattern's own `WithTimeout(...)` is ignored; the budget is used instead.
+- The confirmation runs with the pattern's own options (except `RegexOptions.Compiled`), so `IgnoreCase` is respected. A `NonBacktracking` pattern has no findings to confirm. The pattern's own `WithTimeout(...)` is ignored; the budget is used instead.
 
 ### Choosing the budget
 
@@ -345,7 +345,7 @@ Console.WriteLine(possessive.IsMatch("00000000000000000000000000000000!"));  // 
 
 ### Check that a fix keeps the meaning
 
-A possessive quantifier is safe here because `\w+` is always followed by a space or the end. It is not always that simple. For adjacent repetitions the suggestion says "make the first one possessive", but when both repetitions accept the same characters, that breaks the pattern:
+A possessive quantifier is safe here because `\w+` is always followed by a space or the end. It is not always that simple. For adjacent repetitions that accept the same characters, a possessive first repetition breaks the pattern, which is why the suggestion for them is to merge the repetitions:
 
 ```csharp
 Pattern original = Pattern.FromRegex(@"^\d+\d+$");
@@ -443,12 +443,12 @@ Pattern linear = Pattern.FromRegex(@"^(\w+\s?)*$").UseNonBacktracking();
 Console.WriteLine(linear.IsMatch("00000000000000000000000000000000!"));  // False
 
 SafetyReport report = linear.AnalyzeSafety(confirm: true);
-Console.WriteLine(report.Risk);                 // High
-Console.WriteLine(report.Issues[0].Confirmed);  // False
+Console.WriteLine(report.Risk);                 // None
+Console.WriteLine(report.Issues.Count);         // 0
 ```
 
 - `UseNonBacktracking()` exists only on the `net8.0` and `net10.0` targets, not on `netstandard2.1`.
-- `AnalyzeSafety()` judges the pattern's structure, not the engine. A non-backtracking pattern still reports `High`, but its findings are never confirmed. If you gate on `report.Risk`, allow patterns whose `Options` include `RegexOptions.NonBacktracking`.
+- `AnalyzeSafety()` reports no issues (`Risk` is `None`) for a pattern whose `Options` include `RegexOptions.NonBacktracking`, because that engine cannot backtrack.
 - The engine does not support backreferences, lookarounds, atomic groups (so no `.Possessive`), conditionals or `RightToLeft`. The pattern builds, but throws when it first runs:
 
 ```csharp
@@ -526,7 +526,7 @@ Program.cs(5,17): error FRX004: ReDoS risk in '(\w+\s?)*'
 ```
 
 - Patterns built from runtime values are not checked at compile time. Check them with `AnalyzeSafety()` in a test.
-- A chain that calls `UseNonBacktracking()` is not checked either, because the analyzer cannot evaluate that call. That is harmless, since the engine makes ReDoS impossible, but note that `AnalyzeSafety()` at run time still reports such a pattern (see [Use the non-backtracking engine](#use-the-non-backtracking-engine)).
+- A chain that calls `UseNonBacktracking()` is not checked either, because the analyzer cannot evaluate that call. That is harmless, since the engine makes ReDoS impossible, and `AnalyzeSafety()` at run time reports `None` for such a pattern (see [Use the non-backtracking engine](#use-the-non-backtracking-engine)).
 - The analyzer also reports invalid regexes and other problems. See [Compile-Time Checks](./compile-time-checks.md).
 
 ## Scanning a code base in CI
@@ -561,7 +561,7 @@ src\Validation\InputRules.cs(5,53): warning FRX-NestedQuantifier: new Regex "^(\
     Fix: Make the inner repetition possessive (.Possessive), wrap it in AtomicGroup(...), or remove one of the quantifiers. For untrusted input also use WithTimeout(...) or UseNonBacktracking().
 src\Validation\InputRules.cs(7,75): info FRX-AdjacentOverlappingQuantifiers: Regex.IsMatch "^\d+\d+$"
     The repetitions '\d+' and '\d+' can match the same characters, so a failing match tries every way of dividing them (polynomial time).
-    Fix: Merge the repetitions into one, make the first one possessive (.Possessive), or make their character sets disjoint.
+    Fix: Merge the repetitions into one, for example \d+\d+ into \d{2,}, or make their character sets disjoint.
 src\Validation\InputRules.cs(11,21): warning FRX-OverlappingAlternation: [GeneratedRegex] "^(a|aa)+$" [CONFIRMED by timeout]
     The text 'aa' can be matched by the alternative 'aa' or by a combination of the other alternatives inside the repetition '+', so the number of ways to match grows exponentially.
     Fix: Make the alternatives mutually exclusive, wrap the alternation in AtomicGroup(...), or use UseNonBacktracking().

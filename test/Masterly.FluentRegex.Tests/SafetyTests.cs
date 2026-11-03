@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace Masterly.FluentRegex.Tests;
 
 public class SafetyTests
@@ -93,6 +95,33 @@ public class SafetyTests
     {
         SafetyReport report = Pattern.FromRegex(regex).AnalyzeSafety();
         report.Risk.ShouldBe(RiskLevel.None, report.ToString());
+        report.IsSafe.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void AdjacentOverlappingQuantifiers_Suggestion_DoesNotRecommendTheFixThatBreaksThePattern()
+    {
+        SafetyIssue issue = Pattern.FromRegex(@"^\d+\d+$").AnalyzeSafety().Issues.Single();
+
+        // ^(?>\d+)\d+$ never matches: the possessive \d+ leaves no digit for the second one.
+        Pattern.FromRegex(@"^(?>\d+)\d+$").IsMatch("12345").ShouldBeFalse();
+        issue.Suggestion.ShouldNotContain("possessive");
+        issue.Suggestion.ShouldContain("Merge the repetitions into one");
+    }
+
+    [Theory]
+    [InlineData(@"^(\w+\s?)*$")]
+    [InlineData(@"^\d+\d+$")]
+    [InlineData(@"^(a|a)+$")]
+    public void NonBacktrackingEngine_HasNoBacktrackingRisk(string regex)
+    {
+        Pattern vulnerable = Pattern.FromRegex(regex);
+
+        SafetyReport report = vulnerable.WithOptions(RegexOptions.NonBacktracking).AnalyzeSafety(confirm: true);
+
+        vulnerable.AnalyzeSafety().Risk.ShouldNotBe(RiskLevel.None);
+        report.Risk.ShouldBe(RiskLevel.None);
+        report.Issues.ShouldBeEmpty();
         report.IsSafe.ShouldBeTrue();
     }
 
