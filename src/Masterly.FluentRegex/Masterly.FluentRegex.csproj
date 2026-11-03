@@ -35,9 +35,9 @@
   -->
   <ItemGroup>
     <ProjectReference Include="..\Masterly.FluentRegex.Analyzers\Masterly.FluentRegex.Analyzers.csproj"
-                      ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" PrivateAssets="all" />
+                      ReferenceOutputAssembly="false" PrivateAssets="all" />
     <ProjectReference Include="..\Masterly.FluentRegex.CodeFixes\Masterly.FluentRegex.CodeFixes.csproj"
-                      ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" PrivateAssets="all" />
+                      ReferenceOutputAssembly="false" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
