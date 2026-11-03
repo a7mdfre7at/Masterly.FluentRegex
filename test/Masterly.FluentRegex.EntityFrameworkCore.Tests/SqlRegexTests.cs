@@ -28,13 +28,17 @@ public sealed class SqlRegexTests
         SqlRegex.Condition("c", Quoted, SqlDialect.SqlServer2025).ShouldBe(@"REGEXP_LIKE(c, N'\Ait''s [0-9]+\z')");
     }
 
-    [Fact]
-    public void Condition_ExpandsIgnoreCaseExactlyAsDotNetFoldsIt()
+    // .NET's IgnoreCase folds under the current culture: [A-Za-z] also matches U+212A (Kelvin sign) everywhere and
+    // U+0130 (dotted capital I) in cultures other than the invariant one. Regular strings with doubled backslashes are
+    // used because the compiler expands \u escapes even in verbatim strings.
+    [Theory]
+    [InlineData("en-US", "c ~ '\\A[A-Za-z\\u0130\\u212A]{3}-[0-9]{4}(?=\\n?\\Z)'")]
+    [InlineData("", "c ~ '\\A[A-Za-z\\u212A]{3}-[0-9]{4}(?=\\n?\\Z)'")]
+    public void Condition_ExpandsIgnoreCaseExactlyAsDotNetFoldsIt(string culture, string expected)
     {
-        // .NET's IgnoreCase also matches U+0130 (dotted capital I) and U+212A (Kelvin sign) for [A-Za-z]. A regular
-        // string with doubled backslashes is used because the compiler expands \u escapes even in verbatim strings.
-        SqlRegex.Condition("c", TestPatterns.CaseInsensitiveSku, SqlDialect.PostgreSql)
-            .ShouldBe("c ~ '\\A[A-Za-z\\u0130\\u212A]{3}-[0-9]{4}(?=\\n?\\Z)'");
+        using CultureScope scope = new CultureScope(culture);
+
+        SqlRegex.Condition("c", TestPatterns.CaseInsensitiveSku, SqlDialect.PostgreSql).ShouldBe(expected);
     }
 
     [Fact]

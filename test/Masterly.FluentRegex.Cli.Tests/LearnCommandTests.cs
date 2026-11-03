@@ -13,10 +13,12 @@ public sealed class LearnCommandTests : CliTestBase
     {
         CliResult result = Run("learn", "2024-01-05", "2023-12-31");
 
+        // The fluent code uses '\n' between its own lines while Console.WriteLine ends lines with Environment.NewLine,
+        // so the output is compared with line endings normalized rather than split per platform.
+        string output = result.Output.Replace("\r\n", "\n", StringComparison.Ordinal);
+
         result.ExitCode.ShouldBe(Ok);
-        result.OutputLines[0].ShouldBe(LearnedDatePattern);
-        result.OutputLines[1].ShouldBeEmpty();
-        result.OutputLines[2].ShouldStartWith("Pattern.With\n    .StartOfLine\n    .Digit.Repeat.Times(4)");
+        output.ShouldStartWith($"{LearnedDatePattern}\n\nPattern.With\n    .StartOfLine\n    .Digit.Repeat.Times(4)");
         result.Error.ShouldBeEmpty();
     }
 

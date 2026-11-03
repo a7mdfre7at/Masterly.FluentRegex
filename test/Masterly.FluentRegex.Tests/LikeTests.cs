@@ -279,11 +279,15 @@ public class LikeTests
     }
 
     [Theory]
-    [InlineData(@"(?i)^id\z", LikeDialect.Standard, "_d")]
-    [InlineData(@"(?i)^id\z", LikeDialect.SqlServer, "[Ii\u0130]d")]
-    [InlineData(@"(?i)^abc\z", LikeDialect.Sqlite, "abc")]
-    public void ToLike_IgnoreCaseLettersUnderCaseInsensitiveCollation_StayTextOnlyWhenEveryCollationFoldsThem(string regex, LikeDialect dialect, string expected)
+    [InlineData(@"(?i)^id\z", LikeDialect.Standard, "en-US", "_d")]
+    [InlineData(@"(?i)^id\z", LikeDialect.SqlServer, "en-US", "[Ii\u0130]d")]
+    [InlineData(@"(?i)^id\z", LikeDialect.SqlServer, "", "[Ii]d")]
+    [InlineData(@"(?i)^abc\z", LikeDialect.Sqlite, "en-US", "abc")]
+    public void ToLike_IgnoreCaseLettersUnderCaseInsensitiveCollation_StayTextOnlyWhenEveryCollationFoldsThem(
+        string regex, LikeDialect dialect, string culture, string expected)
     {
+        using CultureScope scope = new CultureScope(culture);
+
         LikeConversion like = Pattern.FromRegex(regex).ToLike(dialect, MatchScope.Substring, LikeCollation.CaseInsensitive);
 
         like.Expression.ShouldBe(expected);
