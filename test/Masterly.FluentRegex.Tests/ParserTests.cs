@@ -745,7 +745,7 @@ public class ParserTests
 
         InvalidOperationException exception = Should.Throw<InvalidOperationException>(() => empty.Pick(new FixedRandom(0.1, 0)));
 
-        exception.Message.ShouldBe("The character set is empty.");
+        exception.Message.ShouldBe("The character class has no character that can be generated (for example, it contains only surrogate code units).");
     }
 
     [Theory]
@@ -767,7 +767,7 @@ public class ParserTests
 
         InvalidOperationException exception = Should.Throw<InvalidOperationException>(() => empty.First());
 
-        exception.Message.ShouldBe("The character set is empty.");
+        exception.Message.ShouldBe("The character class has no character that can be generated (for example, it contains only surrogate code units).");
     }
 
     [Fact]

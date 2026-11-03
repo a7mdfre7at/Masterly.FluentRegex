@@ -191,7 +191,7 @@ namespace Masterly.FluentRegex.Syntax
         public char Pick(Random random)
         {
             EnsureMembers();
-            if (_members.Length == 0) throw new InvalidOperationException("The character set is empty.");
+            if (_members.Length == 0) throw new InvalidOperationException("The character class has no character that can be generated (for example, it contains only surrogate code units).");
             if (_preferred.Length > 0 && random.NextDouble() < 0.92) return (char)_preferred[random.Next(_preferred.Length)];
             return (char)_members[random.Next(_members.Length)];
         }
@@ -202,7 +202,7 @@ namespace Masterly.FluentRegex.Syntax
             EnsureMembers();
             if (_preferred.Length > 0) return (char)_preferred[0];
             if (_members.Length > 0) return (char)_members[0];
-            throw new InvalidOperationException("The character set is empty.");
+            throw new InvalidOperationException("The character class has no character that can be generated (for example, it contains only surrogate code units).");
         }
 
         public IEnumerable<char> PreferredMembers()

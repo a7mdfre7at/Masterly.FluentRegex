@@ -80,7 +80,7 @@ public string[] GenerateNonMatching(int count = 10, int? seed = null)
 |-----------|------|
 | `ArgumentOutOfRangeException` | `count` is negative. |
 | `InvalidOperationException` | The pattern is not valid regex syntax, for example a raw `RegEx(...)` fragment with an unclosed group. The message starts with "The pattern is not valid regex syntax:". |
-| `InvalidOperationException` | The generator reaches a character class whose only members are lone surrogates, such as `\p{Cs}`. The message is "The character set is empty.". See [Errors](#errors). |
+| `InvalidOperationException` | The generator reaches a character class whose only members are lone surrogates, such as `\p{Cs}`. The message is "The character class has no character that can be generated (for example, it contains only surrogate code units).". See [Errors](#errors). |
 
 ## Reproducible output with seeds
 
@@ -374,7 +374,7 @@ Pattern.With.Digit.GenerateMatching(-1);
 // throws ArgumentOutOfRangeException: Specified argument was out of the range of valid values. (Parameter 'count')
 
 Pattern.FromRegex(@"^\p{Cs}$").GenerateMatching(3, seed: 1);
-// throws InvalidOperationException: The character set is empty.
+// throws InvalidOperationException: The character class has no character that can be generated (for example, it contains only surrogate code units).
 
 // userRegex comes from your application and holds "(abc"
 Pattern.With.RegEx(userRegex).GenerateMatching(1, seed: 1);

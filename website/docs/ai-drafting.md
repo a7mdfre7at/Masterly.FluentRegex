@@ -340,7 +340,7 @@ Verification FAILED.
     Safety: not analyzed
   ```
 
-- A regex the safety analysis cannot process. This is rare. For example, .NET compiles `^\p{Cs}*\p{Cs}*$` (surrogate code points only), but `AnalyzeSafety` throws for it. The package catches the error and reports the draft as not checked: `IsValidSyntax` is `false` and the summary shows `Syntax: invalid (The character set is empty.)`.
+- A regex the safety analysis cannot process. This is rare. For example, .NET compiles `^\p{Cs}*\p{Cs}*$` (surrogate code points only), but `AnalyzeSafety` throws for it. The package catches the error and reports the draft as not checked: `IsValidSyntax` is `false` and the summary shows `Syntax: invalid (The character class has no character that can be generated (for example, it contains only surrogate code units).)`.
 
 For an unsafe draft or a draft that fails examples, `Pattern` is set, so you can study it. Do not ship it without fixing it.
 
