@@ -274,9 +274,7 @@ string pluralRegex = plural.ToString();   // (?:cat|dog)s
 - Because the alternation is always wrapped in a group, joining the result with `+` is safe. `(cat | dog) + Pattern.With.Literal("s")` cannot turn into `cat|dogs`.
 - For the same reason the result is a single element that a quantifier can follow directly: `(cat | dog).Repeat.OneOrMore` renders `(?:cat|dog)+` and matches all of `"catdog"`.
 
-:::warning
-
-The `|` operator returns a new pattern with **default** settings: `RegexOptions.None` and `Regex.InfiniteMatchTimeout`. The options and timeouts of both sides are dropped.
+Like `+`, the `|` operator takes the options and timeout of the left side. When both sides share their settings, the result keeps them:
 
 ```csharp
 using System.Text.RegularExpressions;
@@ -286,16 +284,11 @@ Pattern yes = Pattern.With.Literal("yes").WithOptions(RegexOptions.IgnoreCase);
 Pattern no = Pattern.With.Literal("no").WithOptions(RegexOptions.IgnoreCase);
 
 Pattern answer = yes | no;
-RegexOptions options = answer.Options;   // None
-bool upper = answer.IsMatch("YES");      // false
-
-Pattern fixedAnswer = (yes | no).WithOptions(RegexOptions.IgnoreCase);
-bool fixedUpper = fixedAnswer.IsMatch("YES"); // true
+RegexOptions options = answer.Options;   // IgnoreCase
+bool upper = answer.IsMatch("YES");      // true
 ```
 
-Apply the settings after the alternation, or use an inline scope inside each branch.
-
-:::
+The right side's options and timeout are ignored. When the sides differ, set the settings on the result, or use an inline scope inside each branch.
 
 ### Choosing between Choice, OneOf and |
 

@@ -396,7 +396,7 @@ Pattern codeFirst = code + Pattern.With.Literal("x");
 RegexOptions appendedOptions = appended.Options;   // None
 bool appendedMatches = appended.IsMatch("xABC");   // false
 RegexOptions groupedOptions = grouped.Options;     // None
-RegexOptions eitherOptions = either.Options;       // None
+RegexOptions eitherOptions = either.Options;       // IgnoreCase: the left side's settings
 RegexOptions codeFirstOptions = codeFirst.Options; // IgnoreCase: the left side's settings
 ```
 
@@ -404,7 +404,7 @@ RegexOptions codeFirstOptions = codeFirst.Options; // IgnoreCase: the left side'
 |-------------|------------------------|
 | `outer.Then(inner)`, `outer + inner` | Those of `outer` (the left side) |
 | `outer.Group(inner)`, `outer.Set(inner)` and other wrapping members | Those of `outer` |
-| `left \| right` | None: a new pattern with default settings |
+| `left \| right` | Those of `left`, like `+` |
 
 When only part of a pattern should ignore case, use an inline option scope instead. It is written into the regex text, so it survives composition:
 

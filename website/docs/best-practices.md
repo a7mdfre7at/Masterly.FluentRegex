@@ -110,12 +110,12 @@ Pattern alternated = digits | Pattern.With.Letter.Repeat.OneOrMore;
 
 Console.WriteLine(extended.Timeout.TotalMilliseconds);                  // 100
 Console.WriteLine(composed.Timeout == Regex.InfiniteMatchTimeout);    // True
-Console.WriteLine(alternated.Timeout == Regex.InfiniteMatchTimeout);  // True
+Console.WriteLine(alternated.Timeout.TotalMilliseconds);                // 100
 ```
 
 - Extending a pattern (`digits.Literal(...)`) keeps its options and timeout.
 - `Then(...)`, `+`, `Group(...)`, `NamedGroup(...)` and the other members that take a pattern keep the settings of the outer pattern, the one you call the member on. The inner pattern's options and timeout are ignored.
-- The `|` operator starts from `Pattern.With`, so its result has no options and no timeout, whatever the two sides had.
+- The `|` operator works like `+`: the result takes the options and timeout of the left side. The right side's settings are ignored.
 - Call `WithOptions`, `WithTimeout` and `UseNonBacktracking` last, on the pattern you store and run.
 - When only one piece must ignore case, use the inline scope instead of an option: `Pattern.With.Literal("id-").IgnoreCase(Pattern.With.Literal("abc"))` renders `id-(?i:abc)`, which matches `id-ABC` but not `ID-abc`.
 

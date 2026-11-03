@@ -863,7 +863,7 @@ See [Compile-Time Checks](./compile-time-checks.md) for the analyzer, and [Valid
 - **`\d` and `\w` are Unicode.** Use `AsciiDigit`, `Letter`, `DigitIn(UnicodeScript.Latin)` or `WithAsciiDigits()` for ASCII-only formats.
 - **`Anything` inside a set is a literal dot.** `Set(Pattern.With.Anything)` is `[.]`.
 - **`Literal("a-f")` inside a set is three characters.** Use `Range('a', 'f')`.
-- **`|` drops options.** `a | b` has no options, even when `a` was built with `WithOptions(...)`. Set options on the result.
+- **`|` and `+` keep only the left side's options.** `a | b` and `a + b` use the options and timeout of `a`. Set options on the result when the sides differ.
 - **Options are not in `ToString()`.** A pattern built with `WithOptions(RegexOptions.IgnoreCase)` prints the same text as one without. Pass `Options` along when you copy the regex text elsewhere, or use [Export](./export.md).
 - **Patterns are immutable.** `p.WithOptions(...)` on its own line does nothing. Assign the result.
 

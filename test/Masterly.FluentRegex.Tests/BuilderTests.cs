@@ -194,6 +194,34 @@ public class BuilderTests
     }
 
     [Fact]
+    public void OrOperator_KeepsTheSharedOptionsOfItsOperands()
+    {
+        Pattern yes = Pattern.With.Literal("yes").WithOptions(RegexOptions.IgnoreCase);
+        Pattern no = Pattern.With.Literal("no").WithOptions(RegexOptions.IgnoreCase);
+
+        Pattern answer = yes | no;
+
+        answer.Options.ShouldBe(RegexOptions.IgnoreCase);
+        answer.IsMatch("YES").ShouldBeTrue();
+    }
+
+    [Fact]
+    public void OrOperator_TakesOptionsAndTimeoutFromTheLeftOperand_LikePlus()
+    {
+        TimeSpan timeout = TimeSpan.FromSeconds(2);
+        Pattern left = Pattern.With.Literal("a").WithOptions(RegexOptions.Multiline).WithTimeout(timeout);
+        Pattern right = Pattern.With.Literal("b");
+
+        Pattern either = left | right;
+        Pattern both = left + right;
+
+        either.Options.ShouldBe(RegexOptions.Multiline);
+        either.Timeout.ShouldBe(timeout);
+        both.Options.ShouldBe(either.Options);
+        both.Timeout.ShouldBe(either.Timeout);
+    }
+
+    [Fact]
     public void AnyOfAndNoneOf_Null_ThrowArgumentNullException()
     {
         Should.Throw<ArgumentNullException>(() => Pattern.With.AnyOf(null!)).ParamName.ShouldBe("characters");

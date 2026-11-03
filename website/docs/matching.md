@@ -486,7 +486,7 @@ Console.WriteLine(inline.IsMatch("ID:ABC"));  // False
 |-----------------|-----------------------|
 | Extending a chain: `code.Literal(...)`, `code.Then(other)`, `code + other` | The options of `code`, the left side |
 | Nesting: `Group(code)`, `OneOf(code, ...)`, `other.Then(code)`, `other + code` | The options of the outer chain; those of `code` are dropped |
-| `code \| other` | `None`: the alternation starts a new chain |
+| `code \| other` | The options of `code`, the left side, like `+` |
 
 :::tip
 

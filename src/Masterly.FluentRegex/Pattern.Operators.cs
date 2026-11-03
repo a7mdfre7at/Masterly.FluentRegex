@@ -104,6 +104,7 @@ namespace Masterly.FluentRegex
 
         /// <summary>
         /// Creates a non-capturing alternation. Chains flatten, so <c>a | b | c</c> renders <c>(?:a|b|c)</c>.
+        /// Like <c>+</c>, the result takes its options and timeout from the left operand.
         /// </summary>
         public static Pattern operator |(Pattern left, Pattern right)
         {
@@ -113,7 +114,7 @@ namespace Masterly.FluentRegex
             var branches = new List<Pattern>();
             AddBranches(branches, left);
             AddBranches(branches, right);
-            return With.Append(new AlternationToken("(?:", branches, mergeable: true));
+            return With.Append(new AlternationToken("(?:", branches, mergeable: true)).WithSettings(left._options, left._timeout);
         }
 
         private static void AddBranches(List<Pattern> branches, Pattern pattern)
