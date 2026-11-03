@@ -1,0 +1,188 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="3426.6" height="298" viewBox="0 0 3426.6 298">
+<title>^(?&lt;major&gt;(?:0|[1-9]\d*))\.(?&lt;minor&gt;(?:0|[1-9]\d*))\.(?&lt;patch&gt;(?:0|[1-9]\d*))(?:-(?&lt;prerelease&gt;(?:0|[1-9]\d*|\d*[a-zA-Z\-][0-9a-zA-Z\-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z\-][0-9a-zA-Z\-]*))*))?(?:\+(?&lt;buildmetadata&gt;[0-9a-zA-Z\-]+(?:\.[0-9a-zA-Z\-]+)*))?$</title>
+<style>
+  .track { fill: none; stroke: #4b5563; stroke-width: 2; }
+  .literal rect { fill: #e8f1fd; stroke: #3b6fc4; stroke-width: 1.5; }
+  .charclass rect { fill: #fdf1e3; stroke: #c4802b; stroke-width: 1.5; }
+  .anchor rect { fill: #f1f1f1; stroke: #888888; stroke-width: 1.5; }
+  .group > rect { fill: none; stroke: #7c8796; stroke-width: 1; stroke-dasharray: 4 3; }
+  text { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #1f2937; }
+  .label { font-size: 11px; fill: #4b5563; }
+  .marker { fill: #4b5563; }
+</style>
+<circle class="marker" cx="25" cy="78" r="5"/>
+<path class="track" d="M25 78 h15"/>
+<g class="anchor"><rect x="40" y="66" width="123.6" height="24" rx="3" ry="3"/><text x="101.8" y="82" text-anchor="middle">start of input</text></g>
+<path class="track" d="M163.6 78 h12"/>
+<g class="group"><rect x="175.6" y="40" width="297.8" height="134" rx="6" ry="6"/><text class="label" x="181.6" y="52">group 'major'</text></g>
+<path class="track" d="M175.6 78 H185.6"/>
+<path class="track" d="M185.6 78 h20"/>
+<g class="literal"><rect x="205.6" y="66" width="42.2" height="24" rx="10" ry="10"/><text x="226.7" y="82" text-anchor="middle">&quot;0&quot;</text></g>
+<path class="track" d="M247.8 78 H463.4"/>
+<path class="track" d="M185.6 78 a10 10 0 0 1 10 10 V112 a10 10 0 0 0 10 10"/>
+<g class="charclass"><rect x="205.6" y="110" width="108.8" height="24" rx="3" ry="3"/><text x="260" y="126" text-anchor="middle">one of [1-9]</text></g>
+<path class="track" d="M314.4 122 h12"/>
+<path class="track" d="M326.4 122 h20"/>
+<path class="track" d="M346.4 122 H356.4"/>
+<g class="charclass"><rect x="356.4" y="110" width="57" height="24" rx="3" ry="3"/><text x="384.9" y="126" text-anchor="middle">digit</text></g>
+<path class="track" d="M413.4 122 H423.4"/>
+<path class="track" d="M413.4 122 a10 10 0 0 1 10 10 V144 a10 10 0 0 1 -10 10 H356.4 a10 10 0 0 1 -10 -10 V132 a10 10 0 0 1 10 -10"/>
+<path class="track" d="M423.4 122 H443.4"/>
+<path class="track" d="M326.4 122 a10 10 0 0 0 10 -10 V110 a10 10 0 0 1 10 -10 H423.4 a10 10 0 0 1 10 10 V112 a10 10 0 0 0 10 10"/>
+<path class="track" d="M443.4 122 H443.4 a10 10 0 0 0 10 -10 V88 a10 10 0 0 1 10 -10"/>
+<path class="track" d="M463.4 78 H473.4"/>
+<path class="track" d="M473.4 78 h12"/>
+<g class="literal"><rect x="485.4" y="66" width="42.2" height="24" rx="10" ry="10"/><text x="506.5" y="82" text-anchor="middle">&quot;.&quot;</text></g>
+<path class="track" d="M527.6 78 h12"/>
+<g class="group"><rect x="539.6" y="40" width="297.8" height="134" rx="6" ry="6"/><text class="label" x="545.6" y="52">group 'minor'</text></g>
+<path class="track" d="M539.6 78 H549.6"/>
+<path class="track" d="M549.6 78 h20"/>
+<g class="literal"><rect x="569.6" y="66" width="42.2" height="24" rx="10" ry="10"/><text x="590.7" y="82" text-anchor="middle">&quot;0&quot;</text></g>
+<path class="track" d="M611.8 78 H827.4"/>
+<path class="track" d="M549.6 78 a10 10 0 0 1 10 10 V112 a10 10 0 0 0 10 10"/>
+<g class="charclass"><rect x="569.6" y="110" width="108.8" height="24" rx="3" ry="3"/><text x="624" y="126" text-anchor="middle">one of [1-9]</text></g>
+<path class="track" d="M678.4 122 h12"/>
+<path class="track" d="M690.4 122 h20"/>
+<path class="track" d="M710.4 122 H720.4"/>
+<g class="charclass"><rect x="720.4" y="110" width="57" height="24" rx="3" ry="3"/><text x="748.9" y="126" text-anchor="middle">digit</text></g>
+<path class="track" d="M777.4 122 H787.4"/>
+<path class="track" d="M777.4 122 a10 10 0 0 1 10 10 V144 a10 10 0 0 1 -10 10 H720.4 a10 10 0 0 1 -10 -10 V132 a10 10 0 0 1 10 -10"/>
+<path class="track" d="M787.4 122 H807.4"/>
+<path class="track" d="M690.4 122 a10 10 0 0 0 10 -10 V110 a10 10 0 0 1 10 -10 H787.4 a10 10 0 0 1 10 10 V112 a10 10 0 0 0 10 10"/>
+<path class="track" d="M807.4 122 H807.4 a10 10 0 0 0 10 -10 V88 a10 10 0 0 1 10 -10"/>
+<path class="track" d="M827.4 78 H837.4"/>
+<path class="track" d="M837.4 78 h12"/>
+<g class="literal"><rect x="849.4" y="66" width="42.2" height="24" rx="10" ry="10"/><text x="870.5" y="82" text-anchor="middle">&quot;.&quot;</text></g>
+<path class="track" d="M891.6 78 h12"/>
+<g class="group"><rect x="903.6" y="40" width="297.8" height="134" rx="6" ry="6"/><text class="label" x="909.6" y="52">group 'patch'</text></g>
+<path class="track" d="M903.6 78 H913.6"/>
+<path class="track" d="M913.6 78 h20"/>
+<g class="literal"><rect x="933.6" y="66" width="42.2" height="24" rx="10" ry="10"/><text x="954.7" y="82" text-anchor="middle">&quot;0&quot;</text></g>
+<path class="track" d="M975.8 78 H1191.4"/>
+<path class="track" d="M913.6 78 a10 10 0 0 1 10 10 V112 a10 10 0 0 0 10 10"/>
+<g class="charclass"><rect x="933.6" y="110" width="108.8" height="24" rx="3" ry="3"/><text x="988" y="126" text-anchor="middle">one of [1-9]</text></g>
+<path class="track" d="M1042.4 122 h12"/>
+<path class="track" d="M1054.4 122 h20"/>
+<path class="track" d="M1074.4 122 H1084.4"/>
+<g class="charclass"><rect x="1084.4" y="110" width="57" height="24" rx="3" ry="3"/><text x="1112.9" y="126" text-anchor="middle">digit</text></g>
+<path class="track" d="M1141.4 122 H1151.4"/>
+<path class="track" d="M1141.4 122 a10 10 0 0 1 10 10 V144 a10 10 0 0 1 -10 10 H1084.4 a10 10 0 0 1 -10 -10 V132 a10 10 0 0 1 10 -10"/>
+<path class="track" d="M1151.4 122 H1171.4"/>
+<path class="track" d="M1054.4 122 a10 10 0 0 0 10 -10 V110 a10 10 0 0 1 10 -10 H1151.4 a10 10 0 0 1 10 10 V112 a10 10 0 0 0 10 10"/>
+<path class="track" d="M1171.4 122 H1171.4 a10 10 0 0 0 10 -10 V88 a10 10 0 0 1 10 -10"/>
+<path class="track" d="M1191.4 78 H1201.4"/>
+<path class="track" d="M1201.4 78 h12"/>
+<path class="track" d="M1213.4 78 h20"/>
+<g class="literal"><rect x="1233.4" y="66" width="42.2" height="24" rx="10" ry="10"/><text x="1254.5" y="82" text-anchor="middle">&quot;-&quot;</text></g>
+<path class="track" d="M1275.6 78 h12"/>
+<g class="group"><rect x="1287.6" y="30" width="1300.2" height="248" rx="6" ry="6"/><text class="label" x="1293.6" y="42">group 'prerelease'</text></g>
+<path class="track" d="M1287.6 78 H1297.6"/>
+<path class="track" d="M1297.6 78 h20"/>
+<g class="literal"><rect x="1317.6" y="66" width="42.2" height="24" rx="10" ry="10"/><text x="1338.7" y="82" text-anchor="middle">&quot;0&quot;</text></g>
+<path class="track" d="M1359.8 78 H1874.6"/>
+<path class="track" d="M1297.6 78 a10 10 0 0 1 10 10 V112 a10 10 0 0 0 10 10"/>
+<g class="charclass"><rect x="1317.6" y="110" width="108.8" height="24" rx="3" ry="3"/><text x="1372" y="126" text-anchor="middle">one of [1-9]</text></g>
+<path class="track" d="M1426.4 122 h12"/>
+<path class="track" d="M1438.4 122 h20"/>
+<path class="track" d="M1458.4 122 H1468.4"/>
+<g class="charclass"><rect x="1468.4" y="110" width="57" height="24" rx="3" ry="3"/><text x="1496.9" y="126" text-anchor="middle">digit</text></g>
+<path class="track" d="M1525.4 122 H1535.4"/>
+<path class="track" d="M1525.4 122 a10 10 0 0 1 10 10 V144 a10 10 0 0 1 -10 10 H1468.4 a10 10 0 0 1 -10 -10 V132 a10 10 0 0 1 10 -10"/>
+<path class="track" d="M1535.4 122 H1555.4"/>
+<path class="track" d="M1438.4 122 a10 10 0 0 0 10 -10 V110 a10 10 0 0 1 10 -10 H1535.4 a10 10 0 0 1 10 10 V112 a10 10 0 0 0 10 10"/>
+<path class="track" d="M1555.4 122 H1854.6 a10 10 0 0 0 10 -10 V88 a10 10 0 0 1 10 -10"/>
+<path class="track" d="M1297.6 78 a10 10 0 0 1 10 10 V186 a10 10 0 0 0 10 10"/>
+<path class="track" d="M1317.6 196 h20"/>
+<path class="track" d="M1337.6 196 H1347.6"/>
+<g class="charclass"><rect x="1347.6" y="184" width="57" height="24" rx="3" ry="3"/><text x="1376.1" y="200" text-anchor="middle">digit</text></g>
+<path class="track" d="M1404.6 196 H1414.6"/>
+<path class="track" d="M1404.6 196 a10 10 0 0 1 10 10 V218 a10 10 0 0 1 -10 10 H1347.6 a10 10 0 0 1 -10 -10 V206 a10 10 0 0 1 10 -10"/>
+<path class="track" d="M1414.6 196 H1434.6"/>
+<path class="track" d="M1317.6 196 a10 10 0 0 0 10 -10 V184 a10 10 0 0 1 10 -10 H1414.6 a10 10 0 0 1 10 10 V186 a10 10 0 0 0 10 10"/>
+<path class="track" d="M1434.6 196 h12"/>
+<g class="charclass"><rect x="1446.6" y="184" width="153.2" height="24" rx="3" ry="3"/><text x="1523.2" y="200" text-anchor="middle">one of [a-z A-Z -]</text></g>
+<path class="track" d="M1599.8 196 h12"/>
+<path class="track" d="M1611.8 196 h20"/>
+<path class="track" d="M1631.8 196 H1641.8"/>
+<g class="charclass"><rect x="1641.8" y="184" width="182.8" height="24" rx="3" ry="3"/><text x="1733.2" y="200" text-anchor="middle">one of [0-9 a-z A-Z -]</text></g>
+<path class="track" d="M1824.6 196 H1834.6"/>
+<path class="track" d="M1824.6 196 a10 10 0 0 1 10 10 V218 a10 10 0 0 1 -10 10 H1641.8 a10 10 0 0 1 -10 -10 V206 a10 10 0 0 1 10 -10"/>
+<path class="track" d="M1834.6 196 H1854.6"/>
+<path class="track" d="M1611.8 196 a10 10 0 0 0 10 -10 V184 a10 10 0 0 1 10 -10 H1834.6 a10 10 0 0 1 10 10 V186 a10 10 0 0 0 10 10"/>
+<path class="track" d="M1854.6 196 H1854.6 a10 10 0 0 0 10 -10 V88 a10 10 0 0 1 10 -10"/>
+<path class="track" d="M1874.6 78 h12"/>
+<path class="track" d="M1886.6 78 h20"/>
+<path class="track" d="M1906.6 78 H1916.6"/>
+<g class="literal"><rect x="1916.6" y="66" width="42.2" height="24" rx="10" ry="10"/><text x="1937.7" y="82" text-anchor="middle">&quot;.&quot;</text></g>
+<path class="track" d="M1958.8 78 h12"/>
+<path class="track" d="M1970.8 78 h20"/>
+<g class="literal"><rect x="1990.8" y="66" width="42.2" height="24" rx="10" ry="10"/><text x="2011.9" y="82" text-anchor="middle">&quot;0&quot;</text></g>
+<path class="track" d="M2033 78 H2547.8"/>
+<path class="track" d="M1970.8 78 a10 10 0 0 1 10 10 V112 a10 10 0 0 0 10 10"/>
+<g class="charclass"><rect x="1990.8" y="110" width="108.8" height="24" rx="3" ry="3"/><text x="2045.2" y="126" text-anchor="middle">one of [1-9]</text></g>
+<path class="track" d="M2099.6 122 h12"/>
+<path class="track" d="M2111.6 122 h20"/>
+<path class="track" d="M2131.6 122 H2141.6"/>
+<g class="charclass"><rect x="2141.6" y="110" width="57" height="24" rx="3" ry="3"/><text x="2170.1" y="126" text-anchor="middle">digit</text></g>
+<path class="track" d="M2198.6 122 H2208.6"/>
+<path class="track" d="M2198.6 122 a10 10 0 0 1 10 10 V144 a10 10 0 0 1 -10 10 H2141.6 a10 10 0 0 1 -10 -10 V132 a10 10 0 0 1 10 -10"/>
+<path class="track" d="M2208.6 122 H2228.6"/>
+<path class="track" d="M2111.6 122 a10 10 0 0 0 10 -10 V110 a10 10 0 0 1 10 -10 H2208.6 a10 10 0 0 1 10 10 V112 a10 10 0 0 0 10 10"/>
+<path class="track" d="M2228.6 122 H2527.8 a10 10 0 0 0 10 -10 V88 a10 10 0 0 1 10 -10"/>
+<path class="track" d="M1970.8 78 a10 10 0 0 1 10 10 V186 a10 10 0 0 0 10 10"/>
+<path class="track" d="M1990.8 196 h20"/>
+<path class="track" d="M2010.8 196 H2020.8"/>
+<g class="charclass"><rect x="2020.8" y="184" width="57" height="24" rx="3" ry="3"/><text x="2049.3" y="200" text-anchor="middle">digit</text></g>
+<path class="track" d="M2077.8 196 H2087.8"/>
+<path class="track" d="M2077.8 196 a10 10 0 0 1 10 10 V218 a10 10 0 0 1 -10 10 H2020.8 a10 10 0 0 1 -10 -10 V206 a10 10 0 0 1 10 -10"/>
+<path class="track" d="M2087.8 196 H2107.8"/>
+<path class="track" d="M1990.8 196 a10 10 0 0 0 10 -10 V184 a10 10 0 0 1 10 -10 H2087.8 a10 10 0 0 1 10 10 V186 a10 10 0 0 0 10 10"/>
+<path class="track" d="M2107.8 196 h12"/>
+<g class="charclass"><rect x="2119.8" y="184" width="153.2" height="24" rx="3" ry="3"/><text x="2196.4" y="200" text-anchor="middle">one of [a-z A-Z -]</text></g>
+<path class="track" d="M2273 196 h12"/>
+<path class="track" d="M2285 196 h20"/>
+<path class="track" d="M2305 196 H2315"/>
+<g class="charclass"><rect x="2315" y="184" width="182.8" height="24" rx="3" ry="3"/><text x="2406.4" y="200" text-anchor="middle">one of [0-9 a-z A-Z -]</text></g>
+<path class="track" d="M2497.8 196 H2507.8"/>
+<path class="track" d="M2497.8 196 a10 10 0 0 1 10 10 V218 a10 10 0 0 1 -10 10 H2315 a10 10 0 0 1 -10 -10 V206 a10 10 0 0 1 10 -10"/>
+<path class="track" d="M2507.8 196 H2527.8"/>
+<path class="track" d="M2285 196 a10 10 0 0 0 10 -10 V184 a10 10 0 0 1 10 -10 H2507.8 a10 10 0 0 1 10 10 V186 a10 10 0 0 0 10 10"/>
+<path class="track" d="M2527.8 196 H2527.8 a10 10 0 0 0 10 -10 V88 a10 10 0 0 1 10 -10"/>
+<path class="track" d="M2547.8 78 H2557.8"/>
+<path class="track" d="M2547.8 78 a10 10 0 0 1 10 10 V248 a10 10 0 0 1 -10 10 H1916.6 a10 10 0 0 1 -10 -10 V88 a10 10 0 0 1 10 -10"/>
+<path class="track" d="M2557.8 78 H2577.8"/>
+<path class="track" d="M1886.6 78 a10 10 0 0 0 10 -10 V66 a10 10 0 0 1 10 -10 H2557.8 a10 10 0 0 1 10 10 V68 a10 10 0 0 0 10 10"/>
+<path class="track" d="M2577.8 78 H2587.8"/>
+<path class="track" d="M2587.8 78 H2607.8"/>
+<path class="track" d="M1213.4 78 a10 10 0 0 0 10 -10 V30 a10 10 0 0 1 10 -10 H2587.8 a10 10 0 0 1 10 10 V68 a10 10 0 0 0 10 10"/>
+<path class="track" d="M2607.8 78 h12"/>
+<path class="track" d="M2619.8 78 h20"/>
+<g class="literal"><rect x="2639.8" y="66" width="42.2" height="24" rx="10" ry="10"/><text x="2660.9" y="82" text-anchor="middle">&quot;+&quot;</text></g>
+<path class="track" d="M2682 78 h12"/>
+<g class="group"><rect x="2694" y="30" width="551.8" height="130" rx="6" ry="6"/><text class="label" x="2700" y="42">group 'buildmetadata'</text></g>
+<path class="track" d="M2694 78 H2704"/>
+<path class="track" d="M2704 78 H2714"/>
+<g class="charclass"><rect x="2714" y="66" width="182.8" height="24" rx="3" ry="3"/><text x="2805.4" y="82" text-anchor="middle">one of [0-9 a-z A-Z -]</text></g>
+<path class="track" d="M2896.8 78 H2906.8"/>
+<path class="track" d="M2896.8 78 a10 10 0 0 1 10 10 V100 a10 10 0 0 1 -10 10 H2714 a10 10 0 0 1 -10 -10 V88 a10 10 0 0 1 10 -10"/>
+<path class="track" d="M2906.8 78 h12"/>
+<path class="track" d="M2918.8 78 h20"/>
+<path class="track" d="M2938.8 78 H2948.8"/>
+<g class="literal"><rect x="2948.8" y="66" width="42.2" height="24" rx="10" ry="10"/><text x="2969.9" y="82" text-anchor="middle">&quot;.&quot;</text></g>
+<path class="track" d="M2991 78 h12"/>
+<path class="track" d="M3003 78 H3013"/>
+<g class="charclass"><rect x="3013" y="66" width="182.8" height="24" rx="3" ry="3"/><text x="3104.4" y="82" text-anchor="middle">one of [0-9 a-z A-Z -]</text></g>
+<path class="track" d="M3195.8 78 H3205.8"/>
+<path class="track" d="M3195.8 78 a10 10 0 0 1 10 10 V100 a10 10 0 0 1 -10 10 H3013 a10 10 0 0 1 -10 -10 V88 a10 10 0 0 1 10 -10"/>
+<path class="track" d="M3205.8 78 H3215.8"/>
+<path class="track" d="M3205.8 78 a10 10 0 0 1 10 10 V130 a10 10 0 0 1 -10 10 H2948.8 a10 10 0 0 1 -10 -10 V88 a10 10 0 0 1 10 -10"/>
+<path class="track" d="M3215.8 78 H3235.8"/>
+<path class="track" d="M2918.8 78 a10 10 0 0 0 10 -10 V66 a10 10 0 0 1 10 -10 H3215.8 a10 10 0 0 1 10 10 V68 a10 10 0 0 0 10 10"/>
+<path class="track" d="M3235.8 78 H3245.8"/>
+<path class="track" d="M3245.8 78 H3265.8"/>
+<path class="track" d="M2619.8 78 a10 10 0 0 0 10 -10 V30 a10 10 0 0 1 10 -10 H3245.8 a10 10 0 0 1 10 10 V68 a10 10 0 0 0 10 10"/>
+<path class="track" d="M3265.8 78 h12"/>
+<g class="anchor"><rect x="3277.8" y="66" width="108.8" height="24" rx="3" ry="3"/><text x="3332.2" y="82" text-anchor="middle">end of input</text></g>
+<path class="track" d="M3386.6 78 h15"/>
+<circle class="marker" cx="3401.6" cy="78" r="5"/>
+</svg>

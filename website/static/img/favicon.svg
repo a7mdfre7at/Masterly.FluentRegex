@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- The "slash-cut F" mark from docs/images/brand (favicon cut), on a 32 px grid: an F beside a regex delimiter /. -->
+  <defs>
+    <linearGradient id="mfr-favicon-tile" x1="0" y1="0" x2="19.2" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#262F56"/>
+      <stop offset="1" stop-color="#0B1022"/>
+    </linearGradient>
+    <linearGradient id="mfr-favicon-slash" x1="14.375" y1="24.75" x2="25.625" y2="7.25" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2EE6A6"/>
+      <stop offset="1" stop-color="#C6F432"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="url(#mfr-favicon-tile)"/>
+  <rect x="0.5" y="0.5" width="31" height="31" rx="6.5" stroke="#FFFFFF" stroke-opacity="0.13"/>
+  <path d="M6 6h12l-1.6 4H10v4h4.8l-1.6 4H10v8H6Z" fill="#F5F7FB"/>
+  <path d="M22 6h5l-8 20h-5Z" fill="url(#mfr-favicon-slash)"/>
+</svg>
