@@ -1,3 +1,5 @@
+![Masterly.FluentRegex: readable, provable regular expressions for .NET](https://raw.githubusercontent.com/a7mdfre7at/Masterly.FluentRegex/master/docs/images/brand/banner-light.png)
+
 # Masterly.FluentRegex
 
 A fluent, immutable API for building .NET regular expressions, plus the tools to understand, test,
