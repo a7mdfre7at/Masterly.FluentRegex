@@ -1,3 +1,4 @@
+using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -29,6 +30,11 @@ public static class FluentRegexEventId
     /// The regex dialect translation of a pattern reported behaviors that differ from .NET;
     /// the warning text lists each difference.
     /// </summary>
+    /// <remarks>
+    /// The built-in SQL regex translations are either exact or refused with <see cref="NotSupportedException"/>,
+    /// so this event is not raised by them. It stays defined so that <c>ConfigureWarnings</c> settings that name it
+    /// keep compiling.
+    /// </remarks>
     public static readonly EventId TranslationWarning = MakeEventId(Id.TranslationWarning);
 
     private static EventId MakeEventId(Id id) => new EventId((int)id, EventPrefix + id);

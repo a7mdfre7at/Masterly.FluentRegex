@@ -256,8 +256,8 @@ On `SqlDialect.SqlServer` the default `LikeFallback.ExactOnly` translates a patt
 exact; otherwise an `InvalidOperationException` names the pattern and suggests `MatchingAsync`,
 `UseDialect(SqlDialect.SqlServer2025)` or `LikeFallback.AllowSuperset`. `AllowSuperset` logs
 `FluentRegexEventId.LikeSupersetFallback` (a warning) through EF Core's logger; `ConfigureWarnings` can make it
-throw. Translation differences reported by the dialect conversion are logged as
-`FluentRegexEventId.TranslationWarning`.
+throw. `FluentRegexEventId.TranslationWarning` is reserved for dialect translations that differ from .NET; the
+built-in translations are exact or refused with `NotSupportedException`, so it is not raised today.
 
 ### SQL Server `LIKE` and collations
 
