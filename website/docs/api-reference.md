@@ -222,7 +222,7 @@ Console.WriteLine(Pattern.With.Digit.Repeat.OneOrMore.Possessive); // (?>\d+)
 | `Backreference(string name)` | `\k<name>` | Matches the text a named group captured. |
 | `Backreference(int groupNumber)` | `\1` | Matches the text a numbered group captured. Throws `ArgumentOutOfRangeException` when `groupNumber` is less than 1. |
 | `Conditional(string groupName, Pattern truePattern, Pattern falsePattern)` | `(?(name)yes\|no)` | Uses `truePattern` when the named group took part in the match, otherwise `falsePattern`. |
-| `Conditional(int groupNumber, Pattern truePattern, Pattern falsePattern)` | `(?(1)yes\|no)` | The same for a numbered group. Group numbers start at 1. |
+| `Conditional(int groupNumber, Pattern truePattern, Pattern falsePattern)` | `(?(1)yes\|no)` | The same for a numbered group. Group numbers start at 1; a smaller number throws `ArgumentOutOfRangeException`. |
 
 ```csharp
 Pattern word = Pattern.With.Word.Repeat.OneOrMore;
@@ -477,7 +477,7 @@ These members treat a pattern as the set of strings it matches in full, and prov
 | `Intersect(Pattern other)` | `Pattern` | An anchored pattern that matches the strings both patterns match. Keeps this pattern's options and timeout. |
 | `Except(Pattern other)` | `Pattern` | An anchored pattern that matches the strings this pattern matches and `other` rejects. |
 | `Union(Pattern other)` | `Pattern` | A pattern that matches the strings either pattern matches. |
-| `GetLanguageFacts(MatchScope scope = MatchScope.FullString)` | `LanguageFacts` | Length bounds, the required prefix and suffix, and whether the empty string is accepted. |
+| `GetLanguageFacts(MatchScope scope = MatchScope.FullString)` | `LanguageFacts` | Length bounds, the required prefix and suffix, and whether the empty string is accepted. Never throws for a valid pattern, except `ArgumentOutOfRangeException` for an undefined scope. |
 
 ```csharp
 Pattern twoDigits = Pattern.With.Digit.Repeat.Times(2);
@@ -491,6 +491,10 @@ Console.WriteLine(twoDigits.Intersect(Pattern.With.Literal("x")).MatchesNothing(
 
 LanguageFacts facts = Pattern.With.Literal("INV-").Digit.Repeat.Times(4, 6).GetLanguageFacts();
 Console.WriteLine(facts); // FullString: length 8..10, prefix "INV-", suffix "", accepts empty: false (exact)
+
+Pattern doubled = Pattern.FromRegex(@"(a)\1");
+Console.WriteLine(doubled.GetLanguageFacts()); // FullString: length 1..unbounded, prefix "a", suffix "", accepts empty: false (approximate)
+// doubled.IsEquivalentTo(twoDigits) throws NotSupportedException: Language algebra does not support backreferences ...
 ```
 
 See [Pattern algebra](./pattern-algebra.md) and [Language facts](./language-facts.md).
@@ -557,7 +561,16 @@ Pattern title = Pattern.With.OneOf("Mr", "Mrs", "Ms").Literal(".").Repeat.Option
 Console.WriteLine(string.Join(", ", title.GenerateMatching(count: 3, seed: 1)));    // Mr., Mrs., Mr
 Console.WriteLine(string.Join(", ", title.GenerateNonMatching(count: 3, seed: 1))); // M ., rM, M!s
 Console.WriteLine(title.MeasureCoverage(new[] { "Mr", "Mrs." }).Percentage);        // 25
+Console.WriteLine(title.MeasureCoverage(new[] { "Mr", "Mrs." }));
+// prints:
+// Coverage for (?:Mr|Mrs|Ms)\.?: 25% (1/4), 2 inputs
+//   ✓ branch "Mr" (2 hits)
+//   ✗ branch "Mrs" was never matched
+//   ✗ branch "Ms" was never matched
+//   ✗ optional part "\.?" was never taken
 ```
+
+- `"Mrs."` counts as a hit for the `Mr` branch: the unanchored pattern finds `Mr` inside it, so only one of four items is covered.
 
 See [Test data generation](./test-data-generation.md), [Regex coverage](./regex-coverage.md) and [Property testing](./property-testing.md).
 
@@ -656,15 +669,15 @@ Ready-made patterns. Each method returns a new `Pattern`. Unless noted, the patt
 | Method | Matches |
 |--------|---------|
 | `Email()`, `Email(PatternStrictness strictness)` | An e-mail address. `Strict` follows the standard closely; `Loose` accepts anything with the right shape. |
-| `Url()`, `Url(PatternStrictness strictness)` | HTTP and HTTPS URLs. |
+| `Url()`, `Url(PatternStrictness strictness)` | HTTP and HTTPS URLs. `Loose` accepts any `scheme://` followed by non-whitespace. |
 | `PhoneNumber()` | US phone numbers. See the warning below. |
-| `PhoneNumberE164()` | An international number in E.164 format: `+`, a non-zero digit, then at most 14 digits. |
-| `IPv4()` | An IPv4 address with octets 0-255. |
-| `IPv6()` | An IPv6 address in full notation (8 groups of 4 hex digits). |
+| `PhoneNumberE164()` | An international number in E.164 format: `+`, a non-zero digit, then 1 to 14 more digits, captured in the group `number`. |
+| `IPv4()` | An IPv4 address with octets 0-255. Leading zeros are accepted. |
+| `IPv6()` | An IPv6 address in full notation: 8 groups of 1 to 4 hex digits. The `::` shorthand is not accepted. |
 | `MacAddress()` | Six pairs of hex digits separated consistently by `:` or `-`. |
 | `Guid()` | A hyphenated GUID or UUID. |
-| `HexColor()` | A CSS hex color: `#RGB`, `#RRGGBB` or `#RRGGBBAA`. |
-| `DateIso()` | `yyyy-MM-dd`. |
+| `HexColor()` | A CSS hex color: `#RGB`, `#RGBA`, `#RRGGBB` or `#RRGGBBAA`. |
+| `DateIso()` | The shape `yyyy-MM-dd`. It does not check the calendar; pair it with `Validators.IsoDate`. |
 | `DateTimeIso()` | An ISO 8601 date and time, such as `2024-05-17T10:30:00.123+02:00`. |
 | `Date()` | Common US and ISO date formats. |
 | `Time24()` | `HH:mm` or `HH:mm:ss`. |
@@ -680,10 +693,10 @@ Ready-made patterns. Each method returns a new `Pattern`. Unless noted, the patt
 | `Jwt()` | A compact JSON Web Token: three base64url segments; header and payload start with `eyJ`. |
 | `Base64()` | Non-empty standard Base64 with correct padding. |
 | `FilePath()` | Windows and Unix file paths. |
-| `HtmlTag()` | An HTML or XML tag with optional attributes. |
+| `HtmlTag()` | An HTML or XML tag with optional quoted attributes. Not anchored: it finds tags inside text. |
 | `MarkdownLink()` | A Markdown inline link. Not anchored: use it with `Matches` or `ExtractAll`. |
-| `Integer()` | A signed integer. |
-| `Decimal()` | A signed decimal number. |
+| `Integer()` | An integer with an optional leading `-`. A `+` sign is not accepted. |
+| `Decimal()` | A number with an optional leading `-` and an optional fraction, such as `-12.5`. |
 | `ScientificNotation()` | A number such as `1.5e10` or `-2E-5`. |
 
 Every method also has an overload that takes a `DigitMode` as its last parameter, such as `Integer(DigitMode digits)` and `Email(PatternStrictness strictness, DigitMode digits)`. The parameterless overloads use `DigitMode.Unicode`, so `\d` in them matches every Unicode decimal digit.
@@ -717,16 +730,18 @@ A `ConstrainedPattern` is a `Pattern` plus rules a regex cannot express, such as
 
 | Member | Returns | Description |
 |--------|---------|-------------|
-| `ConstrainedPattern(Pattern pattern)` | | A constrained pattern with no rules yet. |
+| `ConstrainedPattern(Pattern pattern)` | | A constrained pattern with no rules yet. Throws `ArgumentNullException` for `null`. |
 | `Pattern { get; }` | `Pattern` | The underlying pattern. |
-| `RuleDescriptions { get; }` | `IReadOnlyList<string>` | The rule descriptions, in evaluation order. |
+| `RuleDescriptions { get; }` | `IReadOnlyList<string>` | The rule descriptions, in evaluation order. A rule added without a description is listed by position, as `rule 1`, or `rule 1 on group 'number'` for a group rule. |
 | `Must(Func<string, bool> rule, string? description = null)` | `ConstrainedPattern` | A copy with a rule for the whole match. |
 | `Must(string groupName, Func<string, bool> rule, string? description = null)` | `ConstrainedPattern` | A copy with a rule for a named group. Skipped when the group did not take part. |
 | `IsMatch(string input)` | `bool` | Some match in the input passes every rule. |
-| `Match(string input)` | `Match` | The first match that passes every rule. |
-| `Matches(string input)` | `IEnumerable<Match>` | Every match that passes every rule, scanned lazily. |
+| `Match(string input)` | `Match?` | The first match that passes every rule, or `null` when there is none. Unlike `Pattern.Match`, it never returns an unsuccessful `Match`. |
+| `Matches(string input)` | `IEnumerable<Match>` | Every match that passes every rule, scanned lazily. After a rejected candidate the scan resumes one character later, so an overlapping valid value is still found. |
 | `IsValid(string input)` | `bool` | The whole input matches and passes every rule. The cheap form of `Check`. |
 | `Check(string input)` | `ConstraintResult` | Validates the whole input and explains a failure. |
+
+`Matches`, `IsValid` and `Check` throw `ArgumentNullException` for a `null` input.
 
 `ConstraintResult` members:
 
@@ -734,8 +749,8 @@ A `ConstrainedPattern` is a `Pattern` plus rules a regex cannot express, such as
 |--------|---------|-------------|
 | `IsValid` | `bool` | The input matched and passed every rule. |
 | `PatternFailed` | `bool` | The pattern itself rejected the input. |
-| `FailedRule` | `string` | The description of the first rule that rejected the input, or `null`. |
-| `Trace` | `MatchTrace` | When the pattern rejected the input, the trace that shows where; otherwise `null`. |
+| `FailedRule` | `string?` | The description of the first rule that rejected the input, or `null`. |
+| `Trace` | `MatchTrace?` | When the pattern rejected the input, the trace that shows where; otherwise `null`. |
 | `ToString()` | `string` | A one-line summary that does not include the input. |
 
 ```csharp
@@ -746,6 +761,8 @@ Console.WriteLine(luhn.IsValid("4111111111111111")); // True
 ConstraintResult result = luhn.Check("4111111111111112");
 Console.WriteLine(result.FailedRule);                // Luhn checksum
 Console.WriteLine(result);                           // Invalid: the rule 'Luhn checksum' rejected the value
+Console.WriteLine(luhn.Check("abc"));                // Invalid: the value does not match the pattern at position 0: expected (?<number>\d{16}) (group 'number')
+Console.WriteLine(luhn.Match("4111111111111112") == null); // True
 ```
 
 ### Validators
@@ -754,7 +771,7 @@ Ready-made rules for `Must`. Every validator returns `false` for `null` instead 
 
 | Method | Returns `true` when |
 |--------|---------------------|
-| `static bool Luhn(string value)` | The value passes the Luhn (mod 10) checksum, as used by card numbers and IMEIs. Spaces and dashes are ignored; any other non-digit makes it invalid. |
+| `static bool Luhn(string value)` | The value has at least two digits and passes the Luhn (mod 10) checksum, as used by card numbers and IMEIs. Spaces and dashes are ignored; any other non-digit makes it invalid. |
 | `static bool IbanChecksum(string value)` | The ISO 13616 mod-97 check digits are right. Spaces are ignored; letters may be in either case. |
 | `static bool IsoDate(string value)` | The value is exactly `yyyy-MM-dd` and names a real date: `2024-02-29` is valid, `2026-02-30` is not. |
 | `static bool IPv4(string value)` | The value is a dotted quad with each octet 0-255. Leading zeros are accepted. |
@@ -771,9 +788,9 @@ A data-annotations attribute that validates a string property against a `Pattern
 
 | Member | Description |
 |--------|-------------|
-| `MatchesPatternAttribute(Type patternType, string memberName)` | Reads the pattern from `memberName` on `patternType`. |
+| `MatchesPatternAttribute(Type patternType, string memberName)` | Reads the pattern from `memberName` on `patternType`. Throws `ArgumentNullException` for a `null` argument and `ArgumentException` for a blank member name. Applies to properties, fields and parameters. |
 | `PatternType`, `MemberName` | The constructor arguments. |
-| `IsValid(object? value, ValidationContext? validationContext)` | Protected. The whole value must match, and every rule must pass. `null` is valid; add `[Required]` to forbid it. |
+| `IsValid(object? value, ValidationContext? validationContext)` | Protected. The whole value must match, and every rule must pass. `null` and the empty string are valid; add `[Required]` to forbid them. A value that is not a `string` fails. Throws `InvalidOperationException` when the pattern member cannot be resolved. |
 
 ```csharp
 using System;
@@ -801,11 +818,11 @@ public sealed class ProductInput
 | Member | Description |
 |--------|-------------|
 | `RegexGroupAttribute(string name)` | Put it on a constructor parameter or a property to bind it to a group with a different name. `Name` returns the group name. |
-| `ExtractionConverters.Register<T>(Func<string, IFormatProvider, T> converter)` | Registers a culture-aware converter for `T`, replacing any existing one. Global and thread-safe. |
+| `ExtractionConverters.Register<T>(Func<string, IFormatProvider, T> converter)` | Registers a culture-aware converter for `T`, replacing any existing one. Global and thread-safe. Throws `ArgumentNullException` for `null`. |
 | `ExtractionConverters.Register<T>(Func<string, T> converter)` | Registers a culture-independent converter. |
 | `ExtractionConverters.Unregister<T>()` | Removes the converter for `T`. Returns `true` when there was one. |
 
-Built in, without a converter: `string`, `object`, the integer types, `float`, `double`, `decimal`, `bool`, `char`, enums (names match ignoring case), `DateTime`, `DateTimeOffset`, `TimeSpan`, `Guid`, `Uri`, `Version`, and `Nullable<T>` of any of them (an empty group gives `null`). `DateOnly` and `TimeOnly` work on `net8.0` and `net10.0`. Numbers written with Unicode digits, such as `٢٠٢٦`, are converted to ASCII first, because `\d` matches them. A registered converter wins over the built-in one.
+Built in, without a converter: `string`, `object`, the integer types, `float`, `double`, `decimal`, `bool`, `char`, enums (names match ignoring case), `DateTime`, `DateTimeOffset`, `TimeSpan`, `Guid`, `Uri`, `Version`, and `Nullable<T>` of any of them (an empty group gives `null`). `DateOnly` and `TimeOnly` work on `net8.0` and `net10.0`. Numbers written with Unicode digits, such as `٢٠٢٦`, are converted to ASCII first, because `\d` matches them. `bool` also accepts `yes`/`no`, `y`/`n`, `on`/`off` and `1`/`0`. A registered converter wins over the built-in one. A type with neither throws `ArgumentException` that tells you to register a converter.
 
 ### Template and `Template<T>`
 
@@ -813,10 +830,10 @@ Typed templates: string interpolation in reverse. A template such as `"{Date:yyy
 
 | Member | Returns | Description |
 |--------|---------|-------------|
-| `static Template.Of<T>(string template, TemplateOptions? options = null)` | `Template<T>` | Compiles a template for `T`. Throws `ArgumentException` for an empty or malformed template, an unknown member (the message lists the available ones), an unbound required constructor parameter or an unsupported format. |
+| `static Template.Of<T>(string template, TemplateOptions? options = null)` | `Template<T>` | Compiles a template for `T`. Placeholders are `{Name}` or `{Name:format}`; `{{` and `}}` are literal braces. Throws `ArgumentNullException` for `null` and `ArgumentException` for an empty or malformed template, an unknown member (the message lists the available ones), an unbound required constructor parameter or an unsupported format. |
 | `Template<T>.Parse(string input)` | `T` | Parses an input that must match the whole template. Throws `FormatException` with an explanation when it does not. |
 | `Template<T>.TryParse(string input, out T value)` | `bool` | The same, returning `false` instead of throwing. |
-| `Template<T>.ParseAll(string text)` | `IEnumerable<T>` | Every occurrence of the template in the text. Evaluated lazily. |
+| `Template<T>.ParseAll(string text)` | `IEnumerable<T>` | Every occurrence of the template in the text. Evaluated lazily. Throws `FormatException` when an occurrence matches but a value cannot be converted. |
 | `Template<T>.Format(T value)` | `string` | Renders a value with the same formats and culture, so `Parse(Format(x))` round-trips. Throws `ArgumentException` when a value cannot be written so that it reads back. |
 | `Template<T>.Pattern` | `Pattern` | The unanchored pattern for one occurrence, with a named group per placeholder. |
 | `Template<T>.ToString()` | `string` | The template text. |
@@ -848,7 +865,7 @@ See [Templates](./templates.md).
 | `StreamMatchOptions.LookbehindContext` | `int` | Characters kept before the scan position for lookbehinds, `\b` and `^`. Default 256. |
 | `StreamMatchOptions.BufferSize` | `int` | Characters read at a time. Default 65536. |
 
-The three options throw `ArgumentOutOfRangeException` for zero or negative values.
+The three options throw `ArgumentOutOfRangeException` for zero or negative values. `StreamMatch.ToString()` returns the position and text, such as `3: "ERR-404"`.
 
 ### Redactor, RedactionStyle and RedactionReport
 
@@ -856,7 +873,7 @@ A `Redactor` finds sensitive values in free text and replaces them. It is immuta
 
 | Member | Returns | Description |
 |--------|---------|-------------|
-| `static Redactor.For(params Pattern[] patterns)` | `Redactor` | A redactor that masks every value the patterns find with `RedactionStyle.Mask`. |
+| `static Redactor.For(params Pattern[] patterns)` | `Redactor` | A redactor that masks every value the patterns find with `RedactionStyle.Mask`. Throws `ArgumentNullException` when the array or an element is `null`. |
 | `Add(Pattern pattern, RedactionStyle? style = null)` | `Redactor` | Also redacts the values this pattern finds. |
 | `Add(ConstrainedPattern pattern, RedactionStyle? style = null)` | `Redactor` | Also redacts the values that pass all of its rules. |
 | `Mask(string text)` | `string` | The redacted text. |
@@ -867,11 +884,13 @@ A `Redactor` finds sensitive values in free text and replaces them. It is immuta
 |-------------------------|-------------|
 | `Mask` | Replaces every letter and digit with `*` and keeps separators: `555-123-4567` becomes `***-***-****`. |
 | `Email` | Keeps the first character and the domain: `a***@example.com`. Values without `@` are masked like `Mask`. |
-| `KeepLast(int count)` | Masks letters and digits except the last `count`. A value with `count` or fewer letters and digits is masked completely. |
-| `KeepFirst(int count)` | Masks letters and digits except the first `count`. |
-| `Label(string label)` | Replaces the whole value with the label, such as `[EMAIL]`. |
-| `Custom(Func<Match, string> replacement)` | Computes the replacement from the match. |
-| `Name`, `LabelText` | The style name as reported, and the label of a `Label` style (otherwise `null`). |
+| `KeepLast(int count)` | Masks letters and digits except the last `count`. A value with `count` or fewer letters and digits is masked completely. Throws `ArgumentOutOfRangeException` for a negative count. |
+| `KeepFirst(int count)` | Masks letters and digits except the first `count`, with the same rules. |
+| `Label(string label)` | Replaces the whole value with the label, such as `[EMAIL]`. Throws `ArgumentNullException` for `null` and `ArgumentException` for an empty label. |
+| `Custom(Func<Match, string> replacement)` | Computes the replacement from the match. The function must not return `null`. |
+| `Name`, `LabelText` | The style name as reported, such as `Mask`, `KeepFirst(2)`, `Label` or `Custom`, and the label of a `Label` style (otherwise `null`). `ToString()` returns `Name`. |
+
+`Mask` and `Email` are static properties; the others are static factory methods. When hits of different patterns overlap, the earliest start wins, then the longest hit, then the pattern registered first.
 
 `RedactionReport` has `Text`, `Spans` (ordered by position) and `HasRedactions`. Each `RedactedSpan` has `Start`, `Length`, `RedactedStart`, `RedactedLength`, `Style`, `Label` and `PatternIndex`. Neither keeps the original values, so a report is safe to log.
 
@@ -936,6 +955,16 @@ Console.WriteLine(invoice.GetLanguageFacts(MatchScope.Substring)); // Substring:
 | `IsChanged` | `bool` | At least one rewrite applied. |
 | `AppliedRewrites` | `IReadOnlyList<string>` | A description of each rewrite, in order, such as `Merged alternation 'a\|b\|c' into '[abc]'`. |
 | `VerifiedEquivalent` | `bool` | Language algebra proved both match the same strings. `false` for non-regular constructs, which were checked on sample inputs only. |
+| `ToString()` | `string` | A summary line followed by one line per rewrite. |
+
+```csharp
+Console.WriteLine(Pattern.FromRegex("(?:a|b|c)(?:x)+").Optimize());
+// prints:
+// Optimized '(?:a|b|c)(?:x)+' to '[abc]x+' (proven equivalent):
+//   - Merged alternation 'a|b|c' into '[abc]'
+//   - Unwrapped redundant group '(?:[abc])'
+//   - Unwrapped redundant group '(?:x)'
+```
 
 ### SafetyReport, SafetyIssue, SafetyIssueKind and RiskLevel
 
@@ -951,6 +980,7 @@ Console.WriteLine(invoice.GetLanguageFacts(MatchScope.Substring)); // Substring:
 | `SafetyIssue.AttackInput` | `string` | An input crafted to trigger the backtracking, or `null`. |
 | `SafetyIssue.Confirmed` | `bool?` | Whether running the attack input exceeded the budget. `null` unless `confirm: true`. |
 | `SafetyIssue.ConfirmationTime` | `TimeSpan?` | How long the confirmation run took. |
+| `SafetyReport.ToString()`, `SafetyIssue.ToString()` | `string` | A multi-line report with the fix and the attack input, and a one-line summary of one issue. |
 
 | Enum | Values |
 |------|--------|
@@ -994,7 +1024,7 @@ Console.WriteLine(invoice.GetLanguageFacts(MatchScope.Substring)); // Substring:
 | `ProfileReport.ToString()` | `string` | A text heatmap with a table of the top hotspots and a verdict. |
 | `ProfileHotspot.Fragment`, `Start`, `Length` | `string`, `int`, `int` | The construct and where it is in the regex text. |
 | `ProfileHotspot.Steps`, `Backtracks`, `Share` | `long`, `long`, `double` | The work spent on it, and its fraction of all steps (0 to 1). |
-| `ProfileOptions.StepBudget` | `long` | The most steps before giving up. Default 1,000,000. |
+| `ProfileOptions.StepBudget` | `long` | The most steps before giving up. Default 1,000,000. Throws `ArgumentOutOfRangeException` for zero or a negative value. |
 
 ### CoverageReport, CoverageItem, CoverageItemKind and PatternCoverage
 
@@ -1003,6 +1033,7 @@ Console.WriteLine(invoice.GetLanguageFacts(MatchScope.Substring)); // Substring:
 | `CoverageReport.Percentage` | `double` | Items exercised at least once, 0 to 100. A pattern without decision points is 100% covered. |
 | `CoverageReport.Items`, `Uncovered` | `IReadOnlyList<CoverageItem>` | Every item in pattern order, and the ones never exercised. |
 | `CoverageReport.InputsRecorded` | `int` | Inputs recorded, matched or not. |
+| `CoverageReport.ToString()` | `string` | A summary line and one line per item, with `✓` or `✗`. |
 | `CoverageItem.Kind`, `Description` | `CoverageItemKind`, `string` | What the decision point is, such as `branch "Mrs"`. |
 | `CoverageItem.Start`, `Length` | `int` | Where the construct is in the regex text. |
 | `CoverageItem.HitCount`, `IsCovered` | `int`, `bool` | How many matches exercised it. |
@@ -1021,13 +1052,16 @@ Property-based testing driven by a pattern.
 |--------|---------|-------------|
 | `static PatternProperty.ForMatching(Pattern pattern, Func<string, bool> property, PropertyOptions? options = null)` | `PropertyResult` | Checks the property for strings the pattern matches. |
 | `static PatternProperty.ForNonMatching(Pattern pattern, Func<string, bool> property, PropertyOptions? options = null)` | `PropertyResult` | Checks the property for strings it does not match, mostly near misses. |
-| `PropertyOptions.Samples` | `int` | Samples to check. Default 100. |
+| `PropertyOptions.Samples` | `int` | Samples to check. Default 100. Throws `ArgumentOutOfRangeException` below 1. |
 | `PropertyOptions.Seed` | `int` | The generation seed. Default 0, so runs are reproducible. |
-| `PropertyOptions.MaxShrinkSteps` | `int` | Candidates tried while shrinking a counterexample. Default 1000; 0 disables shrinking. |
-| `PropertyResult.Passed`, `SamplesTested`, `Seed`, `ShrinkSteps` | | The outcome and how it was reached. |
-| `PropertyResult.Counterexample`, `OriginalCounterexample` | `string` | The shrunk and the first failing input, or `null` when it passed. |
-| `PropertyResult.Exception` | `Exception` | What the property threw for the counterexample, or `null`. |
-| `PropertyResult.ThrowIfFailed()` | `void` | Throws `PropertyFailedException` (with a `Result` property) when the property failed. |
+| `PropertyOptions.MaxShrinkSteps` | `int` | Candidates tried while shrinking a counterexample. Default 1000; 0 disables shrinking. Throws `ArgumentOutOfRangeException` for a negative value. |
+| `PropertyResult.Passed` | `bool` | The property held for every sample. |
+| `PropertyResult.SamplesTested`, `Seed`, `ShrinkSteps` | `int` | How many samples ran, the seed used and the shrink candidates tried. |
+| `PropertyResult.Counterexample`, `OriginalCounterexample` | `string?` | The shrunk and the first failing input, or `null` when it passed. |
+| `PropertyResult.Exception` | `Exception?` | What the property threw for the counterexample, or `null`. |
+| `PropertyResult.ThrowIfFailed()` | `void` | Throws `PropertyFailedException` when the property failed. |
+| `PropertyResult.ToString()` | `string` | A readable summary with the counterexample. |
+| `PropertyFailedException.Result` | `PropertyResult?` | The failed result. The exception also has the three standard exception constructors. |
 
 ```csharp
 Pattern sku = Pattern.With.StartOfLine.Letter.Repeat.Times(3).Literal("-").Digit.Repeat.Times(4).EndOfLine;
@@ -1119,7 +1153,7 @@ Console.WriteLine(anchoredByLine.ToLike(LikeDialect.Standard, MatchScope.FullStr
 
 ### GeneratePatternAttribute
 
-Evaluates a static `Pattern` field or property at build time and generates a `{Member}Source` string constant and a method that returns a cached `Regex`. The containing type must be `partial`.
+Evaluates a static `Pattern` field or property at build time and generates a `{Member}Source` string constant and a method that returns a cached `Regex`. The containing type must be `partial` (`FRX002`) and the member `static` (`FRX009`). The attribute applies to fields and properties, once per member.
 
 | Member | Description |
 |--------|-------------|
@@ -1152,7 +1186,7 @@ public static partial class Patterns
 
 :::warning
 
-The build-time evaluator supports the core builder (anchors, matchers, literals, sets, ranges, Unicode categories and blocks, quantifiers, groups, assertions, composition, `WithOptions`, `WithTimeout`, `WithAsciiDigits`) and `CommonPatterns`. Members such as `AsciiDigit`, `Script`, `LetterIn`, `DigitIn`, `CodePoint`, `Grapheme` and `IgnoreDiacritics` cannot be evaluated: the analyzer reports `FRX001` and no method is generated. In the sample above, `Digit` with `WithAsciiDigits()` is used instead of `AsciiDigit` for that reason.
+The build-time evaluator supports the core builder (anchors, matchers, literals, sets, ranges, Unicode categories and blocks, quantifiers, groups, assertions, composition, `FromRegex`, `WithOptions`, `WithTimeout`, `WithAsciiDigits`, `WithDigits`) and `CommonPatterns`. Members such as `AsciiDigit`, `Script`, `LetterIn`, `DigitIn`, `CodePoint`, `Grapheme`, `IgnoreDiacritics` and `UseNonBacktracking` cannot be evaluated: the analyzer reports `FRX001` (for example `'UseNonBacktracking' cannot be evaluated at compile time`) and no method is generated. In the sample above, `Digit` with `WithAsciiDigits()` is used instead of `AsciiDigit` for that reason.
 
 :::
 
@@ -1196,10 +1230,10 @@ Translates patterns to the database's regex dialect in LINQ queries, CHECK const
 |--------|---------|-------------|
 | `UseFluentRegex(this DbContextOptionsBuilder builder, Action<FluentRegexOptionsBuilder>? configure = null)` | `DbContextOptionsBuilder` | Enables translation and CHECK constraints. The dialect is detected from the provider: Npgsql, Pomelo MySQL/MariaDB, SQL Server or SQLite. |
 | `UseFluentRegex<TContext>(this DbContextOptionsBuilder<TContext> builder, Action<FluentRegexOptionsBuilder>? configure = null)` | `DbContextOptionsBuilder<TContext>` | The generic version. |
-| `UseDialect(SqlDialect dialect)` | `FluentRegexOptionsBuilder` | Overrides detection. Needed for unknown providers and to choose `SqlServer2025` when the provider's compatibility level is not set. |
+| `UseDialect(SqlDialect dialect)` | `FluentRegexOptionsBuilder` | Overrides detection. Needed for unknown providers and to choose `SqlServer2025` when the provider's compatibility level is not set. Like `UseLikeFallback` and `UseLikeCollation`, it throws `ArgumentOutOfRangeException` for an undefined enum value. |
 | `UseIndexHints(bool enabled = true)` | `FluentRegexOptionsBuilder` | Adds proven conditions such as `column LIKE 'prefix%'` and a length bound next to the regex, so a B-tree index can narrow the scan. On by default. |
 | `UseLikeFallback(LikeFallback fallback)` | `FluentRegexOptionsBuilder` | How patterns translate on SQL Server before 2025. Default `ExactOnly`. |
-| `UseLikeCollation(LikeCollation collation)` | `FluentRegexOptionsBuilder` | States whether SQL Server columns use a binary collation (`_BIN2`, `_BIN`). With the default, `CaseInsensitive`, LIKE comparisons are wrapped in `COLLATE Latin1_General_100_BIN2`. |
+| `UseLikeCollation(LikeCollation collation)` | `FluentRegexOptionsBuilder` | States whether SQL Server columns use a binary collation (`_BIN2`, `_BIN`). With the default, `CaseInsensitive`, LIKE comparisons are wrapped in `COLLATE Latin1_General_100_BIN2` and the index-hint prefix is omitted. Declare `Binary` to drop the `COLLATE` and get the prefix hint. Other databases ignore this setting. |
 | `AddCheckConstraintsFromAttributes(bool enabled = true)` | `FluentRegexOptionsBuilder` | Creates a CHECK constraint for every string property with `[MatchesPattern]`. A `ConstrainedPattern` contributes only its pattern; its rules run in .NET only. |
 
 ```csharp
@@ -1222,10 +1256,10 @@ options
 | Member | Returns | Description |
 |--------|---------|-------------|
 | `PatternFunctions.Matches(string? value, Pattern pattern)` | `bool` | `true` when the pattern matches anywhere in the value; `false` for `null`. Translated to the dialect's regex predicate. |
-| `PatternFunctions.Group(string? value, Pattern pattern, string groupName)` | `string` | The named group in the first match, or `null`. Translated on PostgreSQL and SQL Server 2025. |
-| `PatternFunctions.Group(string? value, Pattern pattern, int groupNumber)` | `string` | The numbered group in the first match, or `null`. |
-| `PatternFunctions.Replace(string? value, Pattern pattern, string replacement)` | `string` | Replaces every match; .NET replacement syntax. Translated on PostgreSQL, MySQL, MariaDB and SQL Server 2025. |
-| `EF.Functions.Matches(...)`, `EF.Functions.Group(...)`, `EF.Functions.Replace(...)` | | The same functions as `DbFunctions` extensions. They work only inside a query. |
+| `PatternFunctions.Group(string? value, Pattern pattern, string groupName)` | `string?` | The named group in the first match, or `null`. Translated on PostgreSQL and SQL Server 2025. |
+| `PatternFunctions.Group(string? value, Pattern pattern, int groupNumber)` | `string?` | The numbered group in the first match, or `null`. |
+| `PatternFunctions.Replace(string? value, Pattern pattern, string replacement)` | `string?` | Replaces every match; .NET replacement syntax. `null` stays `null`. Translated on PostgreSQL, MySQL, MariaDB and SQL Server 2025. |
+| `EF.Functions.Matches(...)`, `EF.Functions.Group(...)`, `EF.Functions.Replace(...)` | | The same functions as `DbFunctions` extensions, declared in `FluentRegexDbFunctionsExtensions`. They work only inside a query; evaluated in .NET they throw `InvalidOperationException`. |
 
 `PatternFunctions` also run in .NET outside a query, with the same results, so one expression works against a database and in memory.
 
@@ -1233,25 +1267,27 @@ options
 
 | Member | Returns | Description |
 |--------|---------|-------------|
-| `WhereMatches<T>(this IQueryable<T> source, Expression<Func<T, string>> selector, Pattern pattern)` | `IQueryable<T>` | Filters entirely in SQL. Throws like the translator when the dialect cannot express the pattern. |
-| `MatchingAsync<T>(this IQueryable<T> source, Expression<Func<T, string>> selector, Pattern pattern, CancellationToken cancellationToken = default)` | `IAsyncEnumerable<T>` | Works on every database: SQL applies a proven superset (exact regex, or a `LIKE` and length bound, or only a NULL check) and .NET applies the exact pattern. |
+| `WhereMatches<T>(this IQueryable<T> source, Expression<Func<T, string?>> selector, Pattern pattern)` | `IQueryable<T>` | Filters entirely in SQL, with index hints. Throws like the translator when the dialect cannot express the pattern. |
+| `MatchingAsync<T>(this IQueryable<T> source, Expression<Func<T, string?>> selector, Pattern pattern, CancellationToken cancellationToken = default)` | `IAsyncEnumerable<T>` | Works on every database: SQL applies a proven superset (exact regex, or a `LIKE` and length bound, or only a NULL check) and .NET applies the exact pattern. |
 | `MatchingAsync<T>(..., ConstrainedPattern pattern, CancellationToken cancellationToken = default)` | `IAsyncEnumerable<T>` | The same; the rules run in .NET. |
 | `ToMatchingListAsync<T>(..., Pattern pattern, CancellationToken cancellationToken = default)` | `Task<List<T>>` | Loads the matching rows into a list. |
 | `ToMatchingListAsync<T>(..., ConstrainedPattern pattern, CancellationToken cancellationToken = default)` | `Task<List<T>>` | The same with rules. |
+
+All five throw `ArgumentNullException` for a `null` argument. Rows come back in query order.
 
 ### HasPattern, SqlRegex and the enums
 
 | Member | Returns | Description |
 |--------|---------|-------------|
-| `HasPattern<TProperty>(this PropertyBuilder<TProperty> builder, Pattern pattern, string? constraintName = null)` | `PropertyBuilder<TProperty>` | Adds a CHECK constraint that every non-null value must pass. Same semantics as `IsMatch`, so anchor the pattern to constrain the whole value. |
-| `SqlRegex.Condition(string columnSql, Pattern pattern, SqlDialect dialect)` | `string` | A raw SQL condition for Dapper, ADO.NET or migrations. On `SqlServer` it returns the exact `LIKE` translation under `COLLATE Latin1_General_100_BIN2`, or throws `InvalidOperationException` when there is none. |
+| `HasPattern<TProperty>(this PropertyBuilder<TProperty> builder, Pattern pattern, string? constraintName = null)` | `PropertyBuilder<TProperty>` | Adds a CHECK constraint that every non-null value must pass. Same semantics as `IsMatch`, so anchor the pattern to constrain the whole value. The default name is `CK_{Table}_{Column}_Pattern`. Requires `UseFluentRegex()`. Throws `InvalidOperationException` for a property that is not a `string`; on `SqlDialect.SqlServer` model building throws when the pattern has no exact `LIKE` form. |
+| `SqlRegex.Condition(string columnSql, Pattern pattern, SqlDialect dialect)` | `string` | A raw SQL condition for Dapper, ADO.NET or migrations, true when the column contains a match. NULL never matches. On `SqlServer` it returns the exact `LIKE` translation under `COLLATE Latin1_General_100_BIN2`, or throws `InvalidOperationException` when there is none. Throws `ArgumentException` for a blank column and `NotSupportedException` when the dialect cannot express the pattern. |
 | `SqlRegex.Condition(string columnSql, Pattern pattern, SqlDialect dialect, LikeCollation collation)` | `string` | The same, stating the column's collation. With `Binary` on SQL Server, no `COLLATE` is added, so an index can be used. |
 
 | Enum or class | Values |
 |---------------|--------|
 | `SqlDialect` | `PostgreSql` (0), `MySql` (1), `MariaDb` (2), `SqlServer2025` (3), `SqlServer` (4): before 2025, no regex, LIKE only, `Sqlite` (5). |
 | `LikeFallback` | `ExactOnly` (0): LIKE only when exact, otherwise throw (the default). `AllowSuperset` (1): a superset LIKE plus a logged warning. `Never` (2): every pattern throws. |
-| `FluentRegexEventId` | `LikeSupersetFallback` and `TranslationWarning`, both `static readonly EventId`, for `ConfigureWarnings`. |
+| `FluentRegexEventId` | `LikeSupersetFallback` (id 79000) and `TranslationWarning` (id 79001), both `static readonly EventId` named `Microsoft.EntityFrameworkCore.Query.LikeSupersetFallback` and `Microsoft.EntityFrameworkCore.Query.TranslationWarning`, for `ConfigureWarnings`. |
 
 ```csharp
 using System;
@@ -1270,6 +1306,7 @@ Console.WriteLine(query.ToQueryString());
 
 Console.WriteLine(SqlRegex.Condition("\"Sku\"", ShopPatterns.Sku, SqlDialect.PostgreSql)); // "Sku" ~ '\A[A-Z]{3}-[0-9]{4}\Z'
 Console.WriteLine(SqlRegex.Condition("[Sku]", ShopPatterns.Prefix, SqlDialect.SqlServer));  // [Sku] COLLATE Latin1_General_100_BIN2 LIKE N'ABC-%'
+Console.WriteLine(SqlRegex.Condition("[Sku]", ShopPatterns.Prefix, SqlDialect.SqlServer, LikeCollation.Binary)); // [Sku] LIKE N'ABC-%'
 
 public static class ShopPatterns
 {
@@ -1317,18 +1354,20 @@ Named patterns for ASP.NET Core and the `pattern` route constraint. See [ASP.NET
 |--------|---------|-------------|
 | `AddFluentPatterns(this IServiceCollection services, Action<PatternRegistry> configure)` | `IServiceCollection` | Registers a `PatternRegistry` singleton and the `pattern` route constraint. Calling it again adds to the same registry. In `Microsoft.Extensions.DependencyInjection`. |
 | `FluentPatternsServiceCollectionExtensions.ConstraintName` | `const string` | `"pattern"`, as in `{id:pattern(sku)}`. |
-| `PatternRegistry.Add(string name, Pattern pattern)` | `PatternRegistry` | Registers a pattern. Route values must match it completely. Throws `ArgumentException` for a duplicate name. |
+| `PatternRegistry.Add(string name, Pattern pattern)` | `PatternRegistry` | Registers a pattern. Route values must match it completely. Throws `ArgumentException` for a blank or already registered name (compared ignoring case). |
 | `PatternRegistry.Add(string name, ConstrainedPattern pattern)` | `PatternRegistry` | Registers a pattern with rules; every rule must also pass. |
 | `PatternRegistry.Get(string name)` | `ConstrainedPattern` | The registered pattern. Throws `InvalidOperationException` that lists the registered names when it is missing. |
 | `PatternRegistry.TryGet(string name, out ConstrainedPattern? pattern)` | `bool` | The same without throwing. |
 | `PatternRegistry.Contains(string name)` | `bool` | A pattern with the name exists. |
 | `PatternRegistry.Names` | `IReadOnlyList<string>` | Registered names in ordinal order. |
-| `PatternRouteConstraint(PatternRegistry registry, string name)` | | The constraint behind `pattern(name)`. `Name` and `Pattern` return its settings; `Match(...)` accepts a route value only when it matches the whole pattern and every rule passes. |
+| `PatternRouteConstraint(PatternRegistry registry, string name)` | | The constraint behind `pattern(name)`, an `IRouteConstraint`. Throws `InvalidOperationException` when no pattern has that name, so a typo fails when the route table is built. `Name` and `Pattern` (a `ConstrainedPattern`) return its settings; `Match(...)` accepts a route value only when it matches the whole pattern and every rule passes. |
 
-Names are case-insensitive. The registry is thread-safe.
+Names are case-insensitive. The registry is thread-safe. A route value is validated like `ConstrainedPattern.IsValid`, so even a pattern anchored with `^...$` rejects a value with a trailing newline (`/products/ABC-1234%0A` returns 404).
 
 ```csharp
+using System;
 using Masterly.FluentRegex;
+using Masterly.FluentRegex.AspNetCore;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -1347,6 +1386,10 @@ app.MapGet("/cards/{number:pattern(card)}", (string number) => "Valid card");
 // GET /cards/4111111111111111     -> 200
 // GET /cards/4111111111111112     -> 404 (fails the Luhn rule)
 
+PatternRegistry registry = app.Services.GetRequiredService<PatternRegistry>();
+Console.WriteLine(string.Join(",", registry.Names)); // card,sku
+Console.WriteLine(registry.Contains("SKU"));         // True
+
 public static class ShopPatterns
 {
     public static readonly Pattern Sku =
@@ -1364,7 +1407,7 @@ Theory data attributes for xUnit v3 that generate test strings from a pattern. T
 |--------|-------------|
 | `MatchingDataAttribute(Type patternSource, string memberName)` | Supplies strings the pattern matches. |
 | `NonMatchingDataAttribute(Type patternSource, string memberName)` | Supplies strings the pattern does not match, mostly near misses. |
-| `PatternDataAttribute` | The abstract base. `PatternSource`, `MemberName`, `Count` (default 25), `Seed` (default 0). Derive from it and override `protected abstract string[] Generate(Pattern pattern, int count, int seed)` for your own samples. |
+| `PatternDataAttribute` | The abstract base, derived from xUnit's `DataAttribute`. `PatternSource`, `MemberName`, `Count` (default 25; fewer rows when the pattern has fewer distinct samples) and `Seed` (default 0). To supply your own samples, derive from it with a `protected` constructor call `base(patternSource, memberName)` and override both `protected abstract string SampleKind { get; }` (the word used in error messages, such as `"matching"`) and `protected abstract string[] Generate(Pattern pattern, int count, int seed)`. |
 
 ```csharp
 using Masterly.FluentRegex;
@@ -1396,7 +1439,8 @@ public class SkuTests
 ```
 
 - Each attribute supplies one `string` per row, so the theory's first parameter must accept a `string`.
-- The attributes throw `InvalidOperationException` with a clear message when `Count` is below 1, the member is missing, is not a `Pattern` or returns `null`, or no samples could be generated.
+- The constructors throw `ArgumentNullException` for a `null` type or member name and `ArgumentException` for a blank member name.
+- When xUnit asks for data, the attributes throw `InvalidOperationException` with a clear message when `Count` is below 1, the theory's first parameter does not accept a `string`, the member is missing, is not a `Pattern` or returns `null`, or no samples could be generated.
 - Rows are deterministic, so they are listed during test discovery. Both attributes can be applied more than once.
 
 ## Masterly.FluentRegex.AI
@@ -1405,8 +1449,8 @@ Drafts a pattern from a plain-English description with Claude, then verifies eve
 
 | Member | Returns | Description |
 |--------|---------|-------------|
-| `PatternAssistant(HttpClient httpClient, PatternAssistantOptions options)` | | Throws `ArgumentNullException` for `null` arguments and `ArgumentException` or `ArgumentOutOfRangeException` for invalid options, such as a missing API key. |
-| `DraftAsync(string description, IEnumerable<string>? shouldMatch = null, IEnumerable<string>? shouldNotMatch = null, CancellationToken cancellationToken = default)` | `Task<PatternDraft>` | Asks for a regex, verifies it and sends failures back as feedback, up to `MaxAttempts` drafts. Positive examples must match the whole string; negative examples must not match anywhere. Throws `PatternAssistantException` when the API cannot produce a draft. |
+| `PatternAssistant(HttpClient httpClient, PatternAssistantOptions options)` | | The options are copied, so later changes have no effect, and the `HttpClient` is not disposed. Throws `ArgumentNullException` for `null` arguments and `ArgumentException` or `ArgumentOutOfRangeException` for invalid options, such as a missing API key. |
+| `DraftAsync(string description, IEnumerable<string>? shouldMatch = null, IEnumerable<string>? shouldNotMatch = null, CancellationToken cancellationToken = default)` | `Task<PatternDraft>` | Asks for a regex, verifies it and sends failures back as feedback, up to `MaxAttempts` drafts. Returns the first draft that passes, or the best failed one. Positive examples must match the whole string; negative examples must not match anywhere. Throws `ArgumentException` for an empty description or a `null` example, `PatternAssistantException` when the API returns an error, times out, is unreachable or declines, and `OperationCanceledException` when cancelled. |
 
 | `PatternAssistantOptions` property | Default | Description |
 |------------------------------------|---------|-------------|
@@ -1419,10 +1463,20 @@ Drafts a pattern from a plain-English description with Claude, then verifies eve
 | `BaseAddress` | `https://api.anthropic.com/` | The API root. |
 | `UseServerSideFallback` | `true` | Retry a declined request on Anthropic's fallback model. Turn it off for gateways that do not support it. |
 
+`DefaultModel` and `DefaultEffort` are public constants. `ToString()` describes the settings with the key hidden:
+
+```csharp
+using System;
+using Masterly.FluentRegex.AI;
+
+Console.WriteLine(new PatternAssistantOptions());
+// Model = claude-opus-5-5, MaxAttempts = 3, BaseAddress = https://api.anthropic.com/, Timeout = 00:05:00, MaxTokens = 16000, Effort = medium, ApiKey = <not set>
+```
+
 | Type | Members |
 |------|---------|
 | `PatternDraft` | `Pattern` (`null` when no valid syntax was produced), `Regex`, `Explanation`, `Passed`, `Attempts`, `Verification`. When no draft passed, this is the best failed attempt. |
-| `PatternVerification` | `IsValidSyntax`, `SyntaxError`, `SafetyReport`, `HasSafetyFindings`, `RejectedPositives`, `AcceptedNegatives`, `Samples` (up to five generated matches), `Passed`. |
+| `PatternVerification` | `IsValidSyntax`, `SyntaxError`, `SafetyReport`, `HasSafetyFindings`, `RejectedPositives`, `AcceptedNegatives`, `Samples` (up to five generated matches), `Passed`. `Passed` means valid syntax, no safety findings (any `SafetyReport` issue, even `Low`), no rejected positives and no accepted negatives. |
 | `PatternAssistantException` | `StatusCode`, `ErrorType`, `RequestId`, `RetryAfter`, `IsTransient` (rate limits, overload, server errors, timeouts and network failures). |
 
 ```csharp
