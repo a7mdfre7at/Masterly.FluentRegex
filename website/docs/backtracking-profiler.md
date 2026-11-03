@@ -637,7 +637,7 @@ Engine   agrees with the .NET engine
     11.1%            1            0  l  (at 3)
     11.1%            1            0  o  (at 4)
 
-Verdict  cheap: 1 steps per input character.
+Verdict  cheap: 1 step per input character.
 ```
 
 | Option | Meaning |

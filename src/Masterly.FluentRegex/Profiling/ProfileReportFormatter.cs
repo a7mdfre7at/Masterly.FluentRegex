@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 
 namespace Masterly.FluentRegex.Profiling;
@@ -148,7 +149,8 @@ internal static class ProfileReportFormatter
         }
 
         double perChar = (double)run.Interpreter.Steps / Math.Max(1, run.InputLength);
-        string rate = FormattableString.Invariant($"{perChar:0.#} steps per input character");
+        string perCharText = perChar.ToString("0.#", CultureInfo.InvariantCulture);
+        string rate = perCharText + (perCharText == "1" ? " step" : " steps") + " per input character";
         if (perChar <= CheapStepsPerChar)
         {
             return $"cheap: {rate}.";

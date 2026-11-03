@@ -37,7 +37,7 @@ fluentregex compare '\d+' '[0-9]+'
 # Not equivalent (left is a proper superset of right). Shortest counterexample: "٠"
 
 fluentregex export '^INV-[0-9]{4}\z' --to like --dialect sqlserver --column '[Number]'
-# [Number] LIKE 'INV-[0-9][0-9][0-9][0-9]'
+# [Number] LIKE N'INV-[0-9][0-9][0-9][0-9]'
 # exact: LIKE accepts exactly the strings the pattern accepts (proven)
 ```
 

@@ -625,7 +625,7 @@ Pattern.With
     .Digit.Repeat.Times(7, 15)
     .EndOfLine;
 
-4 regex literal(s) converted.
+3 regex literal(s) converted. 1 skipped as invalid.
 ```
 
 - Each result starts with a comment that gives the file, the line and column of the string literal, where it was found, and the original regex. The code ends with `;`, ready to paste.
@@ -634,7 +634,7 @@ Pattern.With
 - A regex in a constant, a variable or an interpolated string is not found. The tool reads the source text and does not resolve symbols. For the same reason, the type must be written as `Regex` or `System.Text.RegularExpressions.Regex`: a target-typed `new(@"...")` assigned to a `Regex` field is not found.
 - An invalid regex is reported with `// skipped:` and does not stop the run.
 - In a folder, files under `bin`, `obj`, `.git` and `node_modules` are skipped. Files are processed in path order.
-- The code goes to standard output. The final count goes to standard error, so `fluentregex convert --file src > converted.cs` writes only code. The count includes skipped literals.
+- The code goes to standard output. The final count goes to standard error, so `fluentregex convert --file src > converted.cs` writes only code. Skipped literals are counted separately.
 - `--options` and `--ascii-digits` are not used with `--file`. Each literal keeps the options found next to it in the source.
 - The command exits with 0, even when some literals were skipped. A path that does not exist exits with 2.
 

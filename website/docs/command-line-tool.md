@@ -164,11 +164,6 @@ error: Unknown command 'bogus'. Run 'fluentregex --help'.
 
 A few failures are not turned into code 2. A `--count` or `--seed` value too large for a 32-bit integer, or `diagram --output` into a folder that does not exist, ends with the .NET runtime's `Unhandled exception.` message and its crash exit code (for example `-532462766` on Windows). In CI, treat any code other than `0` and `1` as a broken step.
 
-:::note
-
-The built-in help text says exit code 1 means "findings at or above --fail-on (analyze/scan)". That line is incomplete: `analyze` has no `--fail-on` option, and `compare`, `profile` and `coverage` also return 1, as listed above.
-
-:::
 
 ## Output encoding
 

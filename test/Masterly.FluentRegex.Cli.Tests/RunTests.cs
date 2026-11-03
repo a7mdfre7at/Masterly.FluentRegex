@@ -15,7 +15,7 @@ public sealed class RunTests : CliTestBase
 
         result.ExitCode.ShouldBe(UsageError);
         result.Output.ShouldStartWith(UsageHeader);
-        result.Output.ShouldContain("Exit codes: 0 success, 1 findings at or above --fail-on (analyze/scan), 2 usage or input error.");
+        result.Output.ShouldContain("1  a finding: analyze (High risk), scan (findings at or above --fail-on), compare (not");
         result.Error.ShouldBeEmpty();
     }
 

@@ -59,7 +59,7 @@ public sealed class ConvertCommandTests : CliTestBase
         result.OutputLines[2].ShouldBeEmpty();
         result.OutputLines[3].ShouldBe($"// {path}(5,30) new Regex: (");
         result.OutputLines[4].ShouldStartWith("// skipped: The regular expression is invalid");
-        result.Error.ShouldBe("2 regex literal(s) converted." + Environment.NewLine);
+        result.Error.ShouldBe("1 regex literal(s) converted. 1 skipped as invalid." + Environment.NewLine);
     }
 
     [Fact]

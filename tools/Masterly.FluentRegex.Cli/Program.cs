@@ -51,7 +51,11 @@ namespace Masterly.FluentRegex.Cli
               --help, -h         Show this help
               --version          Show the version
 
-            Exit codes: 0 success, 1 findings at or above --fail-on (analyze/scan), 2 usage or input error.
+            Exit codes:
+              0  success
+              1  a finding: analyze (High risk), scan (findings at or above --fail-on), compare (not
+                 equivalent), profile (step budget exhausted), coverage (something not covered)
+              2  usage or input error
             """;
 
         public static int Run(string[] args)
@@ -108,25 +112,28 @@ namespace Masterly.FluentRegex.Cli
                 return Ok;
             }
 
-            int count = 0;
+            int converted = 0;
+            int skipped = 0;
             foreach (string path in RegexLiteralFinder.CSharpFiles(file))
             {
                 foreach (RegexLiteral literal in RegexLiteralFinder.Find(path))
                 {
-                    count++;
                     Console.WriteLine($"// {Relative(literal.File)}({literal.Line},{literal.Column}) {literal.Kind}: {literal.Pattern}");
                     try
                     {
                         Console.WriteLine(Pattern.FromRegex(literal.Pattern, literal.Options).ToFluentCode() + ";");
+                        converted++;
                     }
                     catch (ArgumentException ex)
                     {
                         Console.WriteLine("// skipped: " + ex.Message);
+                        skipped++;
                     }
                     Console.WriteLine();
                 }
             }
-            Console.Error.WriteLine($"{count} regex literal(s) converted.");
+            string skippedText = skipped > 0 ? $" {skipped} skipped as invalid." : string.Empty;
+            Console.Error.WriteLine($"{converted} regex literal(s) converted.{skippedText}");
             return Ok;
         }
 

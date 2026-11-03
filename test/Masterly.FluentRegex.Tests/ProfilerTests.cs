@@ -266,6 +266,14 @@ public class ProfilerTests
     }
 
     [Fact]
+    public void ToString_OneStepPerCharacter_UsesTheSingular()
+    {
+        string text = Pattern.FromRegex("abc").Profile("abc").ToString();
+
+        text.ShouldContain("Verdict  cheap: 1 step per input character.");
+    }
+
+    [Fact]
     public void ProfileHotspot_ToString_SummarizesTheConstruct()
     {
         ProfileHotspot hotspot = Pattern.With.Digit.Repeat.OneOrMore.Profile("12").Hotspots.Single();
