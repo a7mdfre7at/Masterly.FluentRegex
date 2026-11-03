@@ -1,0 +1,96 @@
+name: Docs
+
+# Builds the documentation site (website/) and the browser playground (playground/) and deploys both to
+# GitHub Pages as one site: the docs at /<repository>/ and the playground at /<repository>/playground/.
+# GitHub Pages serves one site per repository, so both must ship in a single deployment.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'website/**'
+      - 'playground/**'
+      - 'src/Masterly.FluentRegex/**'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'website/**'
+      - 'playground/**'
+      - 'src/Masterly.FluentRegex/**'
+      - '.github/workflows/docs.yml'
+
+permissions:
+  contents: read
+
+# A newer push to a pull request cancels the older check. A master deployment that has started is never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # Full history, so each page can show when it was last updated.
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install dependencies
+        working-directory: website
+        run: npm ci
+
+      # Fails on any broken link or anchor, so a pull request cannot merge a dead link.
+      - name: Build docs
+        working-directory: website
+        run: npm run build
+
+      - name: Publish playground
+        run: dotnet publish playground/Masterly.FluentRegex.Playground -c Release -o publish
+
+      - name: Add playground to the site
+        run: |
+          # The playground is served from /<repository>/playground/, not from the domain root.
+          sed -i 's|<base href="/" />|<base href="/${{ github.event.repository.name }}/playground/" />|' publish/wwwroot/index.html
+          mkdir -p website/build/playground
+          cp -r publish/wwwroot/. website/build/playground/
+
+      - name: Upload site
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: website/build
+
+  deploy:
+    name: Deploy to GitHub Pages
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5
