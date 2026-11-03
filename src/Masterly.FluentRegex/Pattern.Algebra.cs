@@ -43,19 +43,22 @@ public partial class Pattern
     /// <param name="other">The pattern to compare with.</param>
     /// <returns>True when the languages are equal.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="other"/> is null.</exception>
-    public bool IsEquivalentTo(Pattern other) => Compare(this, other).Relation == PatternRelation.Equivalent;
+    public bool IsEquivalentTo(Pattern other) => Compare(this, CheckedOther(other)).Relation == PatternRelation.Equivalent;
 
     /// <summary>Returns true when every string this pattern matches is also matched by <paramref name="other"/>.</summary>
     /// <param name="other">The candidate superset.</param>
     /// <returns>True when this language is contained in the other.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="other"/> is null.</exception>
-    public bool IsSubsetOf(Pattern other) => Compare(this, other).OnlyLeftExample == null;
+    public bool IsSubsetOf(Pattern other) => Compare(this, CheckedOther(other)).OnlyLeftExample == null;
 
     /// <summary>Returns true when at least one string is matched by both patterns.</summary>
     /// <param name="other">The pattern to compare with.</param>
     /// <returns>True when the languages intersect.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="other"/> is null.</exception>
-    public bool Overlaps(Pattern other) => Compare(this, other).CommonExample != null;
+    public bool Overlaps(Pattern other) => Compare(this, CheckedOther(other)).CommonExample != null;
+
+    // Reports the caller's parameter name, rather than Compare's "right".
+    private static Pattern CheckedOther(Pattern other) => other ?? throw new ArgumentNullException(nameof(other));
 
     /// <summary>Returns true when no string at all matches this pattern in full.</summary>
     /// <returns>True when the language is empty.</returns>

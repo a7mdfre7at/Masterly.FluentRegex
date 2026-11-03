@@ -174,6 +174,45 @@ public class BuilderTests
         Pattern.With.UnicodeBlock("Greek").IsMatch("λ").ShouldBeTrue();
     }
 
+    [Theory]
+    [InlineData("isGreek")]
+    [InlineData("ISGreek")]
+    public void UnicodeBlock_LowercaseOrUppercaseIsPrefix_IsRecognised(string name)
+    {
+        Pattern pattern = Pattern.With.UnicodeBlock(name);
+
+        pattern.ToString().ShouldBe(@"\p{IsGreek}");
+    }
+
+    [Fact]
+    public void UnicodeBlock_UnknownName_ThrowsWhenBuilt()
+    {
+        ArgumentException exception = Should.Throw<ArgumentException>(() => Pattern.With.UnicodeBlock("Klingon"));
+
+        exception.ParamName.ShouldBe("blockName");
+        exception.Message.ShouldContain("Unknown Unicode block 'Klingon'");
+    }
+
+    [Fact]
+    public void AnyOfAndNoneOf_Null_ThrowArgumentNullException()
+    {
+        Should.Throw<ArgumentNullException>(() => Pattern.With.AnyOf(null!)).ParamName.ShouldBe("characters");
+        Should.Throw<ArgumentNullException>(() => Pattern.With.NoneOf(null!)).ParamName.ShouldBe("characters");
+    }
+
+    [Fact]
+    public void AnyOfAndNoneOf_Empty_ThrowArgumentException()
+    {
+        Should.Throw<ArgumentException>(() => Pattern.With.AnyOf(string.Empty)).ParamName.ShouldBe("characters");
+        Should.Throw<ArgumentException>(() => Pattern.With.NoneOf(string.Empty)).ParamName.ShouldBe("characters");
+    }
+
+    [Fact]
+    public void LiteralCharacters_Null_NamesTheParameter()
+    {
+        Should.Throw<ArgumentNullException>(() => Pattern.With.Literal((char[])null!)).ParamName.ShouldBe("characters");
+    }
+
     [Fact]
     public void Unicode_InsideSet()
     {

@@ -221,7 +221,7 @@ Console.WriteLine(notQuote.IsMatch("x"));      // True
 | `AnyOf(characters)` | `Set(Pattern.With.Literal(characters))` | `[abc]` |
 | `NoneOf(characters)` | `NegatedSet(Pattern.With.Literal(characters))` | `[^abc]` |
 
-- Both throw `ArgumentException` ("At least one character is required.") for an empty string, and also for `null`. They do not throw `ArgumentNullException`.
+- Both throw `ArgumentNullException` for `null` and `ArgumentException` ("At least one character is required.") for an empty string.
 - Duplicates are kept. `AnyOf("aa")` renders `[aa]`, which matches the same as `[a]`.
 - Use `Set` instead when you need ranges or class members next to the listed characters.
 
@@ -355,21 +355,15 @@ Pattern kana = Pattern.With.Set(Pattern.With.UnicodeBlock("Hiragana").UnicodeBlo
 Console.WriteLine(kana);                                                       // prints: [\p{IsHiragana}\p{IsKatakana}]
 ```
 
-- Pass the .NET block name with or without the `Is` prefix. The library adds `Is` when the name does not start with it.
-- The prefix check is case-sensitive. `UnicodeBlock("isGreek")` renders `\p{IsisGreek}`, which is not a valid block. Write `Greek` or `IsGreek`.
+- Pass the .NET block name with or without the `Is` prefix. The prefix may be written in any case: `UnicodeBlock("isGreek")` renders `\p{IsGreek}`.
 - The name may contain only letters, digits, `-` and `_`. Anything else, such as a space, throws `ArgumentException` ("Invalid Unicode block name 'Greek Extended'."). An empty or `null` name throws `ArgumentException` ("A block name is required.").
-- The builder does not know the list of block names. A well-formed but unknown name is accepted, and the regex fails when it is first used:
+- The name must be a block that .NET knows. An unknown name throws `ArgumentException` when you build the pattern, not later when it runs:
 
 ```csharp
 // blockName comes from your application, for example "Klingon"
-Pattern unknown = Pattern.With.UnicodeBlock(blockName);
-
-Console.WriteLine(unknown);            // prints: \p{IsKlingon}
-Console.WriteLine(unknown.IsValid());  // False
-unknown.IsMatch("a");                  // throws RegexParseException, which derives from ArgumentException
+Pattern.With.UnicodeBlock(blockName);
+// throws ArgumentException: Unknown Unicode block 'Klingon'. Use a .NET block name such as 'Greek', 'IsGreek' or 'BasicLatin'. (Parameter 'blockName')
 ```
-
-When the name is a constant, the bundled analyzer reports an unknown block at build time as error `FRX003`.
 
 :::tip
 
@@ -607,7 +601,7 @@ Console.WriteLine(sku.Explain());
 | `Tab`, `Newline`, `CarriageReturn` | `\t`, `\n`, `\r` | Same | |
 | `Unicode(group)`, `NotUnicode(group)` | `\p{L}`, `\P{L}` | Same | `ArgumentOutOfRangeException` for an undefined value |
 | `Unicode(category)`, `NotUnicode(category)` | `\p{Lu}`, `\P{Lu}` | Same | `ArgumentOutOfRangeException` for an undefined value |
-| `UnicodeBlock(blockName)` | `\p{IsGreek}` | Same | `ArgumentException` for an empty or malformed name |
+| `UnicodeBlock(blockName)` | `\p{IsGreek}` | Same | `ArgumentException` for an empty, malformed or unknown name |
 | `Script`, `LetterIn`, `DigitIn` | A class built from the script's blocks | The same class without brackets | See [Unicode](./unicode.md) |
 | `WithAsciiDigits()`, `WithDigits(mode)` | Rewrites `\d`, `\D` in the finished pattern | Rewrites them inside sets too | `ArgumentOutOfRangeException` for an undefined `DigitMode` |
 | `Literal(text)`, `Literal(chars)` | Escaped text | Escaped characters, `-` included | `ArgumentNullException` for `null` |

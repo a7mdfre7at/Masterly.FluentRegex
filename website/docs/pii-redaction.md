@@ -492,11 +492,7 @@ string leading = leadingOnly.Mask("a 123 4567");                 // a *** ***7
 - **One anchor alone** is still rewritten. `^\d{3}` became `(?<!\w)\d{3}`, which found `123` and the start of `4567`.
 - **Anchors inside the pattern**, for example in a lookahead, are kept. `CommonPatterns.Email(PatternStrictness.Strict)` starts with `(?=.{1,254}$)`, which requires the end of the input within 254 characters. In a longer text the address is not found, so prefer `CommonPatterns.Email()` for redaction.
 
-:::warning
-
-`CommonPatterns.PhoneNumber()` does not match ordinary US numbers in version 3.1.0, even as a whole value: `CommonPatterns.PhoneNumber().IsMatch("555-123-4567")` and `IsMatch("(555) 123-4567")` both return `false`, so a redactor built from it redacts nothing. Use `CommonPatterns.PhoneNumberE164()` for `+` numbers, or write a phone pattern for your own formats and test it before you rely on it.
-
-:::
+`CommonPatterns.PhoneNumber()` works in a redactor too. `Redactor.For(CommonPatterns.PhoneNumber()).Mask("Call 555-123-4567 or (555) 123-4567 today")` returns `Call ***-***-**** or (***) ***-**** today`.
 
 ## When matches overlap
 

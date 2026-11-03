@@ -299,7 +299,7 @@ if (!custom.TryValidate(out string error))
 ```
 
 - `IsValid()` returns `false` instead of throwing. `TryValidate` also gives you the engine's error message; when the text is valid it returns `true` and sets the message to `null`.
-- Both methods check only the regex text and ignore the pattern's options. For example, a backreference such as `(a)\1` passes `IsValid()` even after `UseNonBacktracking()` (.NET 8 and later), but matching then throws `NotSupportedException`, because the non-backtracking engine does not support backreferences.
+- Both methods compile the pattern with its own options. For example, a backreference such as `(a)\1` is invalid after `UseNonBacktracking()` (.NET 8 and later), because the non-backtracking engine does not support backreferences.
 - Calling `IsMatch` or `Match` on an invalid pattern throws `ArgumentException`.
 - More debugging tools are described in [Validation and Debugging](./validation-and-debugging.md).
 

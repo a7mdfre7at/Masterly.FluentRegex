@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace Masterly.FluentRegex
 {
@@ -70,9 +71,13 @@ namespace Masterly.FluentRegex
         /// including '-', ']' and '^'.
         /// </summary>
         /// <param name="characters">The characters to accept. Must not be empty.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="characters"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="characters"/> is empty.</exception>
         public Pattern AnyOf(string characters)
         {
-            if (string.IsNullOrEmpty(characters))
+            if (characters == null)
+                throw new ArgumentNullException(nameof(characters));
+            if (characters.Length == 0)
                 throw new ArgumentException("At least one character is required.", nameof(characters));
             return Set(With.Literal(characters));
         }
@@ -81,9 +86,13 @@ namespace Masterly.FluentRegex
         /// Matches any character except the given ones: <c>[^abc]</c>. Every character is taken literally.
         /// </summary>
         /// <param name="characters">The characters to reject. Must not be empty.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="characters"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="characters"/> is empty.</exception>
         public Pattern NoneOf(string characters)
         {
-            if (string.IsNullOrEmpty(characters))
+            if (characters == null)
+                throw new ArgumentNullException(nameof(characters));
+            if (characters.Length == 0)
                 throw new ArgumentException("At least one character is required.", nameof(characters));
             return NegatedSet(With.Literal(characters));
         }
@@ -112,7 +121,10 @@ namespace Masterly.FluentRegex
         /// <summary>
         /// Matches a character in a named Unicode block, for example <c>\p{IsGreek}</c> or <c>\p{IsCyrillic}</c>.
         /// </summary>
-        /// <param name="blockName">The .NET block name, with or without the "Is" prefix.</param>
+        /// <param name="blockName">
+        /// The .NET block name, such as <c>Greek</c> or <c>IsGreek</c>. The "Is" prefix may be written in any case.
+        /// </param>
+        /// <exception cref="ArgumentException">The name is empty, malformed, or not a block that .NET knows.</exception>
         public Pattern UnicodeBlock(string blockName)
         {
             if (string.IsNullOrEmpty(blockName))
@@ -122,8 +134,28 @@ namespace Masterly.FluentRegex
                 if (!(char.IsLetterOrDigit(c) || c == '-' || c == '_'))
                     throw new ArgumentException("Invalid Unicode block name '" + blockName + "'.", nameof(blockName));
             }
-            string name = blockName.StartsWith("Is", StringComparison.Ordinal) ? blockName : "Is" + blockName;
+            string name = blockName.StartsWith("Is", StringComparison.OrdinalIgnoreCase)
+                ? "Is" + blockName.Substring(2)
+                : "Is" + blockName;
+            if (!IsKnownUnicodeBlock(name))
+                throw new ArgumentException(
+                    "Unknown Unicode block '" + blockName + "'. Use a .NET block name such as 'Greek', 'IsGreek' or 'BasicLatin'.",
+                    nameof(blockName));
             return Append(ClassToken.Shorthand(@"\p{" + name + "}"));
+        }
+
+        // Fails here, when the pattern is built, rather than at its first match.
+        private static bool IsKnownUnicodeBlock(string name)
+        {
+            try
+            {
+                _ = new Regex(@"\p{" + name + "}", RegexOptions.CultureInvariant);
+                return true;
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
         }
 
         /// <summary>Matches a position that is not a word boundary: <c>\B</c>.</summary>

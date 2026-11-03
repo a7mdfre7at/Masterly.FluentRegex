@@ -17,27 +17,22 @@ namespace Masterly.FluentRegex
         /// Validates that the pattern is a valid regular expression.
         /// Attempts to compile the pattern and returns whether it succeeded.
         /// </summary>
-        /// <returns>True if the pattern is valid regex syntax, false otherwise.</returns>
+        /// <returns>True if the pattern compiles with its own options, false otherwise.</returns>
         /// <remarks>
-        /// This method catches ArgumentException thrown by the Regex constructor
-        /// when the pattern contains invalid syntax. Use TryValidate to get
-        /// detailed error information when validation fails.
+        /// The pattern is compiled with its own options, because they change what is valid:
+        /// <c>RegexOptions.NonBacktracking</c> rejects backreferences and lookarounds, and
+        /// <see cref="RegexOptions.ECMAScript"/> allows only a few other options. Use TryValidate to get
+        /// the error message when validation fails.
         /// </remarks>
         /// <example>
         /// Pattern.With.Digit.Repeat.OneOrMore.IsValid();  // Returns true
-        /// Pattern.With.RegEx("[invalid").IsValid();       // Returns false
+        ///
+        /// string userInput = "[invalid";                  // text that is not known at compile time
+        /// Pattern.With.RegEx(userInput).IsValid();        // Returns false
         /// </example>
         public bool IsValid()
         {
-            try
-            {
-                _ = new Regex(ToString());
-                return true;
-            }
-            catch (ArgumentException)
-            {
-                return false;
-            }
+            return TryValidate(out _);
         }
 
         /// <summary>
@@ -47,13 +42,17 @@ namespace Masterly.FluentRegex
         /// When this method returns false, contains the error message describing why
         /// the pattern is invalid. When this method returns true, this is null.
         /// </param>
-        /// <returns>True if the pattern is valid regex syntax, false otherwise.</returns>
+        /// <returns>True if the pattern compiles with its own options, false otherwise.</returns>
         /// <remarks>
         /// Use this method when you need to display validation errors to users
         /// or log detailed information about why a pattern failed to compile.
+        /// Like <see cref="IsValid"/>, it validates with the pattern's own options.
+        /// A constant invalid regex is already reported at build time as FRX003, so this
+        /// method is for text that arrives at run time.
         /// </remarks>
         /// <example>
-        /// var pattern = Pattern.With.RegEx("(unclosed");
+        /// string userInput = "(unclosed";   // for example, a regex typed by a user
+        /// Pattern pattern = Pattern.With.RegEx(userInput);
         /// if (!pattern.TryValidate(out string error))
         /// {
         ///     Console.WriteLine($"Invalid pattern: {error}");
@@ -61,13 +60,15 @@ namespace Masterly.FluentRegex
         /// </example>
         public bool TryValidate(out string errorMessage)
         {
+            // Built with the pattern's own options: they change what is valid. IgnorePatternWhitespace accepts
+            // "a # [ comment", NonBacktracking rejects backreferences, and ECMAScript rejects Singleline.
             try
             {
-                _ = new Regex(ToString());
+                _ = new Regex(ToString(), _options & ~RegexOptions.Compiled);
                 errorMessage = null;
                 return true;
             }
-            catch (ArgumentException ex)
+            catch (Exception ex) when (ex is ArgumentException || ex is NotSupportedException)
             {
                 errorMessage = ex.Message;
                 return false;

@@ -151,8 +151,9 @@ namespace Masterly.FluentRegex
         /// </summary>
         /// <remarks>
         /// The non-backtracking engine does not support backreferences, lookarounds, atomic groups,
-        /// conditionals or <see cref="RegexOptions.RightToLeft"/>.
-        /// A <see cref="NotSupportedException"/> is thrown when such a pattern is executed.
+        /// conditionals or <see cref="RegexOptions.RightToLeft"/>. When such a pattern is executed, the first
+        /// four throw <see cref="NotSupportedException"/>, and RightToLeft throws
+        /// <see cref="ArgumentOutOfRangeException"/>. <see cref="IsValid"/> reports both as invalid.
         /// </remarks>
         /// <returns>A new pattern that uses <see cref="RegexOptions.NonBacktracking"/>.</returns>
         public Pattern UseNonBacktracking() => WithSettings(_options | RegexOptions.NonBacktracking, _timeout);
@@ -185,13 +186,13 @@ namespace Masterly.FluentRegex
         /// Matches the given characters literally. Regex special characters are escaped automatically,
         /// both inside and outside character sets.
         /// </summary>
-        /// <param name="charecters">Characters to match literally.</param>
+        /// <param name="characters">Characters to match literally.</param>
         /// <returns>A new pattern.</returns>
-        public Pattern Literal(params char[] charecters)
+        public Pattern Literal(params char[] characters)
         {
-            if (charecters == null) throw new ArgumentNullException(nameof(charecters));
+            if (characters == null) throw new ArgumentNullException(nameof(characters));
             TokenNode tail = _tail;
-            foreach (char c in charecters)
+            foreach (char c in characters)
                 tail = new TokenNode(new LiteralToken(c), tail);
             return new Pattern(tail, _options, _timeout);
         }

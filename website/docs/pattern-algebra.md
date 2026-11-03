@@ -229,7 +229,7 @@ Console.WriteLine(Pattern.FromRegex(@"[a-z]{2,}\d").ShortestMatch());           
 - `IsSubsetOf` is not strict: `Pattern.FromRegex("abc").IsSubsetOf(Pattern.FromRegex("abc"))` is `True`. Use `Compare(...).Relation == PatternRelation.ProperSubset` when you need "strictly smaller".
 - `Overlaps` counts the empty string. `Pattern.FromRegex("a*").Overlaps(Pattern.FromRegex("b*"))` is `True`, because both accept `""`.
 - `MatchesNothing()` finds patterns that can never succeed, such as `^(?!a)a` (the lookahead forbids the only character the body allows), `[^\s\S]`, or a typo that made a class empty.
-- The shortcuts throw the same exceptions as `Compare`. A `null` argument throws `ArgumentNullException`. Because they call `Compare(this, other)`, its `ParamName` is `right`, not `other`.
+- The shortcuts throw the same exceptions as `Compare`. A `null` argument throws `ArgumentNullException` whose `ParamName` is `other`.
 
 ### ShortestMatch
 

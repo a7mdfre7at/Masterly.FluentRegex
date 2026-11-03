@@ -40,6 +40,39 @@ public class DebuggingTests
         pattern.IsValid().ShouldBeFalse();
     }
 
+    [Fact]
+    public void IsValid_WithIgnorePatternWhitespace_TreatsTheHashAsAComment()
+    {
+        Pattern pattern = Pattern.With.RegEx("a # [ comment").WithOptions(RegexOptions.IgnorePatternWhitespace);
+
+        bool isValid = pattern.IsValid();
+
+        isValid.ShouldBeTrue();
+        pattern.IsMatch("a").ShouldBeTrue();
+    }
+
+    [Fact]
+    public void IsValid_WithNonBacktrackingAndABackreference_IsFalse()
+    {
+        Pattern pattern = Pattern.FromRegex(@"(\w)\1").WithOptions(RegexOptions.NonBacktracking);
+
+        bool isValid = pattern.TryValidate(out string error);
+
+        isValid.ShouldBeFalse();
+        error.ShouldNotBeNullOrEmpty();
+        Should.Throw<NotSupportedException>(() => pattern.IsMatch("aa"));
+    }
+
+    [Fact]
+    public void IsValid_WithEcmaScriptAndSingleline_IsFalse()
+    {
+        Pattern pattern = Pattern.With.Digit.WithOptions(RegexOptions.ECMAScript | RegexOptions.Singleline);
+
+        bool isValid = pattern.IsValid();
+
+        isValid.ShouldBeFalse();
+    }
+
     #endregion
 
     #region TryValidate Tests

@@ -432,10 +432,9 @@ Console.WriteLine(operators.IsMatch("abc"));    // prints: False
 | Overload | Parameter | Throws |
 |----------|-----------|--------|
 | `Literal(string literalChars)` | The text to match | `ArgumentNullException` when the text is `null` |
-| `Literal(params char[] charecters)` | One or more characters to match, in order | `ArgumentNullException` when the array is `null` |
+| `Literal(params char[] characters)` | One or more characters to match, in order | `ArgumentNullException` when the array is `null` |
 
 - Both overloads add one element per character. `Literal("abc")` and `Literal('a', 'b', 'c')` build the same pattern.
-- The parameter name of the `char[]` overload is spelled `charecters` in the source. It matters only if you pass it by name.
 
 **Searching for user input.** Escaping makes `Literal` safe for text you do not control. The user's `+`, `(` and `.` are matched as plain characters, not as regex syntax.
 

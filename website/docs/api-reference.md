@@ -20,7 +20,7 @@ Each package uses one namespace that matches its name. The only exception is the
 
 :::note
 
-Signatures on this page are copied from the 3.1.0 assemblies. Parameter names are the real ones, so you can use them as named arguments. One of them has a spelling quirk: `Literal(params char[] charecters)`.
+Signatures on this page are copied from the 3.1.0 assemblies. Parameter names are the real ones, so you can use them as named arguments.
 
 :::
 
@@ -147,7 +147,7 @@ Console.WriteLine(hex);   // 0x[0-9a-fA-F]+
 | Member | Returns | Description |
 |--------|---------|-------------|
 | `Literal(string literalChars)` | `Pattern` | Matches the text exactly. Regex special characters are escaped, inside and outside a set. Throws `ArgumentNullException` for `null`. |
-| `Literal(params char[] charecters)` | `Pattern` | Matches the characters exactly, escaped the same way. |
+| `Literal(params char[] characters)` | `Pattern` | Matches the characters exactly, escaped the same way. |
 | `RegEx(string regex)` | `Pattern` | Adds raw regex text without escaping. Use it for constructs the builder does not cover. |
 
 ```csharp
@@ -171,7 +171,7 @@ Console.WriteLine(price); // \$\d+\.\d{2}
 | `NotUnicode(UnicodeCategory category)` | `Pattern` | A character not in the category: `\P{Lu}`. |
 | `Unicode(UnicodeGroup group)` | `Pattern` | A character in a general group, such as `\p{L}` for any letter in any script. |
 | `NotUnicode(UnicodeGroup group)` | `Pattern` | A character not in the group: `\P{L}`. |
-| `UnicodeBlock(string blockName)` | `Pattern` | A character in a named .NET block, such as `\p{IsGreek}`. The `Is` prefix is optional: `UnicodeBlock("Greek")` also renders `\p{IsGreek}`. Throws `ArgumentException` for an empty name or one with characters other than letters, digits, `-` and `_`. A well-formed but unknown name is not rejected here: the regex is invalid when it is first used, and the analyzer reports `FRX003` at build time. |
+| `UnicodeBlock(string blockName)` | `Pattern` | A character in a named .NET block, such as `\p{IsGreek}`. The `Is` prefix is optional: `UnicodeBlock("Greek")` also renders `\p{IsGreek}`. The prefix may be written in any case. Throws `ArgumentException` for an empty name, one with characters other than letters, digits, `-` and `_`, or a block .NET does not know. |
 | `Script(UnicodeScript script)` | `Pattern` | Any character of a writing system, rendered as a class of code-point ranges (for `Greek`, `[\u0300-\u036F\u0370-\u03E1\u03F0-\u03FF\u1F00-\u1FFF]`). Works inside and outside a set. |
 | `LetterIn(UnicodeScript script)` | `Pattern` | A letter (category `L`) of the script. Marks, digits and punctuation are excluded. |
 | `DigitIn(UnicodeScript script)` | `Pattern` | A decimal digit of the script. `Latin` gives `0-9`. |
@@ -670,7 +670,7 @@ Ready-made patterns. Each method returns a new `Pattern`. Unless noted, the patt
 |--------|---------|
 | `Email()`, `Email(PatternStrictness strictness)` | An e-mail address. `Strict` follows the standard closely; `Loose` accepts anything with the right shape. |
 | `Url()`, `Url(PatternStrictness strictness)` | HTTP and HTTPS URLs. `Loose` accepts any `scheme://` followed by non-whitespace. |
-| `PhoneNumber()` | US phone numbers. See the warning below. |
+| `PhoneNumber()` | US phone numbers: `(555) 123-4567`, `555-123-4567`, `555.123.4567` or `5551234567`. |
 | `PhoneNumberE164()` | An international number in E.164 format: `+`, a non-zero digit, then 1 to 14 more digits, captured in the group `number`. |
 | `IPv4()` | An IPv4 address with octets 0-255. Leading zeros are accepted. |
 | `IPv6()` | An IPv6 address in full notation: 8 groups of 1 to 4 hex digits. The `::` shorthand is not accepted. |
@@ -708,12 +708,6 @@ Console.WriteLine(CommonPatterns.Integer(DigitMode.Ascii).IsMatch("١٢٣"));   
 Console.WriteLine(CommonPatterns.Integer(DigitMode.Ascii));                      // ^-?[0-9]+$
 Console.WriteLine(CommonPatterns.SemVer().IsMatch("3.1.0-docs"));                // True
 ```
-
-:::warning
-
-In 3.1.0, `PhoneNumber()` does not match the formats its documentation lists. It renders `^(?:\(\d{3}\)[\s\-]?)(\(\d{3}\)[\s\-]?|\d{3}[\.\-]?)\d{3}[\.\-]?\d{4}$`, which requires a parenthesized area code followed by a second area code, so `IsMatch("555-123-4567")` and `IsMatch("(555) 123-4567")` both return `false`. Use `PhoneNumberE164()` or build your own pattern until this is fixed.
-
-:::
 
 See [Common patterns](./common-patterns.md).
 

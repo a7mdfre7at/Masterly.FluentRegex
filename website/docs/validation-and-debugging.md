@@ -140,9 +140,9 @@ catch (RegexParseException exception)
 - `RegexParseException` derives from `ArgumentException`, so a `catch (ArgumentException)` block catches it too.
 - `RegexParseException` is a public type of the .NET 7+ runtime. Code that targets `netstandard2.1` (or .NET 6 and earlier) cannot reference it. Catch `ArgumentException` there.
 
-### What validation does not check
+### Validation uses the pattern's options
 
-`IsValid()` and `TryValidate()` compile the regex text with **default options**. They ignore the options you set with `WithOptions(...)` or `UseNonBacktracking()`. That gives wrong answers in both directions:
+`IsValid()` and `TryValidate()` compile the regex with the options you set with `WithOptions(...)` or `UseNonBacktracking()`, because options change what is valid:
 
 ```csharp
 using System;
@@ -152,54 +152,21 @@ using Masterly.FluentRegex;
 // regexText comes from your application; in this example it is "a # [ comment"
 Pattern commented = Pattern.With.RegEx(regexText).WithOptions(RegexOptions.IgnorePatternWhitespace);
 
-Console.WriteLine(commented.IsValid());     // False
+Console.WriteLine(commented.IsValid());     // True
 Console.WriteLine(commented.IsMatch("a"));  // True
 
 Pattern backreference = Pattern.With.Group(Pattern.With.Word).Backreference(1).UseNonBacktracking();
 
-Console.WriteLine(backreference.IsValid()); // True
-backreference.IsMatch("aa");                // throws NotSupportedException
-```
-
-- With `IgnorePatternWhitespace`, `# [ comment` is a comment. Without it, `[` opens a character set that is never closed. `IsValid()` reports a valid pattern as invalid.
-- The non-backtracking engine does not support backreferences, lookarounds, atomic groups or conditionals. `IsValid()` reports the pattern as valid, and the first match throws. `UseNonBacktracking()` exists only on `net8.0` and `net10.0`.
-- Options that cannot be combined, such as `RegexOptions.ECMAScript | RegexOptions.Singleline`, also pass `IsValid()` and then throw `ArgumentOutOfRangeException` on first use.
-
-To validate with the pattern's own options and timeout, compile it with `ToRegex()`:
-
-```csharp
-using System;
-using Masterly.FluentRegex;
-
-// commented and backreference are the patterns from the previous sample
-Console.WriteLine(PatternChecks.TryCompile(commented, out string? first));      // True
-Console.WriteLine(PatternChecks.TryCompile(backreference, out string? second)); // False
-Console.WriteLine(second);
+Console.WriteLine(backreference.TryValidate(out string error));   // False
+Console.WriteLine(error);
 // prints: RegexOptions.NonBacktracking is not supported in conjunction with expressions containing: 'backreference (\ number)'.
-
-public static class PatternChecks
-{
-    /// <summary>Compiles the pattern with its own options and timeout, and reports why it fails.</summary>
-    public static bool TryCompile(Pattern pattern, out string? error)
-    {
-        try
-        {
-            _ = pattern.ToRegex();
-            error = null;
-            return true;
-        }
-        catch (Exception exception) when (exception is ArgumentException || exception is NotSupportedException)
-        {
-            error = exception.Message;
-            return false;
-        }
-    }
-}
 ```
 
-- `ToRegex()` returns a new `Regex` built with the pattern's options and timeout. It does not fill the cache that `IsMatch` uses.
-- `ToRegex(RegexOptions options)` compiles with the options you pass instead of the pattern's own options. The pattern's timeout still applies. Use it to check text against the options it will run with, for example `Pattern.With.RegEx(regexText).ToRegex(RegexOptions.IgnorePatternWhitespace)` compiles `a # [ comment` without an error.
-- Catch `NotSupportedException` as well as `ArgumentException`. The non-backtracking engine reports unsupported constructs with `NotSupportedException`.
+- With `IgnorePatternWhitespace`, `# [ comment` is a comment, so the pattern is valid. Without the option, `[` would open a character set that is never closed.
+- The non-backtracking engine does not support backreferences, lookarounds, atomic groups or conditionals, so such a pattern is invalid after `UseNonBacktracking()`. `UseNonBacktracking()` exists only on `net8.0` and `net10.0`.
+- Options that cannot be combined, such as `RegexOptions.ECMAScript | RegexOptions.Singleline`, make the pattern invalid. `TryValidate` reports `Specified argument was out of the range of valid values. (Parameter 'options')`.
+- The timeout plays no part in validation, and neither does `RegexOptions.Compiled`, which only changes how the regex runs.
+- To check text against other options than the pattern's own, compile it with `ToRegex(RegexOptions options)` inside a `try` block, and catch both `ArgumentException` and `NotSupportedException`.
 
 :::note
 
@@ -290,7 +257,7 @@ Console.WriteLine(date.WithOptions(RegexOptions.ExplicitCapture).GetGroupCount()
 
 :::warning
 
-`GetGroupNames()` and `GetGroupCount()` throw `ArgumentException` when the pattern is invalid. Because they use the pattern's own options, they also throw `NotSupportedException` for a `UseNonBacktracking()` pattern with a backreference, even though `IsValid()` returned `true` for it. Check the pattern first when the regex text comes from outside your code, preferably with `ToRegex()` as shown in [What validation does not check](#what-validation-does-not-check).
+`GetGroupNames()` and `GetGroupCount()` throw `ArgumentException` when the pattern is invalid. Because they use the pattern's own options, they also throw `NotSupportedException` for a `UseNonBacktracking()` pattern with a backreference. Check the pattern with `IsValid()` or `TryValidate()` first when the regex text comes from outside your code (see [Validation uses the pattern's options](#validation-uses-the-patterns-options)).
 
 :::
 
@@ -600,7 +567,6 @@ Expanding `Safety` runs the ReDoS analysis inside the debugger. For a very large
 ## Common pitfalls
 
 - **Validating a constant.** A sample like `Pattern.With.RegEx("[unclosed").IsValid()` does not build: the analyzer reports `FRX003` first. Runtime validation is for text that is not known at compile time.
-- **Trusting `IsValid()` with options.** It ignores `WithOptions(...)` and `UseNonBacktracking()`. Use `ToRegex()` in a `try` block, as in [What validation does not check](#what-validation-does-not-check).
 - **Validating on every call.** `IsValid()`, `TryValidate()`, `GetGroupNames()` and `GetGroupCount()` each compile a new `Regex`. Validate once and keep the result.
 - **Using `Explain()` as a validator.** It never throws and happily explains broken text.
 - **Expecting `Choice` to be non-capturing.** It adds a numbered group, which changes `GetGroupCount()` and the numbers of the groups after it. Use the `|` operator when you do not need the capture.

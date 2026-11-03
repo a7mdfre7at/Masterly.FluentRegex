@@ -262,9 +262,9 @@ There are two overloads:
 | Overload | Use it for |
 |----------|------------|
 | `Literal(string literalChars)` | Words, separators and any fixed text. |
-| `Literal(params char[] charecters)` | One or more single characters, such as `Literal('$', '.')`. |
+| `Literal(params char[] characters)` | One or more single characters, such as `Literal('$', '.')`. |
 
-The parameter names are shown as they appear in the source (including the `charecters` spelling). They matter only if you pass the argument by name.
+The parameter names are shown as they appear in the source. They matter only if you pass the argument by name.
 
 Both add **one element per character**, which matters for [quantifiers](#quantifiers-apply-to-the-last-element). A `null` argument throws `ArgumentNullException`. An empty string adds nothing.
 

@@ -227,8 +227,8 @@ bool coptic = Pattern.With.UnicodeBlock("GreekandCoptic").IsMatch("ϣ");   // tr
 ```
 
 - The name may contain only letters, digits, `-` and `_`. Anything else, such as spaces, throws `ArgumentException` ("Invalid Unicode block name ...") when you call the method. A null or empty name throws `ArgumentException` too.
-- The method does not check that the block exists. An unknown name such as `"Klingon"` builds fine, then throws `RegexParseException` ("Unknown property 'IsKlingon'") the first time the pattern runs.
-- With the [compile-time checks](./compile-time-checks.md) analyzer installed, both mistakes are reported at build time when the name is a literal: `FRX006` for a name that throws while building, `FRX003` for a name the .NET regex parser rejects.
+- The block must exist. An unknown name such as `"Klingon"` throws `ArgumentException` ("Unknown Unicode block 'Klingon'...") when you call the method, not later when the pattern runs.
+- With the [compile-time checks](./compile-time-checks.md) analyzer installed, both mistakes are reported at build time as `FRX006` when the name is a literal.
 
 ### Script, block or category
 

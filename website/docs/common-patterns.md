@@ -60,8 +60,8 @@ using System;
 using System.Text.RegularExpressions;
 using Masterly.FluentRegex;
 
-Pattern time12 = CommonPatterns.Time12().WithOptions(RegexOptions.IgnoreCase);
-Console.WriteLine(time12.IsMatch("1:30 Pm"));   // True
+Pattern url = CommonPatterns.Url().WithOptions(RegexOptions.IgnoreCase);
+Console.WriteLine(url.IsMatch("HTTPS://Example.com"));   // True
 
 Pattern guid = CommonPatterns.Guid().WithTimeout(TimeSpan.FromMilliseconds(100));
 Console.WriteLine(guid.Timeout);                // 00:00:00.1000000
@@ -69,7 +69,7 @@ Console.WriteLine(guid.Timeout);                // 00:00:00.1000000
 Console.WriteLine(ReferenceEquals(CommonPatterns.Email(), CommonPatterns.Email()));   // False
 ```
 
-- `Time12()` lists `AM`, `PM`, `am` and `pm`, but not mixed case such as `Pm`. `RegexOptions.IgnoreCase` accepts every spelling.
+- `Url()` expects a lowercase `http` or `https` scheme. `RegexOptions.IgnoreCase` accepts any case.
 - The last line shows that each call creates a new instance.
 - To build a stricter or looser variant, start from the regex shown by `ToString()` with `Pattern.FromRegex`, or write your own with the fluent API (see [Composing Patterns](./composing-patterns.md)).
 
@@ -82,7 +82,7 @@ Console.WriteLine(ReferenceEquals(CommonPatterns.Email(), CommonPatterns.Email()
 | `Url()` | `http://` or `https://`, at least two dot-separated host labels, and an optional path that starts with `/`. | none |
 | `Url(PatternStrictness)` | A URL at the chosen strictness. | `scheme`, `host`, `port`, `path`, `query`, `fragment` (strict only) |
 | `PhoneNumberE164()` | An E.164 international number: `+`, a non-zero digit and 1 to 14 more digits, with no spaces. | `number` |
-| `PhoneNumber()` | Intended for US phone numbers, but see the warning below. | none (one numbered group) |
+| `PhoneNumber()` | A US phone number: `(555) 123-4567`, `555-123-4567`, `555.123.4567` or `5551234567`. | none (one numbered group: the area code with its separator) |
 
 ```csharp
 Pattern email = CommonPatterns.Email();
@@ -100,49 +100,20 @@ Pattern e164 = CommonPatterns.PhoneNumberE164();
 Console.WriteLine(e164.IsMatch("+14155552671"));                  // True
 Console.WriteLine(e164.IsMatch("+1 415 555 2671"));               // False
 Console.WriteLine(e164.IsMatch("+0123456"));                      // False
+
+Pattern phone = CommonPatterns.PhoneNumber();
+Console.WriteLine(phone.IsMatch("(555) 123-4567"));               // True
+Console.WriteLine(phone.IsMatch("555-123-4567"));                 // True
+Console.WriteLine(phone.IsMatch("555.123.4567"));                 // True
+Console.WriteLine(phone.IsMatch("5551234567"));                   // True
+Console.WriteLine(phone.IsMatch("+1 555 123 4567"));              // False
 ```
 
 - `Email()` does not allow `+` in the local part, so plus-addressing such as `name+tag@` is rejected. Use `Email(PatternStrictness.Strict)` or `Email(PatternStrictness.Loose)` when you need it.
 - `Email()` checks the shape only. It accepts consecutive dots such as `user@sub..example.com`.
 - `Url()` does not accept a port, a query string without a path (`https://example.com?q=1`), or a single-label host such as `localhost`. `Url(PatternStrictness.Strict)` accepts all three.
 - `PhoneNumberE164()` expects the number already normalized: no spaces, dashes or brackets.
-
-:::warning
-
-In version 3.1.0, `PhoneNumber()` does not match the formats its documentation lists. Its regex requires a bracketed area code followed by a second three-digit group, so none of the common US formats match:
-
-```csharp
-Pattern phone = CommonPatterns.PhoneNumber();
-
-Console.WriteLine(phone.IsMatch("555-123-4567"));        // False
-Console.WriteLine(phone.IsMatch("(555) 123-4567"));      // False
-Console.WriteLine(phone.IsMatch("5551234567"));          // False
-Console.WriteLine(phone.IsMatch("(555) 123-456-7890"));  // True
-```
-
-Use `PhoneNumberE164()` for normalized international numbers, or build the US format yourself:
-
-```csharp
-Pattern usPhone = Pattern.With
-    .StartOfLine
-    .OneOf(
-        Pattern.With.Literal("(").Digit.Repeat.Times(3).Literal(")").Whitespace.Repeat.Optional,
-        Pattern.With.Digit.Repeat.Times(3).AnyOf(".-").Repeat.Optional)
-    .Digit.Repeat.Times(3)
-    .AnyOf(".-").Repeat.Optional
-    .Digit.Repeat.Times(4)
-    .EndOfLine
-    .WithAsciiDigits();
-
-Console.WriteLine(usPhone);                             // ^(?:\([0-9]{3}\)\s?|[0-9]{3}[\.\-]?)[0-9]{3}[\.\-]?[0-9]{4}$
-Console.WriteLine(usPhone.IsMatch("555-123-4567"));     // True
-Console.WriteLine(usPhone.IsMatch("(555) 123-4567"));   // True
-Console.WriteLine(usPhone.IsMatch("555.123.4567"));     // True
-Console.WriteLine(usPhone.IsMatch("5551234567"));       // True
-Console.WriteLine(usPhone.IsMatch("555-123-456"));      // False
-```
-
-:::
+- `PhoneNumber()` does not validate area codes and does not accept a country code such as `+1`. Use `PhoneNumberE164()` for international numbers.
 
 The regex each method produces:
 
@@ -150,7 +121,7 @@ The regex each method produces:
 Email()             ^[a-zA-Z\d\._\-]+@[a-zA-Z\d\.\-]+\.[a-zA-Z]{2,}$
 Url()               ^https?://[a-zA-Z\d\-]+(?:\.[a-zA-Z\d\-]+)+(?:/[\w\.\-~:/\?#\[\]@!\$&'\(\)\*\+,;=%]*)?$
 PhoneNumberE164()   ^\+(?<number>[1-9]\d{1,14})$
-PhoneNumber()       ^(?:\(\d{3}\)[\s\-]?)(\(\d{3}\)[\s\-]?|\d{3}[\.\-]?)\d{3}[\.\-]?\d{4}$
+PhoneNumber()       ^(\(\d{3}\)[\s\-]?|\d{3}[\.\-]?)\d{3}[\.\-]?\d{4}$
 ```
 
 ## Network and identifiers
@@ -224,7 +195,7 @@ Base64()      ^(?=.)(?:[A-Za-z0-9\+/]{4})*(?:[A-Za-z0-9\+/]{2}==|[A-Za-z0-9\+/]{
 | `Date()` | `YYYY-MM-DD` or `YYYY/MM/DD`, and `MM/DD/YYYY`, `DD/MM/YYYY` or their `-` forms, with one- or two-digit months and days and two- to four-digit years. | none (one numbered group) |
 | `DateTimeIso()` | An ISO 8601 date and time such as `2024-05-17T10:30:00.123+02:00`. Seconds, a fraction of up to 7 digits and the offset are optional. | `year`, `month`, `day`, `hour`, `minute`, `second`, `fraction`, `offset` |
 | `Time24()` | `HH:MM` or `HH:MM:SS` on a 24-hour clock, hours 00 to 23, with a two-digit hour. | none (one numbered group for the hour) |
-| `Time12()` | `H:MM` or `HH:MM`, optional `:SS`, an optional whitespace character, then `AM`, `PM`, `am` or `pm`. | none (one numbered group for the indicator) |
+| `Time12()` | `H:MM` or `HH:MM` with an hour from 1 to 12 (a leading zero is optional), optional `:SS`, an optional whitespace character, then `AM` or `PM` in any case. | none (one numbered group for the indicator) |
 
 ```csharp
 Pattern dateIso = CommonPatterns.DateIso();
@@ -257,16 +228,17 @@ Pattern time12 = CommonPatterns.Time12();
 Console.WriteLine(time12.IsMatch("12:30 PM"));   // True
 Console.WriteLine(time12.IsMatch("1:30am"));     // True
 Console.WriteLine(time12.IsMatch("12:30"));      // False
-Console.WriteLine(time12.IsMatch("1:30 Pm"));    // False
-Console.WriteLine(time12.IsMatch("13:00 PM"));   // True
-Console.WriteLine(time12.IsMatch("00:15 AM"));   // True
+Console.WriteLine(time12.IsMatch("1:30 Pm"));    // True
+Console.WriteLine(time12.IsMatch("09:05 am"));   // True
+Console.WriteLine(time12.IsMatch("13:00 PM"));   // False
+Console.WriteLine(time12.IsMatch("00:15 AM"));   // False
 ```
 
 - `DateIso()` only limits the first digit of the month and day, so `2024-13-01` and `2024-00-39` pass. Add `Validators.IsoDate` to accept only real calendar dates (see [Adding checks a regex cannot express](#adding-checks-a-regex-cannot-express)).
 - `Date()` does not check the values at all, and it does not accept dots as separators. A value like `01/02/2024` is ambiguous: the pattern cannot tell January 2 from February 1.
 - `DateTimeIso()` checks month (01-12), day (01-31), hour (00-23) and minute ranges, but not the number of days in a month, so `2024-02-31T10:30` passes. It needs a time: a date alone does not match. The separator can be `T`, `t` or a space, and the offset can be `Z`, `z`, `+hh:mm` or `+hhmm`.
 - `Time24()` needs a two-digit hour, so `9:30` is rejected.
-- `Time12()` checks the hour only loosely: it accepts hours from `0` to `19`, so `13:00 PM` and `00:15 AM` pass. Mixed-case `Pm` is rejected unless you add `RegexOptions.IgnoreCase`.
+- `Time12()` accepts hours from `1` to `12` only, so `13:00 PM` and `00:15 AM` are rejected. The indicator may be written in any case, such as `Pm`.
 
 The regex each method produces:
 
@@ -275,7 +247,7 @@ DateIso()      ^\d{4}-[0-1]\d-[0-3]\d$
 Date()         ^(\d{4}[/\-]\d{1,2}[/\-]\d{1,2}|\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})$
 DateTimeIso()  ^(?<year>\d{4})-(?<month>(?:0[1-9]|1[0-2]))-(?<day>(?:0[1-9]|[12]\d|3[01]))[Tt ](?<hour>(?:[01]\d|2[0-3])):(?<minute>[0-5]\d)(?::(?<second>[0-5]\d)(?:\.(?<fraction>\d{1,7}))?)?(?<offset>(?:[Zz]|[\+\-](?:[01]\d|2[0-3]):?[0-5]\d))?$
 Time24()       ^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$
-Time12()       ^[0-1]?\d:[0-5]\d(?::[0-5]\d)?\s?(AM|PM|am|pm)$
+Time12()       ^(?:1[0-2]|0?[1-9]):[0-5]\d(?::[0-5]\d)?\s?([AaPp][Mm])$
 ```
 
 ## Financial and identity
@@ -818,7 +790,7 @@ Common patterns are designed for common cases. Check this table before you rely 
 |--------|----------|
 | `Email()` | Accept `+` or other special characters in the local part; reject consecutive dots. |
 | `Url()` | Accept ports, `localhost`, other schemes, or a query without a path. |
-| `PhoneNumber()` | Match the usual US formats in 3.1.0 (see [Contact and web](#contact-and-web)). |
+| `PhoneNumber()` | Accept a country code such as `+1`, or validate area codes. |
 | `PhoneNumberE164()` | Accept spaces, dashes or brackets. |
 | `IPv4()` | Reject leading zeros; accept CIDR suffixes. |
 | `IPv6()` | Accept the compressed `::` form, embedded IPv4 or zone indexes. |
@@ -829,7 +801,7 @@ Common patterns are designed for common cases. Check this table before you rely 
 | `Date()` | Check values, accept `.` as a separator, or resolve day/month order. |
 | `DateTimeIso()` | Check the number of days in a month, or accept a date without a time. |
 | `Time24()` | Accept a one-digit hour. |
-| `Time12()` | Limit the hour to 1-12, or accept mixed-case `Am`/`Pm`. |
+| `Time12()` | Accept a 24-hour time, or a time without `AM`/`PM`. |
 | `CreditCard()` | Accept 13-, 15- or 19-digit cards, or check the Luhn digit. |
 | `Iban()` | Check the mod-97 digits or the country-specific length; accept lowercase. |
 | `SocialSecurityNumber()` | Accept the form without hyphens, or reject numbers never issued. |

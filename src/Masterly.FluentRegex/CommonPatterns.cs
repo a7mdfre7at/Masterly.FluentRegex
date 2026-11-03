@@ -2,7 +2,8 @@ namespace Masterly.FluentRegex
 {
     /// <summary>
     /// Provides pre-built patterns for common validation and matching use cases.
-    /// All patterns are anchored (StartOfLine/EndOfLine) for full-string matching.
+    /// The validation patterns are anchored (StartOfLine/EndOfLine) for full-string matching. HtmlTag and
+    /// MarkdownLink are not anchored, because they are meant for finding matches inside text.
     /// Each method returns a new Pattern instance that can be further customized.
     /// </summary>
     /// <remarks>
@@ -99,12 +100,7 @@ namespace Masterly.FluentRegex
         /// </example>
         public static Pattern PhoneNumber() => Pattern.With
             .StartOfLine
-            .NonCapturingGroup(
-                Pattern.With.Literal("(")
-                .Digit.Repeat.Times(3)
-                .Literal(")")
-                .Set(Pattern.With.Whitespace.Literal("-")).Repeat.Optional
-            ).Choice(
+            .Choice(  // Area code: (123) with an optional space or hyphen, or 123 with an optional . or -
                 Pattern.With.Literal("(").Digit.Repeat.Times(3).Literal(")").Set(Pattern.With.Whitespace.Literal("-")).Repeat.Optional,
                 Pattern.With.Digit.Repeat.Times(3).Set(Pattern.With.Literal(".-")).Repeat.Optional
             )
@@ -240,7 +236,7 @@ namespace Masterly.FluentRegex
         /// <returns>A Pattern matching ISO date format.</returns>
         /// <remarks>
         /// Format: YYYY-MM-DD with hyphens.
-        /// Performs basic validation on month (01-19) and day (01-39) ranges.
+        /// Performs only basic validation: the month is 00-19 and the day is 00-39, so "2024-00-39" matches.
         /// Does not validate month/day combinations (e.g., Feb 30).
         /// </remarks>
         /// <example>
@@ -319,8 +315,8 @@ namespace Masterly.FluentRegex
         /// <remarks>
         /// Valid hours: 1-12 (leading zero optional)
         /// Valid minutes/seconds: 00-59
-        /// AM/PM indicator (case-insensitive)
-        /// Optional space before AM/PM
+        /// AM/PM indicator in any case (AM, am, Pm, ...), captured as group 1
+        /// Optional whitespace before AM/PM
         /// </remarks>
         /// <example>
         /// CommonPatterns.Time12().IsMatch("12:30 PM");    // true
@@ -330,7 +326,9 @@ namespace Masterly.FluentRegex
         /// </example>
         public static Pattern Time12() => Pattern.With
             .StartOfLine
-            .Set(Pattern.With.Range('0', '1')).Repeat.Optional.Digit  // Hours 1-12
+            .OneOf(  // Hours 1-12, leading zero optional
+                Pattern.With.Literal("1").Set(Pattern.With.Range('0', '2')),
+                Pattern.With.Literal("0").Repeat.Optional.Set(Pattern.With.Range('1', '9')))
             .Literal(":")
             .Set(Pattern.With.Range('0', '5')).Digit  // Minutes 00-59
             .NonCapturingGroup(
@@ -338,12 +336,7 @@ namespace Masterly.FluentRegex
                 .Set(Pattern.With.Range('0', '5')).Digit  // Seconds 00-59
             ).Repeat.Optional
             .Whitespace.Repeat.Optional
-            .Choice(
-                Pattern.With.Literal("AM"),
-                Pattern.With.Literal("PM"),
-                Pattern.With.Literal("am"),
-                Pattern.With.Literal("pm")
-            )
+            .Group(Pattern.With.Set(Pattern.With.Literal("AaPp")).Set(Pattern.With.Literal("Mm")))  // AM/PM, any case
             .EndOfLine;
 
         /// <summary>
@@ -418,7 +411,8 @@ namespace Masterly.FluentRegex
         /// </summary>
         /// <returns>A Pattern matching valid usernames.</returns>
         /// <remarks>
-        /// Allowed characters: letters (a-z, A-Z), digits (0-9), underscore (_)
+        /// Allowed characters: letters (a-z, A-Z), digits, underscore (_). A digit is any Unicode decimal digit,
+        /// such as '٣'; use Username(DigitMode.Ascii) for 0-9 only.
         /// Length: 3-20 characters
         /// Does not allow spaces or special characters.
         /// </remarks>

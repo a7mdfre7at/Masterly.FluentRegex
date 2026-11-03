@@ -692,7 +692,7 @@ catch (NotSupportedException exception)
 
 - Call `UseNonBacktracking()` last, after any `WithOptions`.
 - The engine rejects backreferences, lookarounds, atomic groups (including `.Possessive`) and conditionals with `NotSupportedException`. Combining it with `RegexOptions.RightToLeft` throws `ArgumentOutOfRangeException`. Either exception comes at the first match, or at `ToRegex()`, not when you build the pattern.
-- `TryValidate` and `IsValid` ignore the pattern's options, so they do not catch this. Call `ToRegex()` once at startup or in a test to surface it.
+- `TryValidate` and `IsValid` compile the pattern with its options, so they report such a combination as invalid before the first match.
 - Do not combine `.Possessive` with this engine. The engine never backtracks, so the possessive fix is not needed.
 - `UseNonBacktracking()` does not exist in the `netstandard2.1` build.
 - You can combine both defenses: `nested.UseNonBacktracking().WithTimeout(TimeSpan.FromMilliseconds(100))` keeps the flag and the timeout.
@@ -773,7 +773,6 @@ A .NET 9 project gets the `net8.0` build. Projects on .NET Core 3.x to .NET 7 ge
 - **Making a pattern "faster" and changing its meaning.** `[^e]*end` is not `.*end`, and `(?>\w+)\w+` matches nothing. Prove rewrites with `IsEquivalentTo`.
 - **Losing `NonBacktracking` or `Compiled`.** `WithOptions(...)` and `ToRegex(options)` replace the options. Combine flags with `|`.
 - **Setting a timeout on a building block.** `Then`, `+`, groups and the `|` operator drop the inner pattern's options and timeout. Set them on the final pattern.
-- **Trusting `TryValidate` for engine support.** It ignores the pattern's options. Call `ToRegex()` once to catch `NotSupportedException`.
 - **Relying on a global timeout.** Patterns ignore `REGEX_DEFAULT_MATCH_TIMEOUT`. Call `WithTimeout` on each pattern that sees untrusted input.
 - **Swallowing `RegexMatchTimeoutException`.** Catch it, reject the input, and log the pattern name, not the input.
 - **Running analysis per request.** `AnalyzeSafety`, `Explain`, `GetGroupNames` and the validation methods do real work on each call. Run them at startup or in tests.

@@ -60,6 +60,32 @@ public class CommonPatternsTests
         isMatch.ShouldBeFalse();
     }
 
+    [Theory]
+    [InlineData("(555) 123-4567")]
+    [InlineData("(555)123-4567")]
+    [InlineData("(555)-123-4567")]
+    [InlineData("555-123-4567")]
+    [InlineData("555.123.4567")]
+    [InlineData("5551234567")]
+    public void PhoneNumber_DocumentedUsFormats_Match(string input)
+    {
+        Pattern pattern = CommonPatterns.PhoneNumber();
+
+        bool isMatch = pattern.IsMatch(input);
+
+        isMatch.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void PhoneNumber_UsedForRedaction_FindsNumbersInText()
+    {
+        Redactor redactor = Redactor.For(CommonPatterns.PhoneNumber());
+
+        string masked = redactor.Mask("Call 555-123-4567 or (555) 123-4567 today");
+
+        masked.ShouldNotContain("4567");
+    }
+
     #endregion
 
     #region IPv4 Tests
@@ -262,7 +288,14 @@ public class CommonPatternsTests
     [InlineData("12:30AM", true)]
     [InlineData("1:30 am", true)]
     [InlineData("12:30:45 PM", true)]
+    [InlineData("09:05 am", true)]
+    [InlineData("1:30 Pm", true)]   // AM/PM in any case
+    [InlineData("10:00 aM", true)]
     [InlineData("12:30", false)] // Missing AM/PM
+    [InlineData("13:00 PM", false)] // hour above 12
+    [InlineData("19:30 PM", false)]
+    [InlineData("0:30 AM", false)]  // hour 0
+    [InlineData("00:30 AM", false)]
     public void Time12_MatchesCorrectly(string input, bool expected)
     {
         var pattern = CommonPatterns.Time12();

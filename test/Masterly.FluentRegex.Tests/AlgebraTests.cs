@@ -11,6 +11,16 @@ public class AlgebraTests
     // ------------------------------------------------------------------
 
     [Fact]
+    public void RelationMembers_NullOther_NameTheOtherParameter()
+    {
+        Pattern pattern = Pattern.FromRegex("a");
+
+        Should.Throw<ArgumentNullException>(() => pattern.IsEquivalentTo(null!)).ParamName.ShouldBe("other");
+        Should.Throw<ArgumentNullException>(() => pattern.IsSubsetOf(null!)).ParamName.ShouldBe("other");
+        Should.Throw<ArgumentNullException>(() => pattern.Overlaps(null!)).ParamName.ShouldBe("other");
+    }
+
+    [Fact]
     public void Compare_UnicodeDigitVersusAsciiRange_FindsNonAsciiDigitCounterexample()
     {
         Pattern unicodeDigits = Pattern.FromRegex(@"\d{3}");
