@@ -63,6 +63,7 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
     private readonly ISqlExpressionFactory _sql;
     private readonly IFluentRegexSingletonOptions _options;
     private readonly RelationalTypeMapping _stringMapping;
+    private readonly RelationalTypeMapping _literalMapping;
     private readonly RelationalTypeMapping _boolMapping;
     private readonly RelationalTypeMapping _intMapping;
     private readonly RelationalTypeMapping _flagsMapping;
@@ -83,6 +84,9 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
         _sql = sqlExpressionFactory;
         _options = options;
         _stringMapping = RequireMapping(typeMappingSource, typeof(string));
+
+        // Every string literal this translator writes goes through _literalMapping (see MySqlEscapingStringTypeMapping).
+        _literalMapping = options.ProviderLeavesBackslashesUnescaped ? new MySqlEscapingStringTypeMapping(_stringMapping) : _stringMapping;
         _boolMapping = RequireMapping(typeMappingSource, typeof(bool));
         _intMapping = RequireMapping(typeMappingSource, typeof(int));
 
@@ -465,11 +469,11 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
         DialectRegex regex = ResolveExtentPreservingRegex(operand, dialect, nameof(PatternFunctions.Replace), logger);
         string converted = ReplacementConverter.Convert(replacement, dialect, regex.GroupNumbers);
         SqlExpression regexSql = RegexConstant(regex.RegexText);
-        SqlExpression replacementSql = _sql.Constant(converted, _stringMapping);
+        SqlExpression replacementSql = _sql.Constant(converted, _literalMapping);
         RelationalTypeMapping resultMapping = value.TypeMapping ?? _stringMapping;
         if (dialect == SqlDialect.PostgreSql)
         {
-            SqlExpression[] arguments = { value, regexSql, replacementSql, _sql.Constant(PostgreSqlGlobalFlag, _stringMapping) };
+            SqlExpression[] arguments = { value, regexSql, replacementSql, _sql.Constant(PostgreSqlGlobalFlag, _literalMapping) };
             bool[] propagateNullability = { true, true, true, false };
             return _sql.Function(PostgreSqlRegexReplace, arguments, nullable: true, propagateNullability, typeof(string), resultMapping);
         }
@@ -546,7 +550,7 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
     private SqlExpression BoolFunction(string name, SqlExpression first, SqlExpression second) =>
         _sql.Function(name, new[] { first, second }, nullable: true, TwoNullableArguments, typeof(bool), _boolMapping);
 
-    private SqlExpression RegexConstant(string regexText) => _sql.Constant(regexText, _stringMapping);
+    private SqlExpression RegexConstant(string regexText) => _sql.Constant(regexText, _literalMapping);
 
     /// <summary>
     /// Keeps the pattern as a query parameter and converts it to the dialect regex when the query executes,
@@ -574,9 +578,9 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
     private SqlExpression LikePredicate(SqlExpression value, DialectLike like)
     {
         SqlExpression? escape = like.EscapeCharacter is char escapeCharacter
-            ? _sql.Constant(escapeCharacter.ToString(), _stringMapping)
+            ? _sql.Constant(escapeCharacter.ToString(), _literalMapping)
             : null;
-        return _sql.Like(value, _sql.Constant(like.Expression, _stringMapping), escape);
+        return _sql.Like(value, _sql.Constant(like.Expression, _literalMapping), escape);
     }
 
     /// <summary>
@@ -591,8 +595,8 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
         SqlExpression result = predicate;
         if (facts.RequiredPrefix.Length > 0 && ColumnComparesLikeByCodeUnit(_options.Dialect))
         {
-            SqlExpression prefix = _sql.Constant(EscapeLike(facts.RequiredPrefix) + LikeWildcard, _stringMapping);
-            result = _sql.AndAlso(result, _sql.Like(value, prefix, _sql.Constant(LikeEscape, _stringMapping)));
+            SqlExpression prefix = _sql.Constant(EscapeLike(facts.RequiredPrefix) + LikeWildcard, _literalMapping);
+            result = _sql.AndAlso(result, _sql.Like(value, prefix, _sql.Constant(LikeEscape, _literalMapping)));
         }
 
         if (facts.MaxLength is int maxLength)

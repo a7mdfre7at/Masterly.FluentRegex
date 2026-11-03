@@ -33,10 +33,10 @@ modelBuilder.Entity<Product>().Property(p => p.Sku).HasPattern(Patterns.Sku);
 | Dialect | Detected from | `IsMatch` / `Matches` | `Group` | `Replace` | CHECK constraint |
 |---|---|---|---|---|---|
 | PostgreSQL | Npgsql | `col ~ 're'` | `regexp_substr(col, re, 1, 1, '', n)` | `regexp_replace(col, re, repl, 'g')` | yes |
-| MySQL 8 | Pomelo | `REGEXP_LIKE(col, 're', 'c')` | no | `REGEXP_REPLACE(col, re, repl)` | yes |
+| MySQL 8 | Pomelo, or Oracle's MySql.EntityFrameworkCore (EF Core 10) | `REGEXP_LIKE(col, 're', 'c')` | no | `REGEXP_REPLACE(col, re, repl)` | yes |
 | MariaDB | Pomelo (server version) | `col REGEXP 're'` | no | `REGEXP_REPLACE(col, re, repl)` | yes |
 | SQL Server 2025 / Azure SQL | compatibility level 170+ | `IIF(REGEXP_LIKE(col, N're'), 1, 0) = 1` | `REGEXP_SUBSTR(col, re, 1, 1, 'c', n)` | `REGEXP_REPLACE(col, re, repl)` | yes |
-| SQL Server (older) | SQL Server provider | `LIKE` proven exact by language algebra, otherwise throws with guidance | no | no | exact `LIKE` or throws |
+| SQL Server (older) | SQL Server provider | `LIKE` proven exact by language algebra, compared under BIN2, otherwise throws with guidance | no | no | exact `LIKE` or throws |
 | SQLite | Microsoft.Data.Sqlite | `col REGEXP 're'` (.NET engine) | no | no | yes |
 
 - `MatchingAsync` / `ToMatchingListAsync` run on every database: the SQL part is a proven superset of the

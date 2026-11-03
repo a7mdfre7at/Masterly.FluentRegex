@@ -8,7 +8,10 @@ namespace Masterly.FluentRegex.EntityFrameworkCore.Infrastructure;
 /// <param name="Dialect">The detected dialect, or null when the provider is unknown.</param>
 /// <param name="ProviderAssembly">The provider assembly, used to build provider-specific SQL expressions.</param>
 /// <param name="ProviderName">The provider's options extension type name, for error messages.</param>
-internal sealed record ProviderDetection(SqlDialect? Dialect, Assembly? ProviderAssembly, string? ProviderName);
+/// <param name="LeavesBackslashesUnescaped">
+/// True for a provider that writes string literals without escaping backslashes, although its server reads them as escapes.
+/// </param>
+internal sealed record ProviderDetection(SqlDialect? Dialect, Assembly? ProviderAssembly, string? ProviderName, bool LeavesBackslashesUnescaped = false);
 
 /// <summary>
 /// Detects the SQL dialect from the provider's options extension without referencing any provider package.
@@ -17,6 +20,9 @@ internal static class DialectDetector
 {
     private const string NpgsqlExtension = "NpgsqlOptionsExtension";
     private const string PomeloExtension = "MySqlOptionsExtension";
+
+    // Oracle's MySql.EntityFrameworkCore, the MySQL provider with an EF Core 10 build; it targets MySQL only.
+    private const string OracleMySqlExtension = "MySQLOptionsExtension";
     private const string SqliteExtension = "SqliteOptionsExtension";
     private const string SqlServerExtension = "SqlServerOptionsExtension";
 
@@ -51,12 +57,14 @@ internal static class DialectDetector
         {
             NpgsqlExtension => SqlDialect.PostgreSql,
             PomeloExtension => IsMariaDb(provider) ? SqlDialect.MariaDb : SqlDialect.MySql,
+            OracleMySqlExtension => SqlDialect.MySql,
             SqliteExtension => SqlDialect.Sqlite,
             SqlServerExtension => SupportsRegex(provider) ? SqlDialect.SqlServer2025 : SqlDialect.SqlServer,
             _ => null
         };
 
-        return new ProviderDetection(dialect, type.Assembly, type.FullName);
+        bool leavesBackslashes = string.Equals(type.Name, OracleMySqlExtension, StringComparison.Ordinal);
+        return new ProviderDetection(dialect, type.Assembly, type.FullName, leavesBackslashes);
     }
 
     private static IDbContextOptionsExtension? FindProvider(IDbContextOptions options)

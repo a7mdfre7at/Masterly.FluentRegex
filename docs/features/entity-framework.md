@@ -4,8 +4,9 @@ New in 3.1: the `Masterly.FluentRegex.EntityFrameworkCore` package (.NET 8 with 
 EF Core 10) runs fluent patterns inside LINQ queries. Each pattern is translated to the database's own regex
 dialect, proven facts about the pattern add index-friendly conjuncts, a hybrid operator gives exact results on
 every database, and the same pattern becomes a CHECK constraint. Every SQL sample below was captured with
-`ToQueryString()` / `GenerateCreateScript()`, and the semantics were verified against PostgreSQL 17, MySQL 8.4,
-MariaDB 11.4 and SQL Server 2025 in containers, plus SQLite in memory.
+`ToQueryString()` / `GenerateCreateScript()`, and the semantics were verified against PostgreSQL 17, MySQL 8.4
+(through Pomelo on EF Core 8 and Oracle's provider on EF Core 10), MariaDB 11.4 and SQL Server 2025 in containers,
+plus SQLite in memory.
 
 ```shell
 dotnet add package Masterly.FluentRegex.EntityFrameworkCore
@@ -247,7 +248,7 @@ options.UseFluentRegex(fluent => fluent
 ```
 
 Dialect detection: Npgsql -> PostgreSQL; Pomelo -> MySQL, or MariaDB when the configured `ServerVersion` is
-MariaDB; Microsoft.Data.Sqlite -> SQLite; SQL Server -> `SqlServer2025` when `UseCompatibilityLevel(170)` or later
+MariaDB; Oracle's `MySql.EntityFrameworkCore` (`UseMySQL`) -> MySQL; Microsoft.Data.Sqlite -> SQLite; SQL Server -> `SqlServer2025` when `UseCompatibilityLevel(170)` or later
 is configured (or the engine is Azure SQL on EF Core 10, whose default level is 170), otherwise `SqlServer`. An
 unknown provider throws and asks for `UseDialect`.
 
@@ -321,5 +322,10 @@ superset under any case- or accent-insensitive collation.
   [SQL flavors](sql-flavors.md#verification) for the live verification against every supported engine.
 - `Group` needs PostgreSQL 15+ (`regexp_substr`) or SQL Server 2025; `Replace` is unavailable on SQLite.
 - EF Core 10 keeps `EF.Constant(pattern)` as a parameter during translation (see the table above).
-- Relational providers only; the package detects Npgsql, Pomelo, SQL Server and SQLite, other providers need
-  `UseDialect`.
+- Relational providers only; the package detects Npgsql, Pomelo, Oracle's MySQL provider, SQL Server and SQLite;
+  other providers need `UseDialect`.
+- MySQL on EF Core 10: Pomelo has no EF Core 10 build, so use Oracle's `MySql.EntityFrameworkCore` (verified on
+  .NET 10 against MySQL 8.4). Oracle's provider writes string literals without escaping backslashes, which MySQL
+  reads as escapes by default; the literals this package writes are escaped correctly, but your own string constants
+  containing backslashes are not. MariaDB needs Pomelo, so MariaDB is supported on EF Core 8 until Pomelo ships
+  for EF Core 10.

@@ -35,6 +35,8 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.14" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.14" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <!-- Pomelo has no EF Core 10 build; Oracle's provider covers MySQL on .NET 10. -->
+    <PackageReference Include="MySql.EntityFrameworkCore" Version="10.0.12" />
     <!-- Microsoft.Data.SqlClient 6.1.7 pulls System.Security.Cryptography.Pkcs 9.0.11 (NU1902/NU1903); lift it to the patched build. -->
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
   </ItemGroup>

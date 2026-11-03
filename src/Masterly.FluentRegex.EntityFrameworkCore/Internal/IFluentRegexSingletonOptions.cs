@@ -21,6 +21,12 @@ internal interface IFluentRegexSingletonOptions : ISingletonOptions
     /// <summary>Gets whether <c>[MatchesPattern]</c> attributes produce CHECK constraints.</summary>
     bool CheckConstraintsFromAttributes { get; }
 
+    /// <summary>
+    /// Gets a value indicating whether the provider writes string literals without escaping backslashes although
+    /// the server reads them as escapes (Oracle's MySql.EntityFrameworkCore provider).
+    /// </summary>
+    bool ProviderLeavesBackslashesUnescaped { get; }
+
     /// <summary>Gets the provider assembly, used to create provider-specific SQL expressions; null when unknown.</summary>
     Assembly? ProviderAssembly { get; }
 }

@@ -31,6 +31,9 @@ internal sealed class FluentRegexSingletonOptions : IFluentRegexSingletonOptions
     public Assembly? ProviderAssembly { get; private set; }
 
     /// <inheritdoc />
+    public bool ProviderLeavesBackslashesUnescaped { get; private set; }
+
+    /// <inheritdoc />
     public void Initialize(IDbContextOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -43,6 +46,7 @@ internal sealed class FluentRegexSingletonOptions : IFluentRegexSingletonOptions
         LikeCollation = extension.LikeCollation;
         CheckConstraintsFromAttributes = extension.CheckConstraintsFromAttributes;
         ProviderAssembly = detection.ProviderAssembly;
+        ProviderLeavesBackslashesUnescaped = detection.LeavesBackslashesUnescaped;
     }
 
     /// <inheritdoc />
