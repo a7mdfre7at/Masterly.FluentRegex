@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Masterly.FluentRegex.EntityFrameworkCore.Infrastructure;
 
@@ -28,13 +29,22 @@ internal static class ReplacementConverter
     /// The pattern's group names and .NET numbers mapped to the dialect's group numbers, or null when the pattern is
     /// not known at query compile time (every group reference except <c>$0</c> then throws).
     /// </param>
+    /// <param name="options">
+    /// The pattern's options. Only <see cref="RegexOptions.ECMAScript"/> matters: it changes how .NET reads the digits
+    /// of <c>$12</c>.
+    /// </param>
     /// <exception cref="NotSupportedException">The replacement uses a substitution the dialect cannot express.</exception>
     /// <exception cref="InvalidOperationException">A group is referenced but the pattern is not known.</exception>
     /// <exception cref="ArgumentException">A named group does not exist in the pattern.</exception>
-    public static string Convert(string replacement, SqlDialect dialect, IReadOnlyDictionary<string, int>? groupNumbers)
+    public static string Convert(
+        string replacement,
+        SqlDialect dialect,
+        IReadOnlyDictionary<string, int>? groupNumbers,
+        RegexOptions options = RegexOptions.None)
     {
         ArgumentNullException.ThrowIfNull(replacement);
 
+        bool ecmaScript = (options & RegexOptions.ECMAScript) != 0;
         StringBuilder sql = new StringBuilder(replacement.Length);
         int index = 0;
         while (index < replacement.Length)
@@ -42,7 +52,7 @@ internal static class ReplacementConverter
             char current = replacement[index];
             if (current == Dollar && index + 1 < replacement.Length)
             {
-                index = AppendSubstitution(replacement, index, sql, dialect, groupNumbers);
+                index = AppendSubstitution(replacement, index, sql, dialect, groupNumbers, ecmaScript);
             }
             else
             {
@@ -60,7 +70,8 @@ internal static class ReplacementConverter
         int index,
         StringBuilder sql,
         SqlDialect dialect,
-        IReadOnlyDictionary<string, int>? groupNumbers)
+        IReadOnlyDictionary<string, int>? groupNumbers,
+        bool ecmaScript)
     {
         char next = replacement[index + 1];
         if (next == Dollar)
@@ -76,7 +87,7 @@ internal static class ReplacementConverter
 
         if (char.IsAsciiDigit(next))
         {
-            return AppendNumberedGroup(replacement, index, sql, dialect, groupNumbers);
+            return AppendNumberedGroup(replacement, index, sql, dialect, groupNumbers, ecmaScript);
         }
 
         if (UnsupportedSubstitutions.IndexOf(next) >= 0)
@@ -115,7 +126,8 @@ internal static class ReplacementConverter
         int index,
         StringBuilder sql,
         SqlDialect dialect,
-        IReadOnlyDictionary<string, int>? groupNumbers)
+        IReadOnlyDictionary<string, int>? groupNumbers,
+        bool ecmaScript)
     {
         int end = index + 1;
         while (end < replacement.Length && char.IsAsciiDigit(replacement[end]))
@@ -124,7 +136,10 @@ internal static class ReplacementConverter
         }
 
         string digits = replacement.Substring(index + 1, end - index - 1);
-        int? number = LongestExistingGroup(digits, groupNumbers, out int consumed);
+        int consumed;
+        int? number = ecmaScript
+            ? ExtendingGroup(digits, groupNumbers, out consumed)
+            : WholeNumberGroup(digits, groupNumbers, out consumed);
         if (number == null)
         {
             AppendLiteral(sql, Dollar, dialect);
@@ -156,10 +171,44 @@ internal static class ReplacementConverter
     }
 
     /// <summary>
-    /// Like .NET, takes the longest run of digits that names an existing group (group 0, the whole match,
-    /// always exists) and maps it to the dialect's group number, which can differ from the .NET number.
+    /// .NET's default rule: every digit after the <c>$</c> forms one number (so <c>$02</c> is group 2). When that
+    /// number is no group, the <c>$</c> is literal, so <c>$12</c> with two groups stays the text <c>$12</c>.
+    /// Returns the dialect's group number, which can differ from the .NET number, or null for a literal <c>$</c>.
     /// </summary>
-    private static int? LongestExistingGroup(string digits, IReadOnlyDictionary<string, int>? groupNumbers, out int consumed)
+    private static int? WholeNumberGroup(string digits, IReadOnlyDictionary<string, int>? groupNumbers, out int consumed)
+    {
+        consumed = digits.Length;
+        if (!int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out int dotNetNumber))
+        {
+            consumed = 0;
+            return null;
+        }
+
+        if (dotNetNumber == WholeMatch)
+        {
+            return WholeMatch;
+        }
+
+        if (groupNumbers == null)
+        {
+            throw UnknownPattern($"${digits}");
+        }
+
+        if (groupNumbers.TryGetValue(dotNetNumber.ToString(CultureInfo.InvariantCulture), out int number))
+        {
+            return number;
+        }
+
+        consumed = 0;
+        return null;
+    }
+
+    /// <summary>
+    /// .NET's rule under <see cref="RegexOptions.ECMAScript"/>: start with the first digit and add the next digit
+    /// while the longer number is still a group, so <c>$12</c> is group 1 followed by "2" when group 12 does not
+    /// exist. Returns the dialect's group number, or null for a literal <c>$</c>.
+    /// </summary>
+    private static int? ExtendingGroup(string digits, IReadOnlyDictionary<string, int>? groupNumbers, out int consumed)
     {
         if (groupNumbers == null)
         {
@@ -172,25 +221,36 @@ internal static class ReplacementConverter
             throw UnknownPattern($"${digits}");
         }
 
-        for (int length = digits.Length; length > 0; length--)
+        int dotNetNumber = digits[0] - '0';
+        consumed = 1;
+        while (consumed < digits.Length)
         {
-            string prefix = digits.Substring(0, length);
-            if (string.Equals(prefix, WholeMatchKey, StringComparison.Ordinal))
+            long longer = (dotNetNumber * 10L) + (digits[consumed] - '0');
+            if (longer > int.MaxValue || !GroupExists((int)longer, groupNumbers))
             {
-                consumed = length;
-                return WholeMatch;
+                break;
             }
 
-            if (groupNumbers.TryGetValue(prefix, out int number))
-            {
-                consumed = length;
-                return number;
-            }
+            dotNetNumber = (int)longer;
+            consumed++;
+        }
+
+        if (dotNetNumber == WholeMatch)
+        {
+            return WholeMatch;
+        }
+
+        if (groupNumbers.TryGetValue(dotNetNumber.ToString(CultureInfo.InvariantCulture), out int number))
+        {
+            return number;
         }
 
         consumed = 0;
         return null;
     }
+
+    private static bool GroupExists(int dotNetNumber, IReadOnlyDictionary<string, int> groupNumbers) =>
+        dotNetNumber == WholeMatch || groupNumbers.ContainsKey(dotNetNumber.ToString(CultureInfo.InvariantCulture));
 
     /// <summary>
     /// Group numbers differ between .NET and the database engines (.NET numbers unnamed groups first, PostgreSQL

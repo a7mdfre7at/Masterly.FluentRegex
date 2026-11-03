@@ -467,7 +467,8 @@ internal sealed class FluentRegexMethodCallTranslator : IMethodCallTranslator
         }
 
         DialectRegex regex = ResolveExtentPreservingRegex(operand, dialect, nameof(PatternFunctions.Replace), logger);
-        string converted = ReplacementConverter.Convert(replacement, dialect, regex.GroupNumbers);
+        Pattern pattern = (Pattern)operand.Constant!; // ResolveExtentPreservingRegex requires a constant pattern
+        string converted = ReplacementConverter.Convert(replacement, dialect, regex.GroupNumbers, pattern.Options);
         SqlExpression regexSql = RegexConstant(regex.RegexText);
         SqlExpression replacementSql = _sql.Constant(converted, _literalMapping);
         RelationalTypeMapping resultMapping = value.TypeMapping ?? _stringMapping;

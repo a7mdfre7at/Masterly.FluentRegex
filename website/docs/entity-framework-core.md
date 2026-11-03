@@ -433,9 +433,11 @@ Write the replacement in .NET syntax. It is converted to each engine's syntax:
 - `${name}` with a name the pattern does not have throws `ArgumentException`. `$7` for a group that does not exist stays the literal text `$7`, as in .NET.
 - A backslash in the replacement is literal text and is escaped for the engine: `a\b` becomes `a\\b`.
 
-:::warning
+- Digits after `$` are read the way .NET reads them. All of them form one number, so `$02` is group 2. When that number is no group, the `$` is literal: with two groups, `$12` stays the text `$12`, in .NET and in SQL. With `RegexOptions.ECMAScript`, .NET extends the number one digit at a time while it still names a group, so `$12` becomes group 1 followed by `2`, and the translation does the same.
 
-Write `${1}2`, not `$12`, when a group reference is followed by a digit. For a pattern with two groups, .NET leaves `$12` as the literal text `$12`, but the translation reads it as group 1 followed by `2` (PostgreSQL and SQL Server 2025 receive `\12`). `${1}2` means group 1 followed by `2` in .NET and in SQL alike.
+:::tip
+
+Write `${1}2` when you mean group 1 followed by the digit `2`. It means the same thing in .NET and in SQL, whatever the options.
 
 :::
 
