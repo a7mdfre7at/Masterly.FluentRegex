@@ -1,7 +1,7 @@
 ---
 id: overview
 title: "Overview"
-description: "What Masterly.FluentRegex is, the six packages, what is new in 3.1, and a map of everything you can do with it."
+description: "What Masterly.FluentRegex is, the six packages, what is new in 3.1, a map of everything you can do with it, and how to build it from source."
 sidebar_label: "Overview"
 ---
 
@@ -54,6 +54,77 @@ Version 3.1 can prove things about your patterns, learn them from examples, and 
 | [Streaming](/docs/streaming) | `MatchesAsync(stream)` matches input of any size in constant memory. |
 | [Unicode](/docs/unicode) | Unicode scripts, script-specific digits, graphemes, `IgnoreDiacritics()` and an ASCII digit mode. |
 | [Entity Framework Core](/docs/entity-framework-core), [ASP.NET Core](/docs/aspnetcore), [xUnit](/docs/xunit), [AI drafting](/docs/ai-drafting) | Four new companion packages. |
+| [Highlighting](./highlighting.md) | `Highlight(text, format)` marks every match and group capture, as ANSI colors, encoded HTML or plain brackets. |
+| [Model validation](./semantic-rules.md) | `[MatchesPattern(typeof(Patterns), nameof(Patterns.Sku))]` validates DataAnnotations models (.NET 8 and .NET 10). |
+| [Pattern equality](./core-concepts.md) | `Pattern` implements `IEquatable<Pattern>`, so patterns that render the same regex work as dictionary keys. |
+| [Debugger view](./validation-and-debugging.md) | The debugger shows a pattern as its regex. Expand it to see options, groups, an explanation and a ReDoS verdict. |
+| [Command-line tool](./command-line-tool.md) | Eight new commands: `compare`, `optimize`, `learn`, `profile`, `highlight`, `coverage`, `export` and `facts`. |
+| [Playground](./playground.md) | The library running in your browser with WebAssembly, with shareable links. |
+| [Installation](./installation.md) | New .NET 10 targets. The `net9.0` build is gone; .NET 9 apps use the .NET 8 build. |
+
+### Three additions you will use every day
+
+Highlighting, value equality and the `[MatchesPattern]` attribute need no setup. They are part of the core package.
+
+```csharp
+using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using Masterly.FluentRegex;
+
+Pattern phone = Pattern.With
+    .Digit.Repeat.Times(3)
+    .Literal("-")
+    .Digit.Repeat.Times(4);
+
+// Highlighting: mark every match
+Console.WriteLine(phone.Highlight("Call 555-1234 or 555-9876", HighlightFormat.Brackets));
+// prints: Call [555-1234] or [555-9876]
+Console.WriteLine(phone.Highlight("Call 555-1234 <now>", HighlightFormat.Html));
+// prints: Call <mark class="frx-match">555-1234</mark> &lt;now&gt;
+
+// Equality: same regex, same options, same timeout
+Pattern built = Pattern.With.Digit.Repeat.Times(3);
+Pattern parsed = Pattern.With.RegEx(@"\d{3}");
+Console.WriteLine(built.Equals(parsed));  // True
+Console.WriteLine(built == parsed);       // False
+
+Dictionary<Pattern, string> names = new Dictionary<Pattern, string> { [built] = "three digits" };
+Console.WriteLine(names[parsed]);         // three digits
+
+// DataAnnotations: validate a model property against a pattern
+Order order = new Order { Sku = "ab-12" };
+List<ValidationResult> results = new List<ValidationResult>();
+bool isValid = Validator.TryValidateObject(order, new ValidationContext(order), results, validateAllProperties: true);
+Console.WriteLine(isValid);                  // False
+Console.WriteLine(results[0].ErrorMessage);  // The field Sku does not match the required pattern.
+
+public static class Patterns
+{
+    public static Pattern Sku { get; } = Pattern.With
+        .StartOfLine
+        .UppercaseLetter.Repeat.Times(2)
+        .Literal("-")
+        .Digit.Repeat.Times(4)
+        .EndOfLine;
+}
+
+public sealed class Order
+{
+    [MatchesPattern(typeof(Patterns), nameof(Patterns.Sku))]
+    public string? Sku { get; set; }
+}
+```
+
+- `Highlight` defaults to `HighlightFormat.Ansi`, for terminals. `Html` encodes all of the text, so `<now>` becomes `&lt;now&gt;` and the output is safe to put on a page. `Brackets` is plain text for tests and logs. See [Highlighting](./highlighting.md).
+- Two patterns are equal when they render the same regex text with the same options and timeout, however you built them. The `==` operator keeps reference semantics, so use `Equals`. See [Core Concepts](./core-concepts.md).
+- `[MatchesPattern]` takes the type and the name of a public static property, field or parameterless method that returns a `Pattern` or a `ConstrainedPattern`. The whole value must match. Null and empty strings are valid, so add `[Required]` to reject them. The attribute is not in the .NET Standard 2.1 build. See [Semantic Rules](./semantic-rules.md).
+
+:::tip[See a pattern in the debugger]
+
+You do not need any code for the debugger view. Hover over a `Pattern` variable to see its regex, then expand it. See [Validation and Debugging](./validation-and-debugging.md).
+
+:::
 
 Coming from 2.x? Version 3.0 made patterns immutable. Read [Upgrading from 2.x](/docs/upgrading-from-2x) before you update.
 
@@ -77,8 +148,53 @@ Coming from 2.x? Version 3.0 made patterns immutable. Read [Upgrading from 2.x](
     {icon: 'globe', title: 'Export everywhere', text: 'Write the same pattern for JavaScript, JSON Schema and five SQL regex dialects.', to: '/docs/export'},
     {icon: 'database', title: 'Query the database', text: 'Run patterns inside Entity Framework Core queries, with index hints and CHECK constraints.', to: '/docs/entity-framework-core'},
     {icon: 'code', title: 'Catch mistakes at build time', text: 'The bundled analyzers flag invalid patterns, ReDoS risks and group-name typos as you type.', to: '/docs/compile-time-checks'},
+    {icon: 'highlighter', title: 'Highlight matches', text: 'Mark every match and group in a text, as terminal colors, encoded HTML or plain brackets.', to: '/docs/highlighting'},
+    {icon: 'circleCheck', title: 'Validate values and models', text: 'Add checksum and date rules a regex cannot express, and validate models with [MatchesPattern].', to: '/docs/semantic-rules'},
+    {icon: 'terminal', title: 'Use the command line', text: 'Scan a codebase for ReDoS in CI, or compare, optimize, export and highlight from a terminal.', to: '/docs/command-line-tool'},
   ]}
 />
+
+## Contributing and building from source
+
+Contributions are welcome. For a major change, please open an issue on [GitHub](https://github.com/a7mdfre7at/Masterly.FluentRegex/issues) first to discuss what you would like to change.
+
+### What you need
+
+| Tool | Why |
+|---|---|
+| .NET 10 SDK | Builds every target: .NET Standard 2.1, .NET 8 and .NET 10. |
+| .NET 8 runtime | Runs the tests on .NET 8. The .NET 8 SDK includes it. |
+| Node.js 20 or later | Runs the documentation site. |
+| Docker (optional) | Runs the Entity Framework Core tests against real database servers. |
+
+### Building and testing
+
+```bash
+git clone https://github.com/a7mdfre7at/Masterly.FluentRegex.git
+cd Masterly.FluentRegex
+dotnet test                                                 # .NET 8 and .NET 10
+dotnet run --project samples/Masterly.FluentRegex.Showcase  # a tour of every feature
+```
+
+- `dotnet test` builds the solution and runs every test project on .NET 8 and .NET 10. The playground tests run on .NET 10 only.
+- The tests in `test/Masterly.FluentRegex.EntityFrameworkCore.Tests/Containers` start PostgreSQL, MySQL, MariaDB and SQL Server 2025 in Docker. When Docker cannot be reached, they are skipped, not failed. To leave them out, run `dotnet test --filter "FullyQualifiedName!~Containers"`, as the build workflow does.
+- The showcase is a console app that references the library project, so it shows your local changes. It prints one numbered section per feature, starting with `1. Immutable building blocks and operators`.
+- The build workflow also scans the repository for risky regex literals. Run the same check with `dotnet run --project tools/Masterly.FluentRegex.Cli -- scan . --fail-on high`. See [Command-Line Tool](./command-line-tool.md).
+- A build does not create packages. Run `dotnet pack -c Release` to create the `.nupkg` files.
+
+### Running the documentation site
+
+The site you are reading lives in the `website` folder. It is a Docusaurus site:
+
+```bash
+cd website
+npm ci
+npm start
+```
+
+- `npm start` serves the site at `http://localhost:3000/Masterly.FluentRegex/` and reloads a page when you save its file in `website/docs`.
+- `npm run build` builds the static site, as the docs workflow does. It fails on any broken link or anchor, so run it before you open a pull request that changes the docs.
+- The browser playground is a separate .NET project in `playground/`. See [Playground](./playground.md) to run it locally.
 
 ## Where to go next
 

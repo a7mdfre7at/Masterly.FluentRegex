@@ -170,6 +170,47 @@ The built-in help text says exit code 1 means "findings at or above --fail-on (a
 
 :::
 
+## Output encoding
+
+The tool always writes UTF-8. It sets the console output encoding to UTF-8 before it runs any command, because heat bars, counterexamples, explanations and highlighted text often contain non-ASCII characters. The bytes are UTF-8 without a byte order mark, with the platform's line endings (CRLF on Windows).
+
+What you see depends on the program that reads those bytes:
+
+| Where the output goes | Result |
+|-----------------------|--------|
+| Straight to a terminal | Correct. The tool switches the console to UTF-8 itself. |
+| `>` in bash or `cmd.exe` | A UTF-8 file without a BOM, whatever the active code page is. |
+| Captured or redirected by PowerShell 7 | Correct only when `[Console]::OutputEncoding` is UTF-8. PowerShell decodes the bytes with that encoding. |
+| `>` in Windows PowerShell 5.1 | A UTF-16 file. The text is garbled unless `[Console]::OutputEncoding` is UTF-8. |
+
+For example, `profile` prints its heat bar with block characters. With PowerShell's console encoding left on an OEM code page such as 437, the captured line is garbled:
+
+```powershell
+[Console]::OutputEncoding = [System.Text.Encoding]::GetEncoding(437)
+$report = fluentregex profile '(a+)+$' 'aaaaaaaaaaaaaaaa!'
+$report[1]
+```
+
+```text
+Heat     ΓûâΓûêΓûêΓûâΓûâΓûâ
+```
+
+Set the encoding to UTF-8 first, and the same line reads correctly:
+
+```powershell
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$report = fluentregex profile '(a+)+$' 'aaaaaaaaaaaaaaaa!'
+$report[1]
+```
+
+```text
+Heat     ▃██▃▃▃
+```
+
+- The garbling happens in PowerShell, not in the tool. The tool sent the same UTF-8 bytes both times.
+- Put the `[Console]::OutputEncoding` line in your PowerShell profile to fix it for every session.
+- Programs that read a redirected file, such as an editor or a CI log viewer, must open it as UTF-8. Most do by default.
+
 ## Finding ReDoS risks
 
 ### Scanning a codebase: scan
@@ -1200,3 +1241,4 @@ When a step must tell a finding apart from a broken command, check for exit code
 | `error: Option '--help' needs a value.` | Help was asked for after a command name. Run `fluentregex --help` on its own. |
 | `Unhandled exception. System.OverflowException: ...` | A `--count` or `--seed` value does not fit in a 32-bit integer. The exit code is the runtime's crash code, not 2. |
 | `Unhandled exception. System.IO.DirectoryNotFoundException: ...` | `diagram --output` points into a folder that does not exist. Create the folder first. |
+| Garbled characters such as `ΓûâΓûê` in place of `▃█` | The tool writes UTF-8, but the reader decoded it with another code page. In PowerShell, run `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8` first. Open redirected files as UTF-8. See [Output encoding](#output-encoding). |

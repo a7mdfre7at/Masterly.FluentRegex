@@ -5,7 +5,7 @@ description: "What changed between 2.x and 3.x: immutable patterns, corrected re
 sidebar_label: "Upgrading from 2.x"
 ---
 
-Most 2.x code compiles against 3.x without changes. No public member was removed or renamed. What changed is behaviour: patterns are now immutable, several builder members produce corrected regex text, invalid calls throw, and the package now checks your patterns at build time. Read this page before you upgrade, then work through the [upgrade checklist](#upgrade-checklist) at the end.
+Most 2.x code compiles against 3.x without changes. No public member was removed or renamed. What changed is behaviour: patterns are now immutable, several builder members produce corrected regex text, invalid calls throw, and the package now checks your patterns at build time. Read this page before you upgrade, then work through the [upgrade checklist](#upgrade-checklist) at the end. To see what you gain, read [What's new in 3.0](#whats-new-in-30).
 
 :::note[Which version you land on]
 
@@ -462,6 +462,225 @@ See [Compile-Time Checks](./compile-time-checks.md) for every diagnostic and the
 
 The companion packages added in 3.1 (Masterly.FluentRegex.AspNetCore, .Xunit, .AI and .EntityFrameworkCore) target `net8.0` and `net10.0` only. See [Installation](./installation.md).
 
+## What's new in 3.0
+
+3.0 does more than fix 2.x. It adds members that help you build, understand, test and ship patterns. You do not need any of them to upgrade, but many of them replace code that you may have written yourself on top of 2.x. Everything in this section works the same in 3.1. For what 3.1 added on top, see the [Overview](./overview.mdx).
+
+### New builder members
+
+| Member | What it does | Example output |
+|--------|--------------|----------------|
+| `.Lazy` | Makes the preceding quantifier lazy, so it matches as few characters as possible. | `<.+?>` |
+| `.Possessive` | Makes the preceding quantifier possessive: it never gives characters back. | `(?>\d+)` |
+| `OneOf(...)` | Matches one of several patterns or literal strings, without a capturing group. | `(?:GET\|POST)` |
+| `Then(pattern)` and `+` | Appends another pattern. | `release-v\d+` |
+| `\|` | Alternation without a capturing group. Chains such as `a \| b \| c` flatten into one group. | `(?:yes\|no)` |
+| `Range(from, to)` | A character range. | `[a-f]` |
+| `HexDigit` | A hexadecimal digit. | `[0-9a-fA-F]` |
+| `AnyOf(chars)`, `NoneOf(chars)` | One character that is, or is not, in the string. Every character is escaped. | `[\+\-]`, `[^"]` |
+| `Unicode(...)`, `NotUnicode(...)` | A Unicode category (`UnicodeCategory`) or category group (`UnicodeGroup`). | `\p{Lu}` |
+| `UnicodeBlock(name)` | A named Unicode block. | `\p{IsArabic}` |
+| `StartOfInput`, `EndOfInput` | Anchors at the very start and end of the input, even with `Multiline`. | `\A`, `\z` |
+| `NonWordBoundary` | A position that is not a word boundary. | `\B` |
+| `IgnoreCase(pattern)`, `CaseSensitive(pattern)`, `InlineOptions(enable, pattern, disable)` | Options for one part of a pattern only. | `(?i:abc)` |
+| `WithTimeout(timeout)`, `UseNonBacktracking()` | Match timeout, and the non-backtracking engine (.NET 8 or later). | |
+| `Options`, `Timeout`, `IsEmpty` | Read-only properties. | |
+
+```csharp
+using System;
+using System.Globalization;
+using Masterly.FluentRegex;
+
+Pattern tag = Pattern.With.Literal("<").Anything.Repeat.OneOrMore.Lazy.Literal(">");
+Pattern number = Pattern.With.Digit.Repeat.OneOrMore.Possessive;
+Pattern verb = Pattern.With.OneOf("GET", "POST");
+Pattern version = Pattern.With.Literal("v") + Pattern.With.Digit.Repeat.OneOrMore;
+Pattern release = Pattern.With.Literal("release-").Then(version);
+Pattern answer = Pattern.With.Literal("yes") | Pattern.With.Literal("no");
+
+Console.WriteLine(tag);       // <.+?>
+Console.WriteLine(number);    // (?>\d+)
+Console.WriteLine(verb);      // (?:GET|POST)
+Console.WriteLine(release);   // release-v\d+
+Console.WriteLine(answer);    // (?:yes|no)
+
+Console.WriteLine(Pattern.With.HexDigit.Repeat.Times(6));                  // [0-9a-fA-F]{6}
+Console.WriteLine(Pattern.With.AnyOf("+-"));                               // [\+\-]
+Console.WriteLine(Pattern.With.NoneOf("\"").Repeat.OneOrMore);             // [^"]+
+Console.WriteLine(Pattern.With.Unicode(UnicodeCategory.UppercaseLetter));  // \p{Lu}
+Console.WriteLine(Pattern.With.UnicodeBlock("Arabic").Repeat.OneOrMore);   // \p{IsArabic}+
+
+Pattern id = Pattern.With.StartOfInput.Literal("id=").IgnoreCase(Pattern.With.Literal("abc")).EndOfInput;
+Console.WriteLine(id);                    // \Aid=(?i:abc)\z
+Console.WriteLine(id.IsMatch("id=ABC"));  // True
+Console.WriteLine(id.IsMatch("ID=abc"));  // False
+```
+
+- `.Lazy` and `.Possessive` must directly follow a quantifier. See [Quantifiers](./quantifiers.md).
+- `OneOf` and `|` do not create a numbered group. `Choice` still does. See [Composing Patterns](./composing-patterns.md).
+- `IgnoreCase(...)` changes only the inner part: `id=` stays case-sensitive, so `ID=abc` does not match.
+- See [Character Classes](./character-classes.md), [Unicode](./unicode.md) and [Assertions](./assertions.md) for the other members.
+
+### Matching and spans
+
+| Member | Needs | What it does |
+|--------|-------|--------------|
+| `Count(string)` | Any target | Counts the matches. |
+| `IsMatch(ReadOnlySpan<char>)`, `Count(ReadOnlySpan<char>)` | .NET 8 or later | Match a span without allocating a string. |
+| `EnumerateMatches(ReadOnlySpan<char>)` | .NET 8 or later | Enumerates match positions without allocating `Match` objects. |
+| `EnumerateSplits(ReadOnlySpan<char>)` | .NET 10 in 3.1 (.NET 9 in 3.0) | Enumerates the ranges between matches. |
+
+```csharp
+using System.Text.RegularExpressions;
+
+Pattern digits = Pattern.With.Digit.Repeat.OneOrMore;
+ReadOnlySpan<char> line = "id 42 and 7".AsSpan();
+
+Console.WriteLine(digits.Count("id 42 and 7"));   // 2
+Console.WriteLine(digits.IsMatch(line));          // True
+
+foreach (ValueMatch match in digits.EnumerateMatches(line))
+{
+    Console.WriteLine(line.Slice(match.Index, match.Length).ToString());
+}
+// prints: 42
+//         7
+```
+
+On .NET 8 and later, the `RegEx(...)` and `FromRegex(...)` parameters are also marked as regex syntax, so the IDE colors the regex text. See [Matching](./matching.md).
+
+### Typed extraction and fluent replacements
+
+`Extract<T>`, `TryExtract<T>` and `ExtractAll<T>` bind named groups to the properties or constructor parameters of a record or class. `Replace(input, r => ...)` builds the replacement text from groups and checks every group name first.
+
+```csharp
+Pattern date = Pattern.With
+    .NamedGroup("Year", Pattern.With.Digit.Repeat.Times(4)).Literal("-")
+    .NamedGroup("Month", Pattern.With.Digit.Repeat.Times(2)).Literal("-")
+    .NamedGroup("Day", Pattern.With.Digit.Repeat.Times(2));
+
+DateParts parts = date.Extract<DateParts>("Due 2026-11-03");
+Console.WriteLine(parts);   // DateParts { Year = 2026, Month = 11, Day = 3 }
+
+string swapped = date.Replace("Due 2026-11-03",
+    r => r.Group("Day").Literal("/").Group("Month").Literal("/").Group("Year"));
+Console.WriteLine(swapped); // Due 03/11/2026
+
+try
+{
+    date.Replace("Due 2026-11-03", r => r.Group("Dya"));
+}
+catch (ArgumentException ex)
+{
+    Console.WriteLine(ex.Message);
+    // Group 'Dya' does not exist in the pattern (?<Year>\d{4})-(?<Month>\d{2})-(?<Day>\d{2}). Available groups: 0, Year, Month, Day.
+}
+
+public sealed record DateParts(int Year, int Month, int Day);
+```
+
+- `[RegexGroup("name")]` maps a member to a group with a different name, and `ExtractionConverters` registers parsers for your own types.
+- With a plain replacement string, .NET copies a misspelled group reference into the output: `date.Replace("Due 2026-11-03", "${Dya}")` returns `Due ${Dya}`. The fluent builder throws instead.
+- For a constant pattern, the build warns (FRX008) when a member of `T` has no matching group, so it would never be set.
+- See [Typed Extraction](./typed-extraction.md) and [Fluent Replacements](./fluent-replacements.md).
+
+### Understanding and testing patterns
+
+| Member | What it does | Page |
+|--------|--------------|------|
+| `Pattern.FromRegex(regex, options)` | Wraps existing regex text in a `Pattern`. Throws `ArgumentException` for invalid regex text. | [Regex to Fluent Code](./regex-to-fluent-code.md) |
+| `ToFluentCode(indentSize)` | Writes the C# fluent chain that rebuilds the pattern. | [Regex to Fluent Code](./regex-to-fluent-code.md) |
+| `GenerateMatching(count, seed)`, `GenerateNonMatching(count, seed)` | Generates test strings, each verified with the .NET engine. | [Test Data Generation](./test-data-generation.md) |
+| `AnalyzeSafety(confirm)` | Finds ReDoS risks, builds attack inputs and can prove them with a timed run. | [ReDoS Safety](./redos-safety.md) |
+| `Trace(input)` | Shows what each construct matched, or where and why the match failed. | [Match Tracing](./match-tracing.md) |
+| `ToRailroadSvg()`, `ToMermaid()` | Draws the pattern as an SVG railroad diagram or a Mermaid flowchart. | [Diagrams](./diagrams.md) |
+
+```csharp
+Pattern productCode = Pattern.FromRegex(@"^[A-Z]{2}-[0-9]{3}$");
+
+Console.WriteLine(productCode.ToFluentCode());
+// prints:
+// Pattern.With
+//     .StartOfLine
+//     .UppercaseLetter.Repeat.Times(2)
+//     .Literal("-")
+//     .Range('0', '9').Repeat.Times(3)
+//     .EndOfLine
+
+Console.WriteLine(string.Join(", ", productCode.GenerateMatching(3, seed: 1)));      // CU-496, GZ-667, CJ-138
+Console.WriteLine(string.Join(" | ", productCode.GenerateNonMatching(3, seed: 1)));  // S A-805 | GZ-é67 | ER-14
+
+MatchTrace trace = productCode.Trace("AB-12x");
+Console.WriteLine(trace.IsMatch);               // False
+Console.WriteLine(trace.Failure.Position);      // 3
+Console.WriteLine(trace.Failure.Description);   // one of [0-9], exactly 3 times
+Console.WriteLine(trace.Failure.Found);         // "12x"
+
+SafetyReport report = Pattern.FromRegex(@"^(\w+)+$").AnalyzeSafety();
+Console.WriteLine(report.Risk);                 // High
+
+Console.WriteLine(productCode.ToMermaid().Split('\n')[0]);   // flowchart LR
+```
+
+- `FromRegex` is the way to bring 2.x `RegEx(...)` strings, or regexes from elsewhere, into the new tools. Pass the same `RegexOptions` you match with.
+- With a fixed `seed`, the generated strings are the same on every run.
+- The `^(\w+)+$` line also produces build warning FRX004, because the analyzers check constant regex text too.
+
+### Compile-time patterns
+
+The package now includes a source generator. Mark a static `Pattern` field or property in a `partial` class with `[GeneratePattern]`, and the build evaluates the chain and emits a constant with the regex text and a method that returns a cached `Regex`:
+
+```csharp
+Console.WriteLine(Patterns.ProductCodeSource);                     // \A[A-Z]{2}-\d{3}\z
+Console.WriteLine(Patterns.ProductCodeRegex().IsMatch("AB-123"));  // True
+
+public static partial class Patterns
+{
+    [GeneratePattern]
+    public static Pattern ProductCode => Pattern.With.StartOfInput
+        .UppercaseLetter.Repeat.Times(2).Literal("-").Digit.Repeat.Times(3).EndOfInput;
+}
+```
+
+- The generated names are the member name plus `Source` and `Regex`. `[GeneratePattern("MethodName")]` picks a different method name.
+- The generated method has the same accessibility as the member. A `private` member gets a `private` method.
+- The analyzers FRX001 to FRX009 and the `[GeneratedRegex]` code fix came with 3.0 too. See [New build-time checks](#new-build-time-checks) and [Compile-Time Checks](./compile-time-checks.md).
+
+### Common patterns
+
+3.0 added `Email(PatternStrictness)` and `Url(PatternStrictness)` with `Loose`, `Standard` and `Strict` levels, plus `PhoneNumberE164`, `Iban`, `SemVer`, `Jwt`, `MacAddress`, `Base64`, `Slug`, `DateTimeIso` and `MarkdownLink`. The parameterless `Email()` and `Url()` are the `Standard` level.
+
+```csharp
+Console.WriteLine(CommonPatterns.SemVer().IsMatch("3.1.0-docs"));                          // True
+Console.WriteLine(CommonPatterns.PhoneNumberE164().IsMatch("+14155550123"));               // True
+Console.WriteLine(CommonPatterns.Email(PatternStrictness.Strict).IsMatch("user@example.com")); // True
+```
+
+`Iban()` checks only the shape. 3.1 added `Validators.IbanChecksum` to check the check digits. See [Common Patterns](./common-patterns.md) and [Semantic Rules](./semantic-rules.md).
+
+### The fluentregex tool
+
+3.0 introduced the `fluentregex` command-line tool, published as the .NET tool package `Masterly.FluentRegex.Tool`. It works on plain regex text, so you can use it on any C# codebase, not only code that uses the fluent API. 3.0 shipped seven commands:
+
+| Command | What it does |
+|---------|--------------|
+| `convert` | Prints the fluent C# for a regex, or converts every regex literal in C# files with `--file`. |
+| `analyze` | Reports ReDoS risks in one regex. |
+| `scan` | Scans C# files for risky regex literals and fails CI with `--fail-on`. |
+| `explain` | Explains a regex in plain English. |
+| `generate` | Generates matching strings, or near misses with `--non-matching`. |
+| `trace` | Shows which part matched what, or where the match failed. |
+| `diagram` | Draws a railroad SVG or a Mermaid flowchart. |
+
+```text
+> fluentregex generate "^[A-Z]{2}-[0-9]{3}$" --count 3 --seed 1
+CU-496
+GZ-667
+CJ-138
+```
+
+3.1 added `compare`, `optimize`, `learn`, `profile`, `highlight`, `coverage`, `export` and `facts`. See [Command-Line Tool](./command-line-tool.md).
+
 ## Upgrading from 3.0 to 3.1
 
 3.1 has no breaking changes to the 3.0 API, and the core package has no new dependencies. Check these points:
@@ -570,4 +789,4 @@ If you build the package from source rather than installing it from NuGet: `Gene
 11. **Compare with the snapshot.** Use `Pattern.Compare` on each saved regex. Update tests that assert regex text only after you confirm the meaning is what you want.
 12. **Run your tests.** Then consider the new tools for testing patterns: [Regex Coverage](./regex-coverage.md), [Property Testing](./property-testing.md) and [Test Data Generation](./test-data-generation.md).
 
-For the full list of changes, see the [CHANGELOG](https://github.com/a7mdfre7at/Masterly.FluentRegex/blob/master/CHANGELOG.md). For the new features you can adopt after the upgrade, start with [Core Concepts](./core-concepts.md) and [Best Practices](./best-practices.md).
+For the full list of changes, see the [CHANGELOG](https://github.com/a7mdfre7at/Masterly.FluentRegex/blob/master/CHANGELOG.md). For the new features you can adopt after the upgrade, see [What's new in 3.0](#whats-new-in-30), then [Core Concepts](./core-concepts.md) and [Best Practices](./best-practices.md).
