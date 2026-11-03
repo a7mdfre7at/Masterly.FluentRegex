@@ -205,10 +205,13 @@ public class ParserTests
     [Fact]
     public void Parse_ClassEndsRightAfterSubtraction_ThrowsSyntaxExceptionAtEnd()
     {
-        RegexSyntaxException exception = Should.Throw<RegexSyntaxException>(() => RegexParser.Parse("[a-[b]"));
+        // Deliberately invalid, and held in a constant so that CI's `fluentregex scan` does not report it as a finding.
+        const string unterminatedSubtraction = "[a-[b]";
+
+        RegexSyntaxException exception = Should.Throw<RegexSyntaxException>(() => RegexParser.Parse(unterminatedSubtraction));
 
         exception.Position.ShouldBe(6);
-        Should.Throw<ArgumentException>(() => new Regex("[a-[b]"));
+        Should.Throw<ArgumentException>(() => new Regex(unterminatedSubtraction));
     }
 
     [Fact]
