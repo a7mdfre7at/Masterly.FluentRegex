@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320">
+<title>Masterly.FluentRegex: Readable, provable regular expressions for .NET</title>
+<defs>
+<linearGradient id="fr-bl-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#F1F4F9"/></linearGradient>
+<linearGradient id="fr-bl-word" gradientUnits="userSpaceOnUse" x1="534" y1="0" x2="764" y2="0"><stop offset="0" stop-color="#0A7A57"/><stop offset="1" stop-color="#3F7A0C"/></linearGradient>
+<linearGradient id="fr-bl-path" gradientUnits="userSpaceOnUse" x1="850" y1="0" x2="1190" y2="0"><stop offset="0" stop-color="#0A7A57"/><stop offset="1" stop-color="#3F7A0C"/></linearGradient>
+<clipPath id="fr-bl-clip"><rect width="1280" height="320" rx="24"/></clipPath>
+
+</defs>
+<rect width="1280" height="320" rx="24" fill="url(#fr-bl-bg)"/>
+<g clip-path="url(#fr-bl-clip)">
+
+<path d="M1170,-10 H1290 L1154,330 H1034 Z" fill="#3A4670" fill-opacity="0.045"/>
+<path d="M1340,-10 H1396 L1260,330 H1204 Z" fill="#3A4670" fill-opacity="0.045"/>
+</g>
+<rect x="1" y="1" width="1278" height="318" rx="23" fill="none" stroke="#0B1020" stroke-opacity="0.07" stroke-width="2"/>
+<svg x="88" y="72" width="176" height="176" viewBox="0 0 512 512">
+<defs><linearGradient id="fr-bl-m-tile" x1="0" y1="0" x2="0.6" y2="1"><stop offset="0" stop-color="#262F56"/><stop offset="1" stop-color="#0B1022"/></linearGradient>
+<linearGradient id="fr-bl-m-slash" gradientUnits="userSpaceOnUse" x1="230" y1="396" x2="410" y2="116"><stop offset="0" stop-color="#2EE6A6"/><stop offset="1" stop-color="#C6F432"/></linearGradient></defs>
+<rect width="512" height="512" rx="116" fill="url(#fr-bl-m-tile)"/>
+<rect x="5" y="5" width="502" height="502" rx="111" fill="none" stroke="#FFFFFF" stroke-opacity="0.13" stroke-width="10"/>
+<path d="M104,116 H290 L262,186 H178 V228 H245.2 L220.4,290 H178 V396 H104 Z" fill="#F5F7FB" stroke="#F5F7FB" stroke-width="10" stroke-linejoin="round"/>
+<path d="M336,116 H410 L298,396 H224 Z" fill="url(#fr-bl-m-slash)" stroke="url(#fr-bl-m-slash)" stroke-width="10" stroke-linejoin="round"/>
+</svg>
+<g font-family="Segoe UI Variable Display, Segoe UI, sans-serif">
+<text x="306" y="102" font-size="22" font-weight="600" letter-spacing="6" fill="#56627F">MASTERLY</text>
+<text x="300" y="182" font-size="84" font-weight="700" letter-spacing="-2" fill="#0B1020">Fluent<tspan fill="url(#fr-bl-word)">Regex</tspan></text>
+<text x="304" y="232" font-size="26" font-weight="400" fill="#4A5675">Readable, provable regular expressions for .NET</text>
+</g>
+<g fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M960,156 a14,14 0 0 0 14,-14 V124 a14,14 0 0 1 14,-14 H1036 a14,14 0 0 1 14,14 V142 a14,14 0 0 0 14,14" stroke="#B4BDD0" stroke-width="4"/>
+<path d="M850,156 H1168" stroke="url(#fr-bl-path)" stroke-width="5" stroke-opacity="0.85"/>
+</g>
+<circle cx="850" cy="156" r="8" fill="#B4BDD0"/>
+<circle cx="1179" cy="156" r="11" fill="none" stroke="#C77A00" stroke-width="4"/>
+<circle cx="1179" cy="156" r="4.5" fill="#C77A00"/>
+<rect x="870" y="136" width="84" height="40" rx="20" fill="#FFFFFF" stroke="url(#fr-bl-path)" stroke-opacity="0.85" stroke-width="4"/>
+<text x="912" y="163" font-family="Cascadia Code, Consolas, monospace" font-size="20" text-anchor="middle" fill="#56627F">\d{4}</text>
+<rect x="992" y="136" width="40" height="40" rx="20" fill="#FFFFFF" stroke="url(#fr-bl-path)" stroke-opacity="0.85" stroke-width="4"/>
+<text x="1012" y="163" font-family="Cascadia Code, Consolas, monospace" font-size="20" text-anchor="middle" fill="#56627F">-</text>
+<rect x="1070" y="136" width="78" height="40" rx="20" fill="#FFFFFF" stroke="url(#fr-bl-path)" stroke-opacity="0.85" stroke-width="4"/>
+<text x="1109" y="163" font-family="Cascadia Code, Consolas, monospace" font-size="20" text-anchor="middle" fill="#56627F">\d{2}</text>
+</svg>

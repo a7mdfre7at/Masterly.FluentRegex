@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+<title>Masterly.FluentRegex: Readable, provable regular expressions for .NET</title>
+<defs>
+<linearGradient id="fr-sp-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#151C36"/><stop offset="1" stop-color="#0A0F1E"/></linearGradient>
+<radialGradient id="fr-sp-glow" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#2EE6A6" stop-opacity="0.10"/><stop offset="1" stop-color="#2EE6A6" stop-opacity="0"/></radialGradient>
+<linearGradient id="fr-sp-word" gradientUnits="userSpaceOnUse" x1="660" y1="0" x2="960" y2="0"><stop offset="0" stop-color="#2EE6A6"/><stop offset="1" stop-color="#C6F432"/></linearGradient>
+<linearGradient id="fr-sp-out" gradientUnits="userSpaceOnUse" x1="1008" y1="0" x2="1106" y2="0"><stop offset="0" stop-color="#2EE6A6"/><stop offset="1" stop-color="#C6F432"/></linearGradient>
+</defs>
+<rect width="1280" height="640" fill="url(#fr-sp-bg)"/>
+<ellipse cx="220" cy="230" rx="300" ry="260" fill="url(#fr-sp-glow)"/>
+<path d="M1150,-10 H1270 L1006,650 H886 Z" fill="#FFFFFF" fill-opacity="0.035"/>
+<path d="M1320,-10 H1376 L1112,650 H1056 Z" fill="#FFFFFF" fill-opacity="0.035"/>
+<svg x="112" y="120" width="216" height="216" viewBox="0 0 512 512">
+<defs><linearGradient id="fr-sp-m-tile" x1="0" y1="0" x2="0.6" y2="1"><stop offset="0" stop-color="#262F56"/><stop offset="1" stop-color="#0B1022"/></linearGradient>
+<linearGradient id="fr-sp-m-slash" gradientUnits="userSpaceOnUse" x1="230" y1="396" x2="410" y2="116"><stop offset="0" stop-color="#2EE6A6"/><stop offset="1" stop-color="#C6F432"/></linearGradient></defs>
+<rect width="512" height="512" rx="116" fill="url(#fr-sp-m-tile)"/>
+<rect x="5" y="5" width="502" height="502" rx="111" fill="none" stroke="#FFFFFF" stroke-opacity="0.13" stroke-width="10"/>
+<path d="M104,116 H290 L262,186 H178 V228 H245.2 L220.4,290 H178 V396 H104 Z" fill="#F5F7FB" stroke="#F5F7FB" stroke-width="10" stroke-linejoin="round"/>
+<path d="M336,116 H410 L298,396 H224 Z" fill="url(#fr-sp-m-slash)" stroke="url(#fr-sp-m-slash)" stroke-width="10" stroke-linejoin="round"/>
+</svg>
+<g font-family="Segoe UI Variable Display, Segoe UI, sans-serif">
+<text x="376" y="160" font-size="26" font-weight="600" letter-spacing="7" fill="#9AA6C4">MASTERLY</text>
+<text x="368" y="256" font-size="108" font-weight="700" letter-spacing="-2.5" fill="#F5F7FB">Fluent<tspan fill="url(#fr-sp-word)">Regex</tspan></text>
+<text x="374" y="314" font-size="32" font-weight="400" fill="#B4BED8">Readable, provable regular expressions for .NET</text>
+</g>
+<rect x="112" y="420" width="1056" height="104" rx="22" fill="#0B1022" fill-opacity="0.75" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="2"/>
+<text x="170" y="483" font-family="Cascadia Code, Consolas, monospace" font-size="28"><tspan fill="#2EE6A6">Pattern</tspan><tspan fill="#DDE3F0">.With.StartOfLine.Digit.Repeat.Times(4)</tspan></text>
+<path d="M948,473 H984 M973,462 L984,473 L973,484" fill="none" stroke="#9AA6C4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1008" y="483" font-family="Cascadia Code, Consolas, monospace" font-size="28" font-weight="700" fill="url(#fr-sp-out)">^\d{4}</text>
+</svg>
