@@ -617,6 +617,39 @@ public class AnalyzerTests
     }
 
     [Fact]
+    public async Task NonBacktrackingWithAnUnsupportedConstruct_IsReportedInsteadOfCrashing()
+    {
+        var diagnostics = await AnalyzerHarness.AnalyzeAsync(Usings + """
+            public static class C
+            {
+                static readonly Pattern P = Pattern.With.PositiveLookbehind(Pattern.With.Literal("$")).Digit
+                    .WithOptions(RegexOptions.NonBacktracking);
+            }
+            """);
+
+        Diagnostic diagnostic = diagnostics.Single();
+        diagnostic.Id.ShouldBe("FRX003");
+        diagnostic.GetMessage().ShouldContain("NonBacktracking");
+    }
+
+    [Fact]
+    public async Task Extract_OnANonBacktrackingPatternWithAnUnsupportedConstruct_DoesNotCrash()
+    {
+        var diagnostics = await AnalyzerHarness.AnalyzeAsync(Usings + """
+            public record Price(int Amount);
+            public static class C
+            {
+                static Price M(string s) => Pattern.With.PositiveLookbehind(Pattern.With.Literal("$"))
+                    .NamedGroup("amount", Pattern.With.Digit)
+                    .WithOptions(RegexOptions.NonBacktracking)
+                    .Extract<Price>(s);
+            }
+            """);
+
+        diagnostics.ShouldNotContain(diagnostic => diagnostic.Id == "AD0001");
+    }
+
+    [Fact]
     public async Task GeneratedRegexOpportunity_AfterTheCodeFixWasApplied_IsNotSuggestedAgain()
     {
         var diagnostics = await AnalyzerHarness.AnalyzeAsync(Usings + """

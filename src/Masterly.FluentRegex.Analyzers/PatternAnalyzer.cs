@@ -88,8 +88,9 @@ namespace Masterly.FluentRegex.Analyzers
             {
                 _ = new Regex(text, pattern.Options & ~RegexOptions.Compiled);
             }
-            catch (ArgumentException ex)
+            catch (Exception ex) when (ex is ArgumentException || ex is NotSupportedException)
             {
+                // NotSupportedException: the options, such as NonBacktracking, cannot run this regex at all.
                 report(Diagnostic.Create(Diagnostics.InvalidRegex, location, text, ex.Message));
                 return;
             }
@@ -176,9 +177,9 @@ namespace Masterly.FluentRegex.Analyzers
             {
                 groups = new Regex(pattern.ToString(), pattern.Options & ~RegexOptions.Compiled).GetGroupNames();
             }
-            catch (ArgumentException)
+            catch (Exception ex) when (ex is ArgumentException || ex is NotSupportedException)
             {
-                return;
+                return; // the chain itself is reported as FRX003
             }
             var available = new HashSet<string>(groups, StringComparer.OrdinalIgnoreCase);
             string availableText = string.Join(", ", groups);

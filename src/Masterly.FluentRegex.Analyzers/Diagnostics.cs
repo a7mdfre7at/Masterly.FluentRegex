@@ -12,7 +12,9 @@ namespace Masterly.FluentRegex.Analyzers
             "Pattern cannot be evaluated at compile time",
             "The pattern for '{0}' cannot be evaluated at compile time: {1}",
             Category, DiagnosticSeverity.Warning, isEnabledByDefault: true,
-            description: "[GeneratePattern] needs a fluent chain built only from constants, other static patterns and CommonPatterns.",
+            description: "[GeneratePattern] needs a fluent chain built only from constants, other static patterns and CommonPatterns. "
+                + "Members outside the compile-time build, such as Script, LetterIn, DigitIn, AsciiDigit, CodePoint, Grapheme, "
+                + "IgnoreDiacritics, UseNonBacktracking and the pattern algebra, cannot be evaluated.",
             helpLinkUri: HelpLink);
 
         public static readonly DiagnosticDescriptor MustBePartial = new DiagnosticDescriptor(
