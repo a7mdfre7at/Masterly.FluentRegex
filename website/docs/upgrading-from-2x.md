@@ -112,7 +112,7 @@ dotnet_diagnostic.IDE0058.severity = warning
 The build then reports `warning IDE0058: Expression value is never used` for each `greeting.WithOptions(RegexOptions.IgnoreCase);`. Two limits:
 
 - IDE0058 reports every discarded value, not only patterns, so expect noise from calls such as `StringBuilder.Append`. Turn it off again once the upgrade is done.
-- In our test it did not report statements in a file with top-level statements, only statements inside methods.
+- With the .NET 10 SDK, it does not report discarded values in top-level statements (a `Program.cs` without a `Main` method). It reports them only inside methods, so search top-level code by hand.
 
 ### What immutability gives you
 
@@ -466,7 +466,7 @@ The companion packages added in 3.1 (Masterly.FluentRegex.AspNetCore, .Xunit, .A
 
 3.1 has no breaking changes to the 3.0 API, and the core package has no new dependencies. Check these points:
 
-**The .NET 9 build is gone.** .NET 9 left support in May 2026, so 3.1 ships `net8.0` and `net10.0` instead of `net9.0`. A .NET 9 app keeps working on the `net8.0` build. Only the span overload of `EnumerateSplits` needs .NET 10 now.
+**The .NET 9 build is gone.** .NET 9 left support in May 2026, so 3.1 ships `net8.0` and `net10.0` instead of `net9.0`. A .NET 9 app keeps working on the `net8.0` build. `EnumerateSplits(ReadOnlySpan<char>)` is the only member that it loses, because that member now needs .NET 10.
 
 **A new `Validators` class.** 3.1 adds `Masterly.FluentRegex.Validators`, with the semantic checks `Luhn`, `IbanChecksum`, `IsoDate` and `IPv4`. If your code has its own `Validators` type and imports both namespaces, the name becomes ambiguous:
 
@@ -479,11 +479,14 @@ Add a using alias to pick yours:
 ```csharp
 using System;
 using Masterly.FluentRegex;
-using MyCompany.Validation;
+using MyCompany.Validation;                          // your own namespace
 using Validators = MyCompany.Validation.Validators;
 
-Console.WriteLine(Validators.IsPostcode("12345"));   // your own Validators
+// Calls your own Validators class, not the library's
+Console.WriteLine(Validators.IsPostcode("12345"));   // True
 ```
+
+The same can happen with any type that 3.x added to the `Masterly.FluentRegex` namespace. If you upgrade straight from 2.x, also look for your own types named, for example, `Template`, `Replacement`, `Redactor`, `RiskLevel`, `MatchScope` or `DigitMode`. A type declared in the same namespace as the code that uses it wins without an error, so the clash appears only when the namespace is imported with `using`.
 
 **Patterns compare by value.** See [Patterns compare by value](#patterns-compare-by-value).
 
@@ -557,7 +560,7 @@ If you build the package from source rather than installing it from NuGet: `Gene
 1. **Save a snapshot.** Before you change the package version, record `pattern.ToString()` for your important patterns, and make sure your tests pass on 2.x.
 2. **Update the package.** Run `dotnet add package Masterly.FluentRegex` in every project that uses it. You do not need to change your target framework.
 3. **Rebuild everything.** Rebuild every project and library that references Masterly.FluentRegex, so that `ToRegex()` calls bind to the new overload.
-4. **Fix the build errors.** FRX003 and FRX006 point at patterns that were already broken in 2.x. Fix CS0104 for `Validators` with a using alias.
+4. **Fix the build errors.** FRX003 and FRX006 point at patterns that were already broken in 2.x. Fix CS0104 for `Validators` or another new type name with a using alias.
 5. **Review the build warnings.** FRX004 marks patterns with a high ReDoS risk, and FRX005 (info) marks polynomial backtracking.
 6. **Find discarded results.** Search for statements such as `pattern.WithOptions(...);` and assign the result, or turn on IDE0058 temporarily to find them.
 7. **Replace ranges written as literals.** Change `Set(Literal("a-z"))` to `Set(Range('a', 'z'))`.

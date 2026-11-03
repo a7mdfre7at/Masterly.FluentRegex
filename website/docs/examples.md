@@ -828,7 +828,7 @@ The project is an ASP.NET Core web project (`Microsoft.NET.Sdk.Web`) targeting .
 
 ### On .NET 8 minimal APIs
 
-.NET 8 minimal APIs do not validate DataAnnotations by themselves, and `AddValidation()` does not exist there. Remove the `AddValidation()` call, run the validator in the endpoint and turn the results into a validation problem. This `MapPost` replaces the one in the previous sample; mapping `POST /orders` twice makes every request fail with an ambiguous-match error.
+.NET 8 minimal APIs do not validate DataAnnotations by themselves, and `AddValidation()` does not exist there. Remove the `AddValidation()` call, run the validator in the endpoint and turn the results into a validation problem. This `MapPost` replaces the one in the previous sample; mapping `POST /orders` twice makes every such request fail with an `AmbiguousMatchException`.
 
 ```csharp
 using System.Collections.Generic;
@@ -935,7 +935,9 @@ Console.WriteLine(report.HasRedactions);  // prints: True
 Console.WriteLine(report);                // prints: Redacted 2 span(s): [9..21) KeepLast(2), [27..38) Label [SSN]
 ```
 
-`report.Spans` lists one `RedactedSpan` per value, with its `Start`, `Length`, `Style`, `Label` and the index of the pattern that found it. [PII Redaction](./pii-redaction.md) covers every style, overlapping matches and the non-backtracking engine.
+`report.Spans` lists one `RedactedSpan` per value: `Start` and `Length` in the original text, `RedactedStart` and `RedactedLength` in the redacted text, the `Style` name, the `Label` (only for label styles) and `PatternIndex`, the position of the pattern in the order it was added (here `3` for the phone number and `2` for the SSN).
+
+Besides `Email`, `KeepLast(n)` and `Label(text)`, there are `RedactionStyle.Mask` (the default when `Add` gets no style; every letter and digit becomes `*`), `KeepFirst(n)` and `Custom(match => ...)`. [PII Redaction](./pii-redaction.md) covers every style, overlapping matches and the non-backtracking engine.
 
 :::tip
 
@@ -1221,7 +1223,7 @@ SearchOutcome slow = UserRegexSearch.Search(@"(\d+)\s*-\s*(\d+)", digits);
 
 ### With the non-backtracking engine
 
-On .NET 8 and later, `UseNonBacktracking()` switches to the .NET engine whose time is linear in the input length, so no pattern can backtrack catastrophically. It does not support backreferences, lookarounds, atomic groups or conditionals; such a pattern throws `NotSupportedException` when it first runs.
+On .NET 8 and later, `UseNonBacktracking()` switches to the .NET engine whose time is linear in the input length, so no pattern can backtrack catastrophically. It does not support backreferences, lookarounds, atomic groups, conditionals or `RegexOptions.RightToLeft`. `UseNonBacktracking()` itself does not check this; such a pattern throws `NotSupportedException` when it first runs, so catch it around the matching call.
 
 ```csharp
 // SearchOutcome is from the previous sample
@@ -1283,7 +1285,7 @@ The repository has a runnable tour of the library in `samples/Masterly.FluentReg
 dotnet run --project samples/Masterly.FluentRegex.Showcase
 ```
 
-It prints ten numbered sections. Sections 3 (typed extraction), 4 (fluent replacements) and 6 (ReDoS analysis) are covered by the scenarios above. The other sections are summarized here, with their real output.
+It prints ten numbered sections. Sections 3 (typed extraction) and 4 (fluent replacements) are the same code as [Log lines into typed records](#log-lines-into-typed-records) and [Computing the replacement with a fluent replacement](#computing-the-replacement-with-a-fluent-replacement). The other sections are summarized here, with their real output.
 
 ### Building blocks and operators
 
@@ -1301,9 +1303,16 @@ Console.WriteLine(digits);                       // prints: \d+
 Console.WriteLine(price);                        // prints: \$\d+\.\d{2}
 Console.WriteLine(animal);                       // prints: (?:cat|dog|bird)
 bool hasPrice = price.IsMatch("Total: $42.50");  // true
+
+Pattern lazy = Pattern.With.Literal("<").Anything.Repeat.OneOrMore.Lazy.Literal(">");
+Pattern possessive = Pattern.With.Digit.Repeat.OneOrMore.Possessive;
+
+Console.WriteLine(lazy);                         // prints: <.+?>
+Console.WriteLine(possessive);                   // prints: (?>\d+)
+string firstTag = lazy.Match("<a><b>").Value;    // <a>
 ```
 
-`digits` is still `\d+` after it was used inside `price`. See [Composing Patterns](./composing-patterns.md).
+`digits` is still `\d+` after it was used inside `price`. `Lazy` takes as few characters as possible, and `Possessive` never gives characters back (it becomes an atomic group). See [Composing Patterns](./composing-patterns.md) and [Quantifiers](./quantifiers.md).
 
 ### From a legacy regex to fluent code
 
@@ -1350,6 +1359,46 @@ string nearMisses = string.Join("  ", CommonPatterns.IPv4().GenerateNonMatching(
 
 The non-matching values are near misses: valid addresses with one small change, which are the inputs most likely to expose a bug. See [Test Data Generation](./test-data-generation.md).
 
+### ReDoS analysis with proof
+
+`AnalyzeSafety(confirm: true)` does not stop at the static finding. It builds an attack input and runs it against the real engine, with a time budget, to prove the problem:
+
+```csharp
+// The analyzer flags this constant regex at build time with warning FRX004; it is vulnerable on purpose.
+#pragma warning disable FRX004
+SafetyReport report = Pattern.FromRegex(@"^([a-zA-Z0-9]+[._-]?)*@example\.com$").AnalyzeSafety(confirm: true);
+#pragma warning restore FRX004
+
+Console.WriteLine(report);
+```
+
+```text
+Pattern: ^([a-zA-Z0-9]+[._-]?)*@example\.com$
+Risk:    High
+
+  [High] NestedQuantifier at position 1: ([a-zA-Z0-9]+[._-]?)*
+    The repetition '[a-zA-Z0-9]+' is nested inside the repetition '*'. The same text can be split between iterations in exponentially many ways, so a failing match backtracks through all of them.
+    Fix: Make the inner repetition possessive (.Possessive), wrap it in AtomicGroup(...), or remove one of the quantifiers. For untrusted input also use WithTimeout(...) or UseNonBacktracking().
+    Attack input (33 chars): 00000000000000000000000000000000!
+    CONFIRMED: matching did not finish within 239 ms.
+```
+
+The time in the last line depends on the machine. The fix the report suggests, a possessive inner repetition, removes the risk and keeps the meaning for valid input:
+
+```csharp
+Pattern safeVersion = Pattern.With
+    .StartOfLine
+    .NonCapturingGroup(Pattern.With.Set(Pattern.With.Letter.Digit).Repeat.OneOrMore.Possessive.AnyOf("._-").Repeat.Optional).Repeat.ZeroOrMore
+    .Literal("@example.com")
+    .EndOfLine;
+
+Console.WriteLine(safeVersion);                          // prints: ^(?:(?>[a-zA-Z\d]+)[\._\-]?)*@example\.com$
+RiskLevel risk = safeVersion.AnalyzeSafety().Risk;       // None
+bool stillMatches = safeVersion.IsMatch("john.doe@example.com"); // true
+```
+
+See [ReDoS Safety](./redos-safety.md) and [Guarding a user-supplied regex](#guarding-a-user-supplied-regex).
+
 ### Explaining a failed match
 
 `Trace` shows how far a pattern got and why it stopped:
@@ -1393,7 +1442,7 @@ bool valid = ProductCodes.ProductCodeRegex().IsMatch("ABC-1234");    // true
 bool invalid = ProductCodes.ProductCodeRegex().IsMatch("abc-12");    // false
 ```
 
-The generated names are the property name plus `Source` and `Regex`. A pattern the generator cannot evaluate, or a class that is not `partial`, is reported as a build diagnostic instead of failing at run time. See [Compile-Time Checks](./compile-time-checks.md).
+The generated names are the property name plus `Source` and `Regex`; `[GeneratePattern("MyMethodName")]` picks another method name. The property must be `static`. A pattern the generator cannot evaluate, or a class that is not `partial`, is reported as a build diagnostic instead of failing at run time. See [Compile-Time Checks](./compile-time-checks.md).
 
 ### Allocation-free span APIs
 
