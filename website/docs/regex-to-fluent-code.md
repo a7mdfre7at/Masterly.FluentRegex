@@ -407,7 +407,7 @@ A quantifier after a literal character is written after the literal run it ends.
 
 - A scoped option group, `(?flags:...)`, becomes a member that wraps its body. Turning only `i` on or off uses `IgnoreCase` or `CaseSensitive`. Any other combination uses `InlineOptions(enable, body, disable)`. The `disable` argument is left out when nothing is turned off, and `enable` is `RegexOptions.None` when options are only turned off.
 - An option switch without a body, such as `(?i)`, applies to the rest of the enclosing group. It is kept as raw regex so it keeps that reach.
-- With `RegexOptions.IgnorePatternWhitespace`, whitespace and `#` comments in the regex are dropped from the code. The option itself is kept in `.WithOptions(...)`. See the [warning about escaped spaces](#ignorepatternwhitespace-and-escaped-spaces) below.
+- With `RegexOptions.IgnorePatternWhitespace`, whitespace and `#` comments in the regex are dropped from the code. The option itself is kept in `.WithOptions(...)`. Escaped spaces and `#` stay literal (see [IgnorePatternWhitespace and escaped spaces](#ignorepatternwhitespace-and-escaped-spaces)).
 
 ## Constructs kept as raw regex
 
@@ -430,7 +430,7 @@ Some constructs have no fluent member. The converter writes them as `RegEx(...)`
 
 ## Round-tripping
 
-The generated code builds a pattern that matches exactly the same strings as the original, with one known exception: escaped spaces and `#` under `IgnorePatternWhitespace` (see [the warning below](#ignorepatternwhitespace-and-escaped-spaces)). The regex text can differ, because the fluent members escape some characters the original did not.
+The generated code builds a pattern that matches exactly the same strings as the original. The regex text can differ, because the fluent members escape some characters the original did not.
 
 ```csharp
 Pattern original = Pattern.FromRegex(@"^(?<user>[\w.]+)@(?<host>[\w-]+\.\w{2,})$");
@@ -482,11 +482,7 @@ Console.WriteLine(Pattern.With.NonCapturingGroup(Pattern.With.Literal("ab")).Rep
 
 ### IgnorePatternWhitespace and escaped spaces
 
-:::warning
-
-With `RegexOptions.IgnorePatternWhitespace`, an escaped space (`\ `) or an escaped `#` (`\#`) does not survive the conversion. `Literal(...)` does not escape spaces or `#`, so in the rebuilt pattern the space is ignored and the `#` starts a comment.
-
-:::
+With `RegexOptions.IgnorePatternWhitespace`, an escaped space (`\ `) or an escaped `#` (`\#`) becomes part of a `Literal(...)`. A pattern with that option escapes the space and `#` again when it renders, so the rebuilt pattern means the same as the original:
 
 ```csharp
 Pattern original = Pattern.FromRegex(@"^order\ \#\d+$", RegexOptions.IgnorePatternWhitespace);
@@ -499,14 +495,13 @@ Pattern rebuilt = Pattern.With
     .EndOfLine
     .WithOptions(RegexOptions.IgnorePatternWhitespace);
 
-Console.WriteLine(rebuilt);                       // ^order #\d+$
+Console.WriteLine(rebuilt);                       // ^order\ \#\d+$
 Console.WriteLine(original.IsMatch("orderly"));   // False
-Console.WriteLine(rebuilt.IsMatch("orderly"));    // True
+Console.WriteLine(rebuilt.IsMatch("orderly"));    // False
+Console.WriteLine(rebuilt.IsMatch("order #42"));  // True
 ```
 
-- Under `IgnorePatternWhitespace`, `^order #\d+$` means `^order` followed by a comment, so the rebuilt pattern matches any text that starts with `order`.
-- Regexes that only use whitespace for layout, such as `\d+  # digits` on several lines, convert correctly. The problem is only escaped spaces and escaped `#`.
-- Fix it in the generated code: remove `.WithOptions(RegexOptions.IgnorePatternWhitespace)`, which the fluent code no longer needs, or use `AnyOf(" ")` and `AnyOf("#")` for those characters. `AnyOf` renders a character class, and whitespace inside a class is not ignored.
+- Regexes that only use whitespace for layout, such as `\d+  # digits` on several lines, lose that layout. The option is still kept, because it does not hurt the fluent parts.
 - Keep the option when the code contains a `RegEx(...)` part. Raw parts keep their original text, including layout whitespace and comments, so they still need `IgnorePatternWhitespace`. For example, `(?<c-o>b c)` in x-mode is kept as `RegEx(@"(?<c-o>b c)")`.
 
 ### Other things to check

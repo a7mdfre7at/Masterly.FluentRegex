@@ -10,7 +10,18 @@ namespace Masterly.FluentRegex
     internal enum RenderContext
     {
         Normal,
-        CharacterClass
+        CharacterClass,
+
+        // Outside a character class with RegexOptions.IgnorePatternWhitespace: the engine ignores unescaped
+        // whitespace and reads '#' as the start of a comment, so literals must escape them too.
+        FreeSpacing
+    }
+
+    internal static class RenderContexts
+    {
+        /// <summary>The context for a pattern nested outside a character class, keeping free-spacing mode.</summary>
+        public static RenderContext Nested(RenderContext outer) =>
+            outer == RenderContext.FreeSpacing ? RenderContext.FreeSpacing : RenderContext.Normal;
     }
 
     /// <summary>
@@ -83,6 +94,12 @@ namespace Masterly.FluentRegex
                 case '\u001B': sb.Append(@"\e"); return;
             }
 
+            if (context == RenderContext.FreeSpacing && (c == '#' || char.IsWhiteSpace(c)))
+            {
+                sb.Append('\\').Append(c);
+                return;
+            }
+
             if (char.IsControl(c))
             {
                 sb.Append(@"\u").Append(((int)c).ToString("X4"));
@@ -150,7 +167,7 @@ namespace Masterly.FluentRegex
         public override void Render(StringBuilder sb, RenderContext context)
         {
             sb.Append(Prefix);
-            Inner.RenderTo(sb, InnerContext);
+            Inner.RenderTo(sb, InnerContext == RenderContext.Normal ? RenderContexts.Nested(context) : InnerContext);
             sb.Append(Suffix);
         }
     }
@@ -180,7 +197,7 @@ namespace Masterly.FluentRegex
             for (int i = 0; i < Branches.Count; i++)
             {
                 if (i > 0) sb.Append('|');
-                Branches[i].RenderTo(sb, RenderContext.Normal);
+                Branches[i].RenderTo(sb, RenderContexts.Nested(context));
             }
             sb.Append(')');
         }
@@ -205,9 +222,9 @@ namespace Masterly.FluentRegex
         public override void Render(StringBuilder sb, RenderContext context)
         {
             sb.Append("(?(").Append(Condition).Append(')');
-            Yes.RenderTo(sb, RenderContext.Normal);
+            Yes.RenderTo(sb, RenderContexts.Nested(context));
             sb.Append('|');
-            No.RenderTo(sb, RenderContext.Normal);
+            No.RenderTo(sb, RenderContexts.Nested(context));
             sb.Append(')');
         }
     }

@@ -533,9 +533,9 @@ Console.WriteLine(lastNumber.Match("a1b22c333").Value);              // 333
 Console.WriteLine(lastNumber.Match("a1b22c333").NextMatch().Value);  // 22
 ```
 
-:::warning
+:::note
 
-`Literal` escapes regex special characters, but not spaces or `#`. Under `IgnorePatternWhitespace` the space in `Literal("a b")` is ignored and a `#` from `Literal("#")` starts a comment, so the pattern no longer matches `a b#`. Avoid `IgnorePatternWhitespace` on fluent patterns; the fluent API already gives you readable patterns.
+Under `IgnorePatternWhitespace`, literals escape their spaces and `#`, so `Pattern.With.Literal("a b").Literal("#")` with that option renders `a\ b\#` and still matches `a b#`. Text added with `RegEx(...)` is not changed.
 
 :::
 

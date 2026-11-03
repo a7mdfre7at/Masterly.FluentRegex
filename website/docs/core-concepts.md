@@ -317,28 +317,23 @@ bool matches = fileName.IsMatch("notes.txt"); // true
 - On .NET 8 and .NET 10 the parameter is marked with `[StringSyntax(StringSyntaxAttribute.Regex)]`, so Visual Studio and Rider color the regex inside the string.
 - Never pass user input to `RegEx`. Pass it to `Literal`, which escapes it.
 
-### Pitfall: IgnorePatternWhitespace
+### Literals and IgnorePatternWhitespace
 
-`Literal` does not escape spaces or `#`, because they are ordinary characters in a normal regex. With `RegexOptions.IgnorePatternWhitespace`, though, .NET ignores unescaped white space and treats `#` as the start of a comment:
+With `RegexOptions.IgnorePatternWhitespace`, .NET ignores unescaped white space and treats `#` as the start of a comment. `Literal` escapes both when the pattern has that option, so the literal still matches its own text:
 
 ```csharp
 Pattern spaced = Pattern.With.Literal("a b").WithOptions(RegexOptions.IgnorePatternWhitespace);
 
-string regex = spaced.ToString();         // a b
-bool withSpace = spaced.IsMatch("a b");   // false
-bool withoutSpace = spaced.IsMatch("ab"); // true
-
-Pattern fixedSpace = Pattern.With.Literal("a").RegEx(@"\ ").Literal("b")
-    .WithOptions(RegexOptions.IgnorePatternWhitespace);
-
-bool fixedMatches = fixedSpace.IsMatch("a b"); // true
+string regex = spaced.ToString();         // a\ b
+bool withSpace = spaced.IsMatch("a b");   // true
+bool withoutSpace = spaced.IsMatch("ab"); // false
 
 Pattern hashed = Pattern.With.Literal("a#b").WithOptions(RegexOptions.IgnorePatternWhitespace);
 
-bool commentOnly = hashed.IsMatch("a"); // true: "#b" is read as a comment
+bool hashMatches = hashed.IsMatch("a#b"); // true
 ```
 
-When you use this option, write spaces as `RegEx(@"\ ")` (or use `Whitespace` for any white-space character) and `#` as `RegEx(@"\#")`.
+Without the option, `Literal` writes spaces and `#` as they are, because they are ordinary characters in a normal regex.
 
 ## Options and timeout
 

@@ -155,7 +155,12 @@ namespace Masterly.FluentRegex
             string off = InlineFlags(disable, nameof(disable));
             if (off.Length > 0) sb.Append('-').Append(off);
             sb.Append(':');
-            return Append(new WrapToken(sb.ToString(), pattern, ")"));
+
+            // Inside (?x:...) the engine ignores unescaped whitespace and '#', so the inner literals escape them.
+            RenderContext innerContext = (enable & RegexOptions.IgnorePatternWhitespace) != 0
+                ? RenderContext.FreeSpacing
+                : RenderContext.Normal;
+            return Append(new WrapToken(sb.ToString(), pattern, ")", innerContext));
         }
 
         private static string InlineFlags(RegexOptions options, string parameterName)

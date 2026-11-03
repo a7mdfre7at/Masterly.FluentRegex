@@ -501,11 +501,7 @@ Console.WriteLine(Pattern.With.Literal().IsEmpty);   // prints: True
 
 ### Literals and IgnorePatternWhitespace
 
-:::warning
-
-`Literal` does not escape spaces or `#`. Under `RegexOptions.IgnorePatternWhitespace`, the regex engine ignores unescaped spaces and treats `#` as the start of a comment, so a literal that contains them stops matching what you wrote.
-
-:::
+Under `RegexOptions.IgnorePatternWhitespace`, the regex engine ignores unescaped whitespace and treats `#` as the start of a comment. A pattern with that option escapes the whitespace and `#` in its literals, so they still match what you wrote:
 
 ```csharp
 using System;
@@ -515,13 +511,16 @@ using Masterly.FluentRegex;
 Pattern fullName = Pattern.With.Literal("John Smith").WithOptions(RegexOptions.IgnorePatternWhitespace);
 Pattern language = Pattern.With.Literal("C#").WithOptions(RegexOptions.IgnorePatternWhitespace);
 
-Console.WriteLine(fullName.IsMatch("John Smith")); // prints: False
-Console.WriteLine(fullName.IsMatch("JohnSmith"));  // prints: True
-Console.WriteLine(language.IsMatch("C"));          // prints: True
+Console.WriteLine(fullName);                        // prints: John\ Smith
+Console.WriteLine(fullName.IsMatch("John Smith"));  // prints: True
+Console.WriteLine(fullName.IsMatch("JohnSmith"));   // prints: False
+Console.WriteLine(language);                        // prints: C\#
+Console.WriteLine(language.IsMatch("C#"));          // prints: True
 ```
 
-- Leave `IgnorePatternWhitespace` off when the pattern has literals with spaces or `#`. The fluent chain already gives you readable code, so you rarely need the option.
-- If a raw fragment needs it, scope it to that fragment with `InlineOptions(RegexOptions.IgnorePatternWhitespace, ...)` (see [Composing Patterns](./composing-patterns.md)).
+- Without the option, spaces and `#` are written as they are, because they are ordinary characters in a normal regex.
+- The same applies inside an inline scope: `InlineOptions(RegexOptions.IgnorePatternWhitespace, Pattern.With.Literal("a b"))` renders `(?x:a\ b)`.
+- Text added with `RegEx(...)` is never changed, so layout whitespace and `#` comments in a raw fragment still work in free-spacing mode.
 
 ## Raw regex
 

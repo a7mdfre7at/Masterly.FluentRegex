@@ -201,9 +201,9 @@ Console.WriteLine(controls);    // \t\f\v\e\u0000
 Console.WriteLine(price.IsMatch("Total: $9.99 (incl. tax)?"));   // True
 ```
 
-:::warning
+:::note
 
-`Literal` does not escape spaces or `#`. Under `RegexOptions.IgnorePatternWhitespace` (or an inline `(?x:...)` scope), the engine ignores spaces and treats `#` as the start of a comment. So `Pattern.With.Literal("a c").WithOptions(RegexOptions.IgnorePatternWhitespace)` does not match `"a c"`. Avoid that option with literal text that contains spaces or `#`, or write `\x20` and `\#` with `RegEx(...)`.
+Under `RegexOptions.IgnorePatternWhitespace` (or an inline `(?x:...)` scope made with `InlineOptions`), the engine ignores unescaped whitespace and treats `#` as the start of a comment. `Literal` escapes both there, so `Pattern.With.Literal("a c").WithOptions(RegexOptions.IgnorePatternWhitespace)` renders `a\ c` and matches `"a c"`.
 
 :::
 
@@ -863,7 +863,6 @@ See [Compile-Time Checks](./compile-time-checks.md) for the analyzer, and [Valid
 - **`\d` and `\w` are Unicode.** Use `AsciiDigit`, `Letter`, `DigitIn(UnicodeScript.Latin)` or `WithAsciiDigits()` for ASCII-only formats.
 - **`Anything` inside a set is a literal dot.** `Set(Pattern.With.Anything)` is `[.]`.
 - **`Literal("a-f")` inside a set is three characters.** Use `Range('a', 'f')`.
-- **Spaces and `#` in `Literal` are not escaped.** They lose their meaning under `IgnorePatternWhitespace`.
 - **`|` drops options.** `a | b` has no options, even when `a` was built with `WithOptions(...)`. Set options on the result.
 - **Options are not in `ToString()`.** A pattern built with `WithOptions(RegexOptions.IgnoreCase)` prints the same text as one without. Pass `Options` along when you copy the regex text elsewhere, or use [Export](./export.md).
 - **Patterns are immutable.** `p.WithOptions(...)` on its own line does nothing. Assign the result.

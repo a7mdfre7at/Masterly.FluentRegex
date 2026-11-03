@@ -71,7 +71,7 @@ namespace Masterly.FluentRegex
             if (text == null)
             {
                 var sb = new StringBuilder();
-                RenderTo(sb, RenderContext.Normal);
+                RenderTo(sb, (_options & RegexOptions.IgnorePatternWhitespace) != 0 ? RenderContext.FreeSpacing : RenderContext.Normal);
                 text = sb.ToString();
                 _text = text;
             }
@@ -82,7 +82,9 @@ namespace Masterly.FluentRegex
         {
             if (_tail == null) return;
 
-            if (context == RenderContext.Normal && _text != null)
+            // The cached text was rendered for this pattern's own options, so it only stands in for Normal context
+            // when free-spacing mode did not change it.
+            if (context == RenderContext.Normal && _text != null && (_options & RegexOptions.IgnorePatternWhitespace) == 0)
             {
                 sb.Append(_text);
                 return;
@@ -184,7 +186,8 @@ namespace Masterly.FluentRegex
 
         /// <summary>
         /// Matches the given characters literally. Regex special characters are escaped automatically,
-        /// both inside and outside character sets.
+        /// both inside and outside character sets. When the pattern uses RegexOptions.IgnorePatternWhitespace,
+        /// whitespace and '#' are escaped too, so the text still matches itself.
         /// </summary>
         /// <param name="characters">Characters to match literally.</param>
         /// <returns>A new pattern.</returns>
@@ -199,7 +202,8 @@ namespace Masterly.FluentRegex
 
         /// <summary>
         /// Matches the given text literally. Regex special characters are escaped automatically,
-        /// both inside and outside character sets.
+        /// both inside and outside character sets. When the pattern uses RegexOptions.IgnorePatternWhitespace,
+        /// whitespace and '#' are escaped too, so the text still matches itself.
         /// </summary>
         /// <param name="literalChars">Text to match literally.</param>
         /// <returns>A new pattern.</returns>
