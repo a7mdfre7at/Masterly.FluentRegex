@@ -300,7 +300,7 @@ When the arguments are constants, you will not get this far: the build fails wit
 
 :::note
 
-Some mistakes are still found only when the regex is created. Raw text passed to `RegEx(...)` is not checked when you build the pattern. The group-name check accepts any mix of letters, digits and underscores, so `NamedGroup("1x", Pattern.With.Digit)` builds `(?<1x>\d)` without throwing, even though .NET rejects a name that starts with a digit. Use `IsValid()` or `TryValidate(out string error)` for patterns built from data, and see [Validation and Debugging](./validation-and-debugging.md). For constant patterns, the build reports these as FRX003.
+Some mistakes are still found only when the regex is created. Raw text passed to `RegEx(...)` is not checked when you build the pattern. The group-name check accepts any mix of letters, digits and underscores, so `NamedGroup("1x", Pattern.With.Digit)` builds `(?<1x>\d)` without throwing, even though .NET rejects a name that starts with a digit but is not a number. Use `IsValid()` or `TryValidate(out string error)` for patterns built from data, and see [Validation and Debugging](./validation-and-debugging.md). For constant patterns, the build reports these as FRX003.
 
 :::
 

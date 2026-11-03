@@ -59,7 +59,7 @@ The members of `Pattern` are grouped by task in the sections below.
 | `Pattern()` | | Creates an empty pattern. `Pattern.With` reads better. |
 | `static Pattern FromRegex(string regex, RegexOptions options = RegexOptions.None)` | `Pattern` | Wraps an existing regex after validating it. Throws `ArgumentNullException` for `null` and `ArgumentException` for invalid syntax. The result can be chained, analyzed, traced and converted like any other pattern. |
 | `static Pattern Learn(params string[] match)` | `Pattern` | Infers an anchored `^...$` pattern that fully matches every example. See [Learning from examples](./learning-from-examples.md). |
-| `static Pattern Learn(IEnumerable<string> match, IEnumerable<string>? reject = null)` | `Pattern` | The same, and the result must also reject every example in `reject`. Throws `ArgumentException` when `match` is empty or the two lists cannot be separated. |
+| `static Pattern Learn(IEnumerable<string> match, IEnumerable<string>? reject = null)` | `Pattern` | The same, and the result must also reject every example in `reject`. Throws `ArgumentNullException` when `match` or an example is `null`, and `ArgumentException` when `match` is empty or a reject example cannot be separated (it is also a match example). |
 | `bool IsEmpty { get; }` | `bool` | `true` when the pattern has no elements. |
 
 ```csharp
@@ -123,12 +123,14 @@ Each matcher is a property that returns `Pattern` and matches one character. Sev
 | `Letter` | `[a-zA-Z]` | `a-zA-Z` | An ASCII letter. Use `Unicode(UnicodeGroup.Letter)` for letters of every script. |
 | `LowercaseLetter` | `[a-z]` | `a-z` | A lowercase ASCII letter. |
 | `UppercaseLetter` | `[A-Z]` | `A-Z` | An uppercase ASCII letter. |
-| `Anything` | `.` | | Any character except `\n` (any character under `RegexOptions.Singleline`). |
+| `Anything` | `.` | `.` (a literal dot) | Any character except `\n` (any character under `RegexOptions.Singleline`). Inside a set the dot loses its meaning and matches only `.`. |
 | `Tab` | `\t` | `\t` | A tab. |
 | `Newline` | `\n` | `\n` | A line feed. |
 | `CarriageReturn` | `\r` | `\r` | A carriage return. |
-| `CodePoint` | | | One Unicode scalar value: a surrogate pair, such as most emoji, or one non-surrogate character. Lone surrogates do not match. |
-| `Grapheme` | | | One user-perceived character, an approximation of an extended grapheme cluster. |
+| `CodePoint` | `(?:...)` | Not allowed | One Unicode scalar value: a surrogate pair, such as most emoji, or one non-surrogate character. Lone surrogates do not match. |
+| `Grapheme` | `(?:...)` | Not allowed | One user-perceived character, an approximation of an extended grapheme cluster. |
+
+`CodePoint` and `Grapheme` can match more than one UTF-16 code unit, so they render as a non-capturing group and a quantifier applies to the whole sequence. Inside `Set(...)` or `NegatedSet(...)` they throw `InvalidOperationException` when the pattern is rendered; combine them with `|` or `OneOf(...)` instead.
 
 ```csharp
 Pattern alone = Pattern.With.Letter;
@@ -164,13 +166,13 @@ Console.WriteLine(price); // \$\d+\.\d{2}
 | `NegatedSet(Pattern pattern)` | `Pattern` | One character not in the set: `[^...]`. |
 | `Range(char from, char to)` | `Pattern` | An inclusive range. Renders `[a-f]` on its own and `a-f` inside a set. Throws `ArgumentException` when `from` is greater than `to`. |
 | `AnyOf(string characters)` | `Pattern` | One of the listed characters, all taken literally, including `-`, `]` and `^`. Throws `ArgumentException` for an empty string. |
-| `NoneOf(string characters)` | `Pattern` | Any character except the listed ones: `[^...]`. |
+| `NoneOf(string characters)` | `Pattern` | Any character except the listed ones: `[^...]`. Throws `ArgumentException` for an empty string. |
 | `Unicode(UnicodeCategory category)` | `Pattern` | A character in a `System.Globalization.UnicodeCategory`, such as `\p{Lu}`. Works inside and outside a set. |
 | `NotUnicode(UnicodeCategory category)` | `Pattern` | A character not in the category: `\P{Lu}`. |
 | `Unicode(UnicodeGroup group)` | `Pattern` | A character in a general group, such as `\p{L}` for any letter in any script. |
 | `NotUnicode(UnicodeGroup group)` | `Pattern` | A character not in the group: `\P{L}`. |
-| `UnicodeBlock(string blockName)` | `Pattern` | A character in a named block, such as `\p{IsGreek}`. Throws `ArgumentException` for an empty or unknown block name. |
-| `Script(UnicodeScript script)` | `Pattern` | Any character of a writing system. Works inside and outside a set. |
+| `UnicodeBlock(string blockName)` | `Pattern` | A character in a named .NET block, such as `\p{IsGreek}`. The `Is` prefix is optional: `UnicodeBlock("Greek")` also renders `\p{IsGreek}`. Throws `ArgumentException` for an empty name or one with characters other than letters, digits, `-` and `_`. A well-formed but unknown name is not rejected here: the regex is invalid when it is first used, and the analyzer reports `FRX003` at build time. |
+| `Script(UnicodeScript script)` | `Pattern` | Any character of a writing system, rendered as a class of code-point ranges (for `Greek`, `[\u0300-\u036F\u0370-\u03E1\u03F0-\u03FF\u1F00-\u1FFF]`). Works inside and outside a set. |
 | `LetterIn(UnicodeScript script)` | `Pattern` | A letter (category `L`) of the script. Marks, digits and punctuation are excluded. |
 | `DigitIn(UnicodeScript script)` | `Pattern` | A decimal digit of the script. `Latin` gives `0-9`. |
 
@@ -186,7 +188,7 @@ Console.WriteLine(Pattern.With.NoneOf("aeiou"));                                
 Console.WriteLine(Pattern.With.Unicode(UnicodeCategory.UppercaseLetter));          // \p{Lu}
 Console.WriteLine(Pattern.With.NotUnicode(UnicodeGroup.Letter));                   // \P{L}
 Console.WriteLine(Pattern.With.UnicodeBlock("IsGreek"));                           // \p{IsGreek}
-Console.WriteLine(Pattern.With.DigitIn(UnicodeScript.Arabic));                     // [٠-٩۰-۹]
+Console.WriteLine(Pattern.With.DigitIn(UnicodeScript.Arabic));                     // [\u0660-\u0669\u06F0-\u06F9]
 ```
 
 See [Character classes](./character-classes.md) and [Unicode](./unicode.md) for details.
@@ -309,9 +311,9 @@ Settings travel with the pattern. Each `With...` member returns a copy.
 | `WithOptions(RegexOptions options)` | `Pattern` | A copy that uses these options. Replaces the previous options; it does not add to them. |
 | `WithTimeout(TimeSpan timeout)` | `Pattern` | A copy that throws `RegexMatchTimeoutException` when a match runs longer. The runtime defense against ReDoS. Throws `ArgumentOutOfRangeException` unless the value is positive and below about 24 days, or `Regex.InfiniteMatchTimeout`. |
 | `UseNonBacktracking()` | `Pattern` | A copy that runs on the linear-time `RegexOptions.NonBacktracking` engine. Patterns with backreferences, lookarounds, atomic groups or conditionals then throw `NotSupportedException` when they run. `net8.0` and `net10.0` only. |
-| `WithAsciiDigits()` | `Pattern` | A copy in which `\d` matches only `0-9` and `\D` everything else. |
-| `WithDigits(DigitMode digits)` | `Pattern` | Unchanged for `DigitMode.Unicode`; `WithAsciiDigits()` for `DigitMode.Ascii`. |
-| `IgnoreDiacritics()` | `Pattern` | A copy that matches text with or without diacritics, in precomposed (NFC) and decomposed (NFD) form. Options and timeout are kept. |
+| `WithAsciiDigits()` | `Pattern` | A copy in which `\d` matches only `0-9` and `\D` everything else, including inside sets and lookarounds. `\w` and explicit categories such as `\p{Nd}` are left as written. Returns the same instance when there is nothing to rewrite. |
+| `WithDigits(DigitMode digits)` | `Pattern` | Unchanged for `DigitMode.Unicode`; `WithAsciiDigits()` for `DigitMode.Ascii`. Throws `ArgumentOutOfRangeException` for an undefined value. |
+| `IgnoreDiacritics()` | `Pattern` | A copy that matches text with or without diacritics, in precomposed (NFC) and decomposed (NFD) form: each literal letter becomes a class of its accented variants followed by a run of combining marks. Options and timeout are kept. Throws `InvalidOperationException` for a pattern that uses `RegexOptions.ECMAScript`. |
 | `ToString()` | `string` | The regex text. Computed once and cached. |
 | `ToRegex()` | `Regex` | A new `Regex` with the pattern's options and timeout. |
 | `ToRegex(RegexOptions options)` | `Regex` | A new `Regex` with explicit options. The pattern's timeout still applies. |
@@ -338,6 +340,9 @@ Console.WriteLine(sku.Equals(Pattern.FromRegex(sku.ToString()))); // True
 Console.WriteLine(sku == Pattern.FromRegex(sku.ToString()));      // False: == compares references
 Console.WriteLine(Pattern.With.Literal("café").IgnoreDiacritics().IsMatch("cafe")); // True
 ```
+
+- `WithAsciiDigits()` and `IgnoreDiacritics()` return a pattern built from the rewritten regex text, as `FromRegex` would. Call them at the end of a chain.
+- `sku.Equals(...)` is `true` because both render `^[a-zA-Z]{3}-\d{4}$` with the same options and timeout. `==` is not overloaded, so it compares references.
 
 :::warning
 
@@ -431,7 +436,7 @@ public sealed record Version3(int Major, int Minor, [RegexGroup("patch")] int Bu
 | `TryValidate(out string errorMessage)` | `bool` | The same, with the parser's error message when it is invalid. |
 | `GetGroupNames()` | `string[]` | The names of the named capturing groups. |
 | `GetGroupCount()` | `int` | The number of capturing groups, not counting group 0 (the whole match). |
-| `Explain()` | `string` | A plain-English, line-by-line description of the pattern. |
+| `Explain()` | `string` | A plain-English, line-by-line description of the pattern. The wording is approximate: `\d` is described as `Digit [0-9]` even though it matches every Unicode decimal digit. |
 | `Must(Func<string, bool> rule, string? description = null)` | `ConstrainedPattern` | Adds a rule the whole match must also pass, such as a checksum. See [ConstrainedPattern](#constrainedpattern-and-constraintresult). |
 | `Must(string groupName, Func<string, bool> rule, string? description = null)` | `ConstrainedPattern` | Adds a rule for the value of a named group. Skipped when the group did not take part in the match. Throws `ArgumentException` when the pattern has no such group. |
 
@@ -468,10 +473,10 @@ These members treat a pattern as the set of strings it matches in full, and prov
 | `IsSubsetOf(Pattern other)` | `bool` | Every string this pattern matches, `other` matches too. |
 | `Overlaps(Pattern other)` | `bool` | At least one string matches both. |
 | `MatchesNothing()` | `bool` | No string matches this pattern in full. |
-| `ShortestMatch()` | `string` | The shortest string the pattern matches in full, or `null` when it matches nothing. |
-| `Intersect(Pattern other)` | `Pattern` | Matches the strings both patterns match. |
-| `Except(Pattern other)` | `Pattern` | Matches the strings this pattern matches and `other` rejects. |
-| `Union(Pattern other)` | `Pattern` | Matches the strings either pattern matches. |
+| `ShortestMatch()` | `string?` | The shortest string the pattern matches in full, preferring readable characters, or `null` when it matches nothing. |
+| `Intersect(Pattern other)` | `Pattern` | An anchored pattern that matches the strings both patterns match. Keeps this pattern's options and timeout. |
+| `Except(Pattern other)` | `Pattern` | An anchored pattern that matches the strings this pattern matches and `other` rejects. |
+| `Union(Pattern other)` | `Pattern` | A pattern that matches the strings either pattern matches. |
 | `GetLanguageFacts(MatchScope scope = MatchScope.FullString)` | `LanguageFacts` | Length bounds, the required prefix and suffix, and whether the empty string is accepted. |
 
 ```csharp
@@ -514,9 +519,9 @@ See [Optimizer](./optimizer.md) and [ReDoS safety](./redos-safety.md).
 
 | Member | Returns | Description |
 |--------|---------|-------------|
-| `Trace(string input)` | `MatchTrace` | Matches the input and explains which construct consumed which characters, or where the match failed. |
-| `Highlight(string text, HighlightFormat format = HighlightFormat.Ansi)` | `string` | The text with every match and group capture marked. Throws `ArgumentOutOfRangeException` for an undefined format. |
-| `Profile(string input, ProfileOptions? options = null)` | `ProfileReport` | Matches with a step-counting backtracking interpreter and reports the cost of each construct. Throws `NotSupportedException` for conditionals, balancing groups, `\G` or `RightToLeft`. |
+| `Trace(string input)` | `MatchTrace` | Matches the input and explains which construct consumed which characters, or where the match failed. Throws `ArgumentNullException` for `null`. |
+| `Highlight(string text, HighlightFormat format = HighlightFormat.Ansi)` | `string` | The text with every match and group capture marked. Throws `ArgumentNullException` for `null` text and `ArgumentOutOfRangeException` for an undefined format. |
+| `Profile(string input, ProfileOptions? options = null)` | `ProfileReport` | Matches with a step-counting backtracking interpreter and reports the cost of each construct. Throws `NotSupportedException` for conditionals, balancing groups, `\G` or `RightToLeft`, and `InvalidOperationException` when the pattern is not valid regex syntax. |
 | `ToRailroadSvg()` | `string` | A railroad diagram as a self-contained SVG document. |
 | `ToMermaid()` | `string` | A Mermaid flowchart, starting with `flowchart LR`. |
 
@@ -543,8 +548,8 @@ See [Match tracing](./match-tracing.md), [Highlighting](./highlighting.md), [Dia
 |--------|---------|-------------|
 | `GenerateMatching(int count = 10, int? seed = null)` | `string[]` | Distinct strings the pattern matches, each checked with the real .NET engine. Pass a seed for reproducible output; without one each call differs. May return fewer than `count` when the pattern has fewer distinct strings. Throws `ArgumentOutOfRangeException` for a negative count. |
 | `GenerateNonMatching(int count = 10, int? seed = null)` | `string[]` | Distinct strings the pattern does not match, mostly near misses one edit away from a valid sample. |
-| `MeasureCoverage(IEnumerable<string> inputs)` | `CoverageReport` | Matches every input and reports which branches, optional parts and repetition limits they exercised. |
-| `TrackCoverage()` | `PatternCoverage` | A recorder you match through during a test run, then ask for a report. |
+| `MeasureCoverage(IEnumerable<string> inputs)` | `CoverageReport` | Matches every input and reports which branches, optional parts and repetition limits they exercised. Throws `ArgumentNullException` when `inputs` or an input is `null`, and `InvalidOperationException` when the pattern is not valid regex syntax. |
+| `TrackCoverage()` | `PatternCoverage` | A thread-safe recorder you match through during a test run, then ask for a report. |
 
 ```csharp
 Pattern title = Pattern.With.OneOf("Mr", "Mrs", "Ms").Literal(".").Repeat.Optional;
@@ -562,9 +567,9 @@ See [Test data generation](./test-data-generation.md), [Regex coverage](./regex-
 |--------|---------|-------------|
 | `ToFluentCode(int indentSize = 4)` | `string` | C# code that rebuilds the pattern with the fluent API. Throws `ArgumentOutOfRangeException` for a negative indent and `InvalidOperationException` when the pattern is not valid regex syntax. |
 | `ToJavaScript()` | `string` | A JavaScript regex literal with exact .NET semantics. Throws `NotSupportedException` for constructs JavaScript cannot express. |
-| `ToFlavor(RegexFlavor flavor, FlavorOptions? options = null)` | `FlavorConversion` | Translates the pattern, including its options, into another dialect and lists every difference. Throws `NotSupportedException` when the dialect cannot express a construct; the message lists them all with positions. |
-| `ToSqlCondition(string columnSql, RegexFlavor flavor)` | `string` | A boolean SQL condition for raw SQL or Dapper, using the database's regex operator. `flavor` must be a SQL flavor; otherwise `ArgumentException`. |
-| `ToLike(LikeDialect dialect, MatchScope scope = MatchScope.Substring, LikeCollation collation = LikeCollation.Binary)` | `LikeConversion` | A SQL `LIKE` pattern that accepts every string the pattern accepts, with a proof of whether it accepts exactly those. |
+| `ToFlavor(RegexFlavor flavor, FlavorOptions? options = null)` | `FlavorConversion` | Translates the pattern, including its options, into another dialect and lists every difference. Throws `NotSupportedException` when the dialect cannot express a construct; the message lists them all with positions. Throws `ArgumentOutOfRangeException` for an undefined flavor. `options` is ignored by the SQL flavors. |
+| `ToSqlCondition(string columnSql, RegexFlavor flavor)` | `string` | A boolean SQL condition for raw SQL or Dapper, using the database's regex operator. `columnSql` is inserted verbatim, so quote it yourself. Throws `ArgumentNullException` for a `null` column, and `ArgumentException` when `flavor` is not a SQL flavor (`JavaScript is not a SQL flavor; use ToFlavor for it.`). |
+| `ToLike(LikeDialect dialect, MatchScope scope = MatchScope.Substring, LikeCollation collation = LikeCollation.Binary)` | `LikeConversion` | A SQL `LIKE` pattern that accepts every string the pattern accepts, with a proof of whether it accepts exactly those. Never throws for a valid pattern, except `ArgumentOutOfRangeException` for an undefined enum value. |
 
 ```csharp
 Pattern digits = Pattern.With.StartOfLine.Digit.Repeat.OneOrMore.EndOfLine;
