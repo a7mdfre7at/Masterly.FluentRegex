@@ -41,7 +41,8 @@ For every SQL flavor:
 
 - `Flags` is empty. Options live in the pattern text, so a caller can always emit `column <op> 'text'`.
 - `IsExact` means the engine accepts exactly the strings .NET does, for inputs in the Basic Multilingual
-  Plane. Anything else is a `Warning`. Inputs with supplementary characters (emoji, U+1D7CE MATHEMATICAL
+  Plane. A SQL translation never reports a `Warning`: anything the engine would accept differently throws
+  `NotSupportedException` instead, so a returned SQL conversion is always exact. Inputs with supplementary characters (emoji, U+1D7CE MATHEMATICAL
   BOLD DIGIT ZERO, ...) are outside this promise: the engines see one code point where .NET sees two
   UTF-16 code units, so `.`, negated classes and `\P{..}` match such a character once instead of twice,
   `\d`, `\w` and `\p{..}` can match a supplementary digit or letter that .NET does not, and `\b` can move
@@ -91,10 +92,10 @@ No database engine folds case, defines `\w` or treats `$` the way .NET does, so 
 | `(?s).` | `.` | `(?s:.)` | `(?s:.)` |
 | `\d` | `[0-9٠-٩...]` (37 ranges) | `\p{Nd}` | `\p{Nd}` |
 | `\w` | 487 explicit ranges | `[\p{L}\p{Mn}\p{Nd}\p{Pc}]` | `[\p{L}\p{Mn}\p{Nd}\p{Pc}]` |
-| `\s` | 10 explicit ranges | `[\t\n\x{000B}\f\r\x{0085}\p{Z}]` | same |
+| `\s` | explicit ranges | `[\t\n\x{000B}\f\r\x{0085}\p{Z}]` | same |
 | `\b` | lookarounds over the exact word class | lookarounds over `[\p{L}\p{Mn}\p{Nd}\p{Pc}\x{200C}\x{200D}]` | not supported (ASCII `\b` only under `RegexOptions.ECMAScript`) |
 | `\p{Lu}`, `\p{IsGreek}` | explicit ranges | `\p{Lu}`, explicit ranges for blocks | `\p{Lu}`, explicit ranges for blocks (`\p{Cn}` is too long: unsupported) |
-| `[:alpha:]`, `[a:b]`, `[=a=]`, `[.a.]` | `:`, `=` and `.` escaped (`[\:alpha\:]`) | same | same |
+| `[:alpha:]`, `[a:b]`, `[=a=]`, `[.a.]` | written from the exact set (`[\:ahlp]`) | `:`, `=` and `.` escaped (`[\:alpha\:]`) | same |
 | `[^\W\d]` | explicit ranges | `[\p{L}\p{Mn}\p{Pc}]` | `[\p{L}\p{Mn}\p{Pc}]` |
 | `(?<n>a)\k<n>` | `(a)\1` | `(?<n>a)\k<n>` / `(?<n>a)\g{1}` | not supported |
 | `(a)\1\x30` | `(a)\1\u0030` | `(a)\1\x{0030}` | not supported |

@@ -5,6 +5,7 @@ xUnit v3 theory data from [Masterly.FluentRegex](https://github.com/a7mdfre7at/M
 ```csharp
 using Masterly.FluentRegex;
 using Masterly.FluentRegex.Xunit;
+using Xunit;
 
 public static class Patterns
 {
@@ -14,10 +15,10 @@ public static class Patterns
 public class ZipCodeValidatorTests
 {
     [Theory, MatchingData(typeof(Patterns), nameof(Patterns.ZipCode), Count = 50, Seed = 42)]
-    public void Accepts_valid_zip(string value) => ZipCodeValidator.IsValid(value).ShouldBeTrue();
+    public void Accepts_valid_zip(string value) => Assert.True(ZipCodeValidator.IsValid(value));
 
     [Theory, NonMatchingData(typeof(Patterns), nameof(Patterns.ZipCode), Count = 50)]
-    public void Rejects_invalid_zip(string value) => ZipCodeValidator.IsValid(value).ShouldBeFalse();
+    public void Rejects_invalid_zip(string value) => Assert.False(ZipCodeValidator.IsValid(value));
 }
 ```
 

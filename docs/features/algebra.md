@@ -92,8 +92,10 @@ Pattern.Compare(
 ## Combining patterns
 
 `Intersect`, `Except` and `Union` build a new pattern from the combined language. The result keeps
-the left pattern's options and timeout, is anchored so that `IsMatch` agrees with membership, and
-is proven equivalent to the combined automaton before it is returned.
+the left pattern's options and timeout and is proven equivalent to the combined automaton before it
+is returned. A synthesized result is anchored so that `IsMatch` agrees with membership. `Union` of two
+patterns with the same options is the plain alternation instead, such as `[a-z]+|[0-9]+`, which is
+not anchored, so `IsMatch("a1!")` is true.
 
 ```csharp
 Pattern.FromRegex("[a-z]+").Intersect(Pattern.FromRegex(@"\w{3}"));      // ^[a-z]{3}\z

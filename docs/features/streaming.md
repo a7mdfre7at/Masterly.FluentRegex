@@ -83,7 +83,7 @@ as long as:
 - lookbehinds, `\b` and `^` (with `RegexOptions.Multiline`) need at most `LookbehindContext`
   characters before that position.
 
-A match is only reported once at least `MaxMatchLength` more characters have been read after its
+A match is only reported once more than `MaxMatchLength` characters have been read after its
 start, or the input has ended. `^` and `\A` never match in the middle of a stream.
 
 | Option | Default | Meaning |
@@ -93,7 +93,8 @@ start, or the input has ended. `^` and `\A` never match in the middle of a strea
 | `BufferSize` | 65536 | Characters read per chunk. |
 
 All three must be positive; setting zero or a negative value throws `ArgumentOutOfRangeException`.
-Memory use is roughly `MaxMatchLength + LookbehindContext + BufferSize` characters.
+Memory use is bounded by the options, not the input: the buffer grows to about twice `BufferSize` characters
+(131,072 with the defaults), plus a string copy of the buffered text.
 
 ### Matches longer than `MaxMatchLength`
 

@@ -89,7 +89,8 @@ if (!draft.Passed)
 }
 ```
 
-`draft.Pattern` is `null` only when no attempt produced valid syntax.
+`draft.Pattern` is `null` when no attempt produced a usable regex: every reply was unusable (not JSON, invalid
+JSON, no regex, or cut off by `max_tokens`) or had invalid syntax, or the safety analysis could not process it.
 
 ## Options
 
@@ -101,7 +102,7 @@ if (!draft.Passed)
 | `MaxAttempts` | 3 | Drafts per call, including retries with feedback. |
 | `MaxTokens` | 16000 | Per request. |
 | `Timeout` | 5 minutes | Per request; `Timeout.InfiniteTimeSpan` disables it. `HttpClient.Timeout` also applies. |
-| `BaseAddress` | `https://api.anthropic.com/` | Point it at a gateway or proxy; requests go to `{BaseAddress}v1/messages`. |
+| `BaseAddress` | `https://api.anthropic.com/` | Point it at a gateway or proxy; requests go to `{BaseAddress}v1/messages`. End it with `/`: otherwise its last path segment is replaced, so `https://gw.example.com/anthropic` sends to `https://gw.example.com/v1/messages`. |
 | `UseServerSideFallback` | `true` | Sends `fallbacks: "default"` with the `server-side-fallback-2026-07-01` beta, so a declined request is retried on Anthropic's recommended fallback model. Turn it off for gateways that reject the beta. |
 
 ## HTTP, errors and dependency injection

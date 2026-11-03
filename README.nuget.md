@@ -106,7 +106,7 @@ The package ships a source generator, analyzers and a code fix. No extra install
 
 - Immutable patterns: every call returns a new pattern, so building blocks are safe to share.
 - `.Lazy`, `.Possessive`, `OneOf`, the `+` and `|` operators, `Range`, `HexDigit`, `AnyOf`, `NoneOf`, Unicode categories and inline options.
-- `WithTimeout`, `UseNonBacktracking`, `Count`, span overloads, `EnumerateMatches` and `EnumerateSplits`.
+- `WithTimeout`, `UseNonBacktracking`, `Count`, span overloads, `EnumerateMatches` and (on .NET 10) `EnumerateSplits`.
 - New common patterns: E.164 phones, IBAN, SemVer, JWT, MAC address, Base64, slugs, ISO 8601 date-times, Markdown links, and strictness levels for email and URL.
 - Targets .NET 10, .NET 8 (trimming and Native AOT compatible) and .NET Standard 2.1.
 

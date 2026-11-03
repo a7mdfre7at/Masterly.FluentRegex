@@ -77,8 +77,9 @@ Due \e[44;93m2026\e[44;97m-\e[44;92m11\e[44;97m-\e[44;96m02\e[0m
 Legend: \e[44;97m match \e[0m \e[44;93m year \e[0m \e[44;92m month \e[0m \e[44;96m day \e[0m
 ```
 
-Escape characters in the input are shown as the visible symbol `␛` (U+241B), so highlighted text
-cannot inject terminal control sequences. Unnamed groups appear in the legend as `group 1`, `group 2`.
+In `Ansi` output, escape characters in the input are shown as the visible symbol `␛` (U+241B), so
+highlighted text cannot inject terminal control sequences. `Brackets` and `Html` output copy U+001B
+unchanged. Unnamed groups appear in the legend as `group 1`, `group 2`.
 
 ## Details
 

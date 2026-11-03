@@ -78,13 +78,13 @@ WHERE p."Name" ~ @__local_0
 -- Group(p.Sku, Patterns.SkuParts, "number"): PostgreSQL has no named groups, so names are removed and mapped
 -- to their numbers; SQL Server 2025 (RE2) spells them (?P<name>...)
 SELECT regexp_substr(p."Sku", '\A([A-Z]{3})-([0-9]{4})(?=\n?\Z)', 1, 1, '', 2)                    -- PostgreSQL
-SELECT REGEXP_SUBSTR([p].[Sku], N'\A(?P<letters>[A-Z]{3})-(?P<number>[0-9]{4})\n?\z', 1, 1, 'c', 2) -- SQL Server 2025
+-- SQL Server 2025: NotSupportedException, because RE2 has no lookahead and \n?\z would consume a final
+-- newline; end the pattern with \z instead of $ to translate Group and Replace there
 
 -- Replace(p.Sku, Patterns.SkuParts, "$2/$1"): .NET substitutions are converted to the dialect's syntax
 SELECT regexp_replace(p."Sku", '\A([A-Z]{3})-([0-9]{4})(?=\n?\Z)', '\2/\1', 'g')              -- PostgreSQL
 SELECT REGEXP_REPLACE(`p`.`Sku`, '(?-i)\\A([A-Z]{3})-([0-9]{4})(?=\\n?\\z)', '$2/$1')           -- MySQL
 SELECT REGEXP_REPLACE(`p`.`Sku`, '(?-i)\\A([A-Z]{3})-([0-9]{4})(?=\\n?\\z)', '\\2/\\1')         -- MariaDB
-SELECT REGEXP_REPLACE([p].[Sku], N'\A([A-Z]{3})-([0-9]{4})\n?\z', N'\2/\1')                     -- SQL Server 2025
 ```
 
 `$1`, `${1}`, `${name}` and `$$` are supported; `$&`, `` $` ``, `$'`, `$+` and `$_` throw `NotSupportedException`.

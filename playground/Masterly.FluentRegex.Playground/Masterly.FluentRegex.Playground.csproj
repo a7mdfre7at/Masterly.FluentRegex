@@ -3,7 +3,7 @@
   <!--
     Browser playground for Masterly.FluentRegex. Runs the real library in WebAssembly, so every
     panel shows exactly what the package does. Kept out of the solution so library CI stays fast;
-    .github/workflows/playground.yml publishes it to GitHub Pages.
+    .github/workflows/docs.yml publishes it to GitHub Pages next to the documentation site.
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>

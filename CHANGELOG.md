@@ -57,7 +57,7 @@ package has no new dependencies.
 
 ### Platforms
 - **.NET 10:** the core, AspNetCore, Xunit and AI packages now also target .NET 10 (trimming and Native AOT compatible). The test suite runs on .NET 8 and .NET 10.
-- **.NET 9 target removed:** .NET 9 left support in May 2026, so the packages no longer ship a `net9.0` build. .NET 9 apps keep working on the .NET 8 build; only the span `EnumerateSplits` overload needs .NET 10.
+- **.NET 9 target removed:** the packages no longer ship a `net9.0` build. .NET 9 apps keep working on the .NET 8 build; only the span `EnumerateSplits` overload needs .NET 10.
 
 ### Tooling
 - New CLI commands: `compare`, `optimize`, `learn`, `profile`, `highlight`, `coverage`, `export` and `facts`. `export --to` accepts `postgresql`, `mysql`, `mariadb`, `sqlserver`, `sqlite` and `like` (with `--dialect`, `--scope`, `--case-insensitive` and `--column`). The CLI now writes UTF-8 output.

@@ -50,7 +50,7 @@ new TemplateOptions
 - An unknown name fails at `Of<T>()` and lists what is available:
 
   ```text
-  The placeholder {Severity} at position 18 does not match any member of LogLine.
+  The placeholder {Severity} at position 19 does not match any member of LogLine.
   Available: {Date}, {Level}, {Message}, {User}. (Parameter 'template')
   ```
 
@@ -110,7 +110,8 @@ invoice.Format(new Invoice(12345, DateTime.Today));            // ArgumentExcept
 ```
 
 - `DateTime` is parsed with `DateTimeStyles.RoundtripKind`, so `{When:o}` preserves the kind and every tick.
-- `DateTimeOffset` without an offset in the format is read as **UTC** (never the machine's local zone).
+- `DateTimeOffset` with a format that has no offset is read as **UTC**. Without a format, `{When}` uses
+  `DateTimeOffset.Parse`, which reads a value without an offset in the machine's local zone.
   `{When:yyyy-MM-ddTHH:mm:sszzz}` reads `2026-11-02T10:30:00+03:00` with offset +03:00.
 - `TimeSpan` custom formats follow .NET rules: literals must be quoted or escaped, so write
   `{Elapsed:hh\:mm\:ss}`; `{Elapsed:hh:mm}` is rejected. Custom TimeSpan formats have no sign, so

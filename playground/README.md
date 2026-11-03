@@ -16,10 +16,11 @@ pick options, paste test text, and every panel updates as you type:
 | Coverage | Which branches and repetition limits the lines of the test text exercise |
 | Compare | Proof of equivalence with another regex, or the shortest counterexample |
 | Optimize | Verified, semantics-preserving rewrites |
-| Export | JavaScript and JSON Schema translations with any warnings |
+| Export | JavaScript and JSON Schema translations, a SQL `WHERE` condition for PostgreSQL, MySQL, MariaDB, SQL Server 2025 and SQLite, a `LIKE` with its exact/superset proof, and language facts, with any warnings |
 
-The pattern, options, test text and selected panel are stored in the URL fragment, so **Copy share link**
-reproduces exactly what you see. Nothing is sent to a server.
+The pattern, options (including **ASCII digits only**), test text and selected panel are stored in the URL
+fragment, so **Copy share link** reproduces them. The Trace and Profile input, the Compare regex and the chosen
+SQL database are not stored and start from their defaults. Nothing is sent to a server.
 
 ## Run locally
 
@@ -29,7 +30,8 @@ dotnet run --project playground/Masterly.FluentRegex.Playground
 
 ## Deploy
 
-`.github/workflows/playground.yml` publishes the app to GitHub Pages on every push to `master` that touches
-the library or the playground. Enable Pages with source **GitHub Actions** in the repository settings first.
+`.github/workflows/docs.yml` publishes the app to GitHub Pages together with the documentation site, under
+`/<repository>/playground/`, on every push to `master` that touches the library, the playground or the website.
+Enable Pages with source **GitHub Actions** in the repository settings first.
 
 Matching runs with a one-second timeout, so a catastrophic pattern stops instead of freezing the tab.

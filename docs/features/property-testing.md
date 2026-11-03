@@ -102,8 +102,9 @@ Greedy delta debugging, deterministic for a given input:
 
 1. Shorter samples that were generated but not yet tested are tried first, shortest first.
 2. Chunks are removed, from half the string down to single characters.
-3. Characters are replaced with simpler ones: `a`, `0`, space, `A`, or the first member of the
-   character's class (`a`/`A`/`0`/space).
+3. Characters are replaced with simpler ones: first the first member of the character's class, then
+   `a`, `0`, space and `A`. A replacement is kept only when it is simpler, in this order: `a`, `0`,
+   space, `A`, other lowercase letters, other digits, other uppercase letters, everything else.
 4. Steps 2 and 3 repeat until nothing changes or `MaxShrinkSteps` is reached.
 
 A candidate is kept only when it is still on the same side of the pattern (still matching for

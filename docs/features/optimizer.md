@@ -26,7 +26,7 @@ can be improved, `Optimized` is the original instance.
 | Common prefix of adjacent branches is factored out | `cat\|car\|cab` → `ca[trb]` |
 | A later duplicate branch is removed | `foo\|bar\|foo` → `foo\|bar` |
 | Quantifiers are normalized | `x{1}y{0,1}z{0,}w{1,}` → `xy?z*w+` |
-| Runs of the same atom are merged | `\d\d\d-\d\d\d\d` → `\d{3}-\d{4}`, `aa*b` → `a+b` |
+| Runs of the same atom are merged, when the result is shorter | `\d\d\d-\d\d\d\d` → `\d{3}-\d{4}`, `aa*b` → `a+b` (but `\d\d` and `a+a+` stay) |
 | Redundant non-capturing groups are unwrapped | `^(?:(?:a\|b)\|c)$` → `^[abc]$` |
 
 ```csharp
@@ -84,7 +84,9 @@ Each candidate rewrite is applied on its own and kept only if it passes both che
    [language algebra](algebra.md), the rewritten pattern must be proven to match exactly the same
    strings as the original.
 
-`VerifiedEquivalent` is `true` when step 2 applied. For patterns outside the regular subset
+`VerifiedEquivalent` is `true` when the original pattern is in the regular subset, so step 2 could
+prove every rewrite, even when no rewrite was applied (`Pattern.FromRegex("a|ab").Optimize()` has
+`IsChanged == false` and `VerifiedEquivalent == true`). For patterns outside the regular subset
 (backreferences, lookbehinds, conditionals and so on) the same order-preserving rewrites are still
 applied, but only checked by step 1, and `VerifiedEquivalent` is `false`:
 

@@ -24,7 +24,7 @@ card.Check("4111 1111 11x1 1111").ToString();
 |---|---|
 | `IsValid` | the whole input matched and every rule passed |
 | `FailedRule` | description of the first rule that rejected the value |
-| `Trace` | a `MatchTrace` (see `Pattern.Trace`) when the pattern itself failed; `Trace.Failure.Position` pinpoints where |
+| `Trace` | a `MatchTrace` (see `Pattern.Trace`) when the pattern itself failed; `Trace.Failure.Position` is where the failing construct starts |
 | `ToString()` | one-line summary that never contains the input, so it is safe to log |
 
 `IsValid(input)` is the cheap whole-input check without diagnostics.
@@ -93,7 +93,9 @@ redactor.Mask("Mail bob@example.com, card 4111 1111 1111 1111 (not 4111 1111 111
 
 - **Validation patterns work in text.** Anchors that wrap the whole pattern (`^...$`, `\A...\z`) are
   treated as token boundaries, `(?<!\w)...(?!\w)`, so `CommonPatterns` find values inside sentences but
-  not inside longer words (`x123-45-6789` is left alone). Multiline anchors are kept.
+  not inside longer words (`x123-45-6789` is left alone). Multiline anchors are kept. A top-level
+  alternation such as `^cat$|^dog$` and `RightToLeft` patterns are not rewritten, and anchors inside a
+  lookahead stay, so `CommonPatterns.Email(PatternStrictness.Strict)` can miss an address in long text.
 - **Rules filter hits.** Only the Luhn-valid card above was redacted.
 - **Overlaps** between patterns: the earliest start wins, then the longest hit, then the pattern
   registered first.

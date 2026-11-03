@@ -43,8 +43,8 @@ The target is ECMAScript 2018+ with the `u` flag (needed for `\p{...}`, named gr
 | `ab(?i:cd)` | `ab(?:[Cc][Dd])` | scoped case-insensitivity expanded into classes |
 | `(?#...)`, `x`-mode whitespace and comments | removed | |
 
-Options become flags when they apply to the whole pattern: `IgnoreCase` (or a leading `(?i)`) -> `i`,
-`Singleline` -> `s`. `Multiline` anchors are written as `(?<=^|\n)` and `(?=\n|$)`, which keep the .NET
+Options become flags when they apply to every part of the pattern: `IgnoreCase` (or a leading `(?i)`) -> `i`,
+`Singleline` -> `s`. When only some parts are affected, they are written out instead (`[Aa]`, `[\s\S]`). `Multiline` anchors are written as `(?<=^|\n)` and `(?=\n|$)`, which keep the .NET
 meaning without the `m` flag. `ExplicitCapture` and `IgnorePatternWhitespace` are applied during
 translation.
 
@@ -96,8 +96,9 @@ schema.Flags;        // ""
 schema.IsExact;      // true
 ```
 
-(.NET's `IgnoreCase` also equates `i` with U+0130 and `k` with the Kelvin sign U+212A, so they are
-included.) The output uses `\p{...}`, which needs a validator that compiles patterns with the `u` flag;
+(Under most cultures .NET's `IgnoreCase` also equates `i` with U+0130 and `k` with the Kelvin sign U+212A,
+so they are included. The expansion follows `CultureInfo.CurrentCulture` at call time: under the invariant
+culture or with `RegexOptions.CultureInvariant` they are left out.) The output uses `\p{...}`, which needs a validator that compiles patterns with the `u` flag;
 Ajv does by default. JSON Schema `pattern` is a search, like `Regex.IsMatch`, so keep your anchors.
 
 ## Unsupported constructs
@@ -122,7 +123,7 @@ converts to both flavors.
 ## TypeScript modules
 
 `PatternExport.ToTypeScript` writes one exported constant per pattern, in name order, documented with
-the .NET source and any warnings:
+the .NET regex text (`ToString()`, which leaves out options set with `WithOptions`) and any warnings:
 
 ```csharp
 string module = PatternExport.ToTypeScript(new Dictionary<string, Pattern>

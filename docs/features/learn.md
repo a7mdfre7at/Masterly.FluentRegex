@@ -89,7 +89,9 @@ separated are those listed on both sides.
   not a specification.
 - **Text shared by all examples stays literal.** `Pattern.Learn("2024-01-02", "2024-03-04")` keeps `2024`
   literally. Give examples that vary where your data varies.
-- **Classes are ASCII.** Letters outside `A-Z`/`a-z` are kept as literal characters, so
+- **Classes are ASCII.** Letters outside `A-Z`/`a-z` are never generalized into a class: they stay literal
+  when every example agrees, and otherwise become a set of the characters seen (`Pattern.Learn("café", "cafè")`
+  gives `^caf[èé]$`). For example,
   `Pattern.Learn("José", "Jesús")` gives `^(?:Jesús|José)$`.
 - **`$` accepts a trailing newline.** `^abc$` matches `"abc\n"`. When a reject example ends with a newline,
   `\z` is used instead: `Pattern.Learn(new[] { "abc" }, new[] { "abc\n" })` gives `^abc\z`.

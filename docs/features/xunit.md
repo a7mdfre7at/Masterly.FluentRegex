@@ -7,8 +7,10 @@ dotnet add package Masterly.FluentRegex.Xunit
 ```
 
 ```csharp
+using System.Text.RegularExpressions;
 using Masterly.FluentRegex;
 using Masterly.FluentRegex.Xunit;
+using Xunit;
 
 public static class Patterns
 {
@@ -23,14 +25,14 @@ public class ValidatorTests
     public void Accepts_five_digits(string value)
     {
         // \d matches any Unicode decimal digit, and the generator deliberately produces some.
-        value.Length.ShouldBe(5);
-        value.ShouldAllBe(c => char.IsDigit(c));
+        Assert.Equal(5, value.Length);
+        Assert.All(value, c => Assert.True(char.IsDigit(c)));
     }
 
     [Theory, NonMatchingData(typeof(Patterns), nameof(Patterns.FiveDigits), Count = 30)]
     public void Rejects_everything_else(string value)
     {
-        Regex.IsMatch(value, @"^\d{5}$").ShouldBeFalse();
+        Assert.False(Regex.IsMatch(value, @"^\d{5}$"));
     }
 
     [Theory]
