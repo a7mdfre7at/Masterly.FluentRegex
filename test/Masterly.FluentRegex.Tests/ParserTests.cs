@@ -415,13 +415,34 @@ public class ParserTests
     [Theory]
     [InlineData(@"\k<1>", null, 1)]
     [InlineData(@"\k'name'", "name", 0)]
-    [InlineData(@"\12", null, 12)]
+    [InlineData(@"\1", null, 1)]
     public void Parse_Backreference_RecordsNameOrNumber(string pattern, string? expectedName, int expectedNumber)
     {
         BackreferenceNode backreference = RegexParser.Parse(pattern).Root.ShouldBeOfType<BackreferenceNode>();
 
         backreference.Name.ShouldBe(expectedName);
         backreference.Number.ShouldBe(expectedNumber);
+    }
+
+    [Theory]
+    [InlineData(@"\12", '\n')]
+    [InlineData(@"\101", 'A')]
+    [InlineData(@"\400", '\0')]
+    public void Parse_SeveralDigitsThatNameNoGroup_AreAnOctalLiteralLikeDotNet(string pattern, char expected)
+    {
+        LiteralNode literal = RegexParser.Parse(pattern).Root.ShouldBeOfType<LiteralNode>();
+
+        literal.Value.ShouldBe(expected);
+        Regex.IsMatch(expected.ToString(), "^" + pattern + "$").ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Parse_SeveralDigitsThatNameAGroup_AreABackreference()
+    {
+        RegexTree tree = RegexParser.Parse(@"(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)\12");
+
+        SequenceNode sequence = tree.Root.ShouldBeOfType<SequenceNode>();
+        sequence.Items[sequence.Items.Count - 1].ShouldBeOfType<BackreferenceNode>().Number.ShouldBe(12);
     }
 
     [Theory]

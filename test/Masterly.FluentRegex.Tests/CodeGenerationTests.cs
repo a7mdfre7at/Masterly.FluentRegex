@@ -5,6 +5,39 @@ namespace Masterly.FluentRegex.Tests;
 
 public class CodeGenerationTests
 {
+    [Fact]
+    public void ToFluentCode_OctalEscapeWithoutSuchGroup_IsALiteralNotABackreference()
+    {
+        Pattern pattern = Pattern.FromRegex(@"^\101$");
+
+        string code = pattern.ToFluentCode();
+
+        pattern.IsMatch("A").ShouldBeTrue();
+        code.ShouldNotContain("Backreference");
+        code.ShouldContain("Literal(\"A\")");
+    }
+
+    [Fact]
+    public void ToFluentCode_TwoDigitNumberThatNamesAGroup_StaysABackreference()
+    {
+        Pattern pattern = Pattern.FromRegex(@"(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)\12");
+
+        string code = pattern.ToFluentCode();
+
+        code.ShouldContain("Backreference(12)");
+    }
+
+    [Fact]
+    public void ToFluentCode_TwoDigitNumberWithFewerGroups_IsAnOctalCharacter()
+    {
+        Pattern pattern = Pattern.FromRegex(@"(a)\12");
+
+        string code = pattern.ToFluentCode();
+
+        pattern.IsMatch("a\n").ShouldBeTrue();
+        code.ShouldNotContain("Backreference");
+    }
+
     public static IEnumerable<object[]> RoundTripCorpus() => new[]
     {
         @"^\d{3}-\d{2}-\d{4}$",

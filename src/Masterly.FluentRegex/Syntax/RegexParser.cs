@@ -24,11 +24,14 @@ namespace Masterly.FluentRegex.Syntax
         private readonly List<GroupNode> _groups = new List<GroupNode>();
         private int _pos;
         private RegexOptions _options;
+        private readonly RegexOptions _initialOptions;
+        private HashSet<int> _captureSlots;
 
         private RegexParser(string pattern, RegexOptions options)
         {
             _pattern = pattern;
             _options = options;
+            _initialOptions = options;
         }
 
         public static RegexTree Parse(string pattern, RegexOptions options = RegexOptions.None)
@@ -308,12 +311,66 @@ namespace Masterly.FluentRegex.Syntax
                 int numStart = _pos;
                 while (_pos < _pattern.Length && _pattern[_pos] >= '0' && _pattern[_pos] <= '9') _pos++;
                 int number = int.Parse(_pattern.Substring(numStart, _pos - numStart), CultureInfo.InvariantCulture);
+
+                // Like .NET (outside ECMAScript mode): several digits that name no group are an octal escape.
+                if (_pos - numStart > 1 && c <= '7' && (_initialOptions & RegexOptions.ECMAScript) == 0 && !IsCaptureSlot(number))
+                {
+                    _pos = numStart;
+                    return new LiteralNode(_pattern, start, ReadOctal(), _options, _octalValue);
+                }
+
                 return new BackreferenceNode(_pattern, start, _pos, _options, null, number);
             }
 
             _pos = start;
             char value = ReadEscapedChar(inClass: false);
             return new LiteralNode(_pattern, start, _pos, _options, value);
+        }
+
+        private char _octalValue;
+
+        /// <summary>
+        /// Reads up to three octal digits at the current position into <see cref="_octalValue"/>, keeping the low
+        /// 8 bits as .NET does, and returns the position after them.
+        /// </summary>
+        private int ReadOctal()
+        {
+            int value = 0;
+            int digits = 0;
+            while (digits < 3 && _pos < _pattern.Length && _pattern[_pos] >= '0' && _pattern[_pos] <= '7')
+            {
+                value = (value * 8) + (_pattern[_pos++] - '0');
+                digits++;
+            }
+
+            _octalValue = (char)(value & 0xFF);
+            return _pos;
+        }
+
+        /// <summary>True when the pattern has a capture group with this number, as the .NET engine numbers them.</summary>
+        private bool IsCaptureSlot(int number)
+        {
+            if (_captureSlots == null)
+            {
+                const RegexOptions parseOptions = RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.ExplicitCapture
+                    | RegexOptions.Singleline | RegexOptions.IgnorePatternWhitespace | RegexOptions.RightToLeft
+                    | RegexOptions.CultureInvariant;
+                _captureSlots = new HashSet<int>();
+                try
+                {
+                    foreach (int slot in new Regex(_pattern, _initialOptions & parseOptions).GetGroupNumbers())
+                    {
+                        _captureSlots.Add(slot);
+                    }
+                }
+                catch (ArgumentException)
+                {
+                    // An invalid pattern is reported by the parser itself; treat every number as a backreference.
+                    return true;
+                }
+            }
+
+            return _captureSlots.Contains(number);
         }
 
         private string ReadCategoryName()
