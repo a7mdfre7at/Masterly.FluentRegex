@@ -282,4 +282,25 @@ public class TraceTests
                 pattern.Trace(sample).IsMatch.ShouldBeFalse();
         }
     }
+
+    [Fact]
+    public void Failure_InsideAGroupThatConsumedText_StillListsTheConstructsBeforeTheGroup()
+    {
+        MatchTrace trace = Pattern.FromRegex("^(cat|dog)s$").Trace("cows");
+
+        TraceFailure failure = trace.Failure!;
+        failure.MatchedSoFar.ShouldBe("c");
+        failure.MatchedSteps.Select(step => step.Construct).ShouldBe(new[] { "^" });
+    }
+
+    [Fact]
+    public void ToString_FoundTextWithControlCharacters_IsEscaped()
+    {
+        MatchTrace trace = Pattern.FromRegex(@"^\w+$").Trace("tab\there");
+
+        string text = trace.ToString();
+
+        text.ShouldNotContain("\t");
+        text.ShouldContain(@"Found:   ""\there""");
+    }
 }

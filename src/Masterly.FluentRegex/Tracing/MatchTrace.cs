@@ -68,7 +68,10 @@ namespace Masterly.FluentRegex
         /// <summary>Gets the quoted input text at <see cref="Position"/>, or "the end of the input".</summary>
         public string Found { get; }
 
-        /// <summary>Gets the trace of the constructs that did match before the failure.</summary>
+        /// <summary>
+        /// Gets the trace of the constructs that did match before the failure. When the failure is inside a group
+        /// that had already matched some text, that group is left out; <see cref="MatchedSoFar"/> includes its text.
+        /// </summary>
         public IReadOnlyList<TraceStep> MatchedSteps { get; }
     }
 
@@ -142,7 +145,7 @@ namespace Masterly.FluentRegex
 
             sb.Append("Failed at position ").Append(Failure.Position.ToString(CultureInfo.InvariantCulture)).Append(": expected ")
               .Append(Failure.Construct).Append(" (").Append(Failure.Description).AppendLine(")");
-            sb.Append("Found:   ").AppendLine(Failure.Found);
+            sb.Append("Found:   ").AppendLine(Visible(Failure.Found));
             sb.AppendLine();
             sb.Append("  ").AppendLine(Visible(Input));
             sb.Append("  ").Append(' ', VisibleLength(Input, Failure.Position)).AppendLine("^");

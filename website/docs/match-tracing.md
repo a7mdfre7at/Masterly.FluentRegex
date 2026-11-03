@@ -337,7 +337,7 @@ When the pattern does not match, `Failure` explains why.
 | `Description` | `string` | A plain-language description of what was expected, such as `a digit, exactly 2 times`. |
 | `MatchedSoFar` | `string` | The text the constructs before the failure matched. |
 | `Found` | `string` | The input from `Position` on, in double quotes. When more than 16 characters remain, it is the first 16 followed by `...`, inside the quotes. At the end of the input it is the text `the end of the input`, without quotes. |
-| `MatchedSteps` | `IReadOnlyList<TraceStep>` | The trace of the top-level constructs that matched before the failure. It is empty when the failure is inside a group that had already consumed text (see [Common failure shapes](#common-failure-shapes)). |
+| `MatchedSteps` | `IReadOnlyList<TraceStep>` | The trace of the top-level constructs that matched before the failure. When the failure is inside a group that had already consumed text, the steps stop before that group (see [Common failure shapes](#common-failure-shapes)). |
 
 ```csharp
 // date is the pattern from "Tracing a match"
@@ -446,7 +446,7 @@ When the alternatives are one level deep, every branch is searched, and the firs
 MatchTrace trace = log.Trace("10:3 WARN: x");
 
 Console.WriteLine(trace.Failure!.MatchedSoFar);        // 10:
-Console.WriteLine(trace.Failure.MatchedSteps.Count);   // 0
+Console.WriteLine(trace.Failure.MatchedSteps.Count);   // 1
 Console.WriteLine(trace);
 ```
 
@@ -454,6 +454,9 @@ Console.WriteLine(trace);
 Pattern: ^(?<time>\d{2}:\d{2}) (?<level>(?:INFO|WARN|ERROR)): (?<message>.+)$
 Input:   "10:3 WARN: x"
 Result:  NO MATCH
+
+Matched before the failure:
+  [0..0)    ^                                ""               start of input
 
 Failed at position 3: expected \d{2} (a digit, exactly 2 times)
 Found:   "3 WARN: x"
@@ -464,7 +467,7 @@ Found:   "3 WARN: x"
 
 :::note
 
-When the failure is inside a group that had already consumed some text, `MatchedSteps` is empty and the report has no "Matched before the failure" section. `MatchedSoFar` still holds all the text that matched, here `"10:"`.
+When the failure is inside a group that had already consumed some text, `MatchedSteps` lists the constructs before that group, here only `^`. The group's own partial match is not a step, but `MatchedSoFar` holds all the text that matched, here `"10:"`.
 
 :::
 
@@ -509,15 +512,15 @@ Matched before the failure:
   [0..3)    \w+                              "tab"            a word character, one or more times
 
 Failed at position 3: expected $ (end of input)
-Found:   "	here"
+Found:   "\there"
 
   tab\there
      ^
 ```
 
-:::warning
+:::note
 
-`Failure.Found` and `Failure.MatchedSoFar` hold the raw input text. They are not escaped, so the `Found:` line above contains a real tab. Escape them yourself before you show them in HTML, logs or a single-line message.
+The report escapes control characters on every line, the `Found:` line included. The `Failure.Found` and `Failure.MatchedSoFar` properties hold the raw input text, so escape them yourself before you show them in HTML, logs or a single-line message.
 
 :::
 

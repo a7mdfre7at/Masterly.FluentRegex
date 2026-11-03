@@ -194,6 +194,10 @@ namespace Masterly.FluentRegex.Tracing
             public int MatchStart;
             public RegexNode Failed;
             public string PrefixRegex;
+
+            // The length of the text PrefixRegex itself matches. When the failure is inside a group that already
+            // consumed text, the group's part is not in PrefixRegex, so this is less than Position - MatchStart.
+            public int PrefixLength;
         }
 
         private TraceFailure Diagnose(RegexTree tree, string input)
@@ -215,7 +219,7 @@ namespace Masterly.FluentRegex.Tracing
 
             IReadOnlyList<TraceStep> matchedSteps = Array.Empty<TraceStep>();
             if (best.PrefixRegex.Length > 0 && RegexParser.TryParse(best.PrefixRegex, _options, out RegexTree prefixTree))
-                matchedSteps = TraceSteps(prefixTree.Root, input, best.MatchStart, best.Position - best.MatchStart);
+                matchedSteps = TraceSteps(prefixTree.Root, input, best.MatchStart, best.PrefixLength);
 
             return new TraceFailure(best.Position, best.Failed.Source, NodeDescriber.Describe(best.Failed), matchedSoFar, found, matchedSteps);
         }
@@ -262,7 +266,8 @@ namespace Masterly.FluentRegex.Tracing
                 Position = lastMatch.Index + lastMatch.Length,
                 MatchStart = lastMatch.Index,
                 Failed = failed,
-                PrefixRegex = wrapped ? null : prefix
+                PrefixRegex = wrapped ? null : prefix,
+                PrefixLength = lastMatch.Length
             };
 
             // Descend into a plain group to point at the exact part that failed.
@@ -274,6 +279,7 @@ namespace Masterly.FluentRegex.Tracing
                     if (deeper != null && deeper.Position >= progress.Position)
                     {
                         deeper.PrefixRegex = prefix;
+                        deeper.PrefixLength = progress.PrefixLength;
                         deeper.MatchStart = progress.MatchStart;
                         if (deeper.Position > progress.Position || deeper.Depth > progress.Depth) progress = deeper;
                     }
