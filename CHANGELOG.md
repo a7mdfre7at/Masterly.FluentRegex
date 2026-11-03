@@ -1,3 +1,44 @@
+# Unreleased
+
+Bug fixes found while every feature was run end to end for the documentation site. Some fixes change behavior
+that was wrong; they are marked **Behavior change**.
+
+## Fixed
+
+### Core
+- **Behavior change:** `CommonPatterns.PhoneNumber()` matched none of its documented formats (it required a bracketed area code followed by a second one). It now matches `(555) 123-4567`, `555-123-4567`, `555.123.4567` and `5551234567`.
+- **Behavior change:** `CommonPatterns.Time12()` accepted hours 0-19 and rejected `Pm`. It now accepts hours 1-12 and AM/PM in any case, as documented.
+- **Behavior change:** `IsValid()` and `TryValidate()` validate with the pattern's own options, so they accept valid `IgnorePatternWhitespace` patterns and reject `NonBacktracking` patterns the engine cannot run.
+- **Behavior change:** under `RegexOptions.IgnorePatternWhitespace` (and inside `InlineOptions(IgnorePatternWhitespace, ...)`), `Literal` escapes whitespace and `#`, so it still matches its own text. Patterns without the option render as before.
+- **Behavior change:** `a | b` keeps the options and timeout of the left operand, like `a + b`, instead of resetting them.
+- `Explain()` describes conditionals, `\A`, `\z`, `\x41`, `\u00E9`, `\p{Lu}`, octal escapes, inline options, comments, quoted and balancing groups, lazy `??`, escaped `]` in sets and multi-digit backreferences correctly, treats a `{` that is not a quantifier as a literal, and describes `\d` and `\w` as Unicode-aware unless `RegexOptions.ECMAScript` is set.
+- `UnicodeBlock` accepts the `Is` prefix in any case and rejects unknown block names when the pattern is built.
+- `AnyOf(null)` and `NoneOf(null)` throw `ArgumentNullException`; `IsEquivalentTo`, `IsSubsetOf` and `Overlaps` name `other` as the null parameter; `Literal(params char[])` names its parameter `characters`.
+- The regex parser reads `\101`, and `\12` with fewer than 12 groups, as octal escapes, as .NET does. `ToFluentCode()` no longer emits `Backreference(101)` for them.
+
+### Extraction, streaming and tracing
+- `Extract<T>`, `ExtractAll<T>` and `Template<T>.Parse` set the properties of structs (they were lost on a boxed copy) and accept structs that have only settable properties.
+- Enumerating the result of `Matches(TextReader)` or `MatchesAsync` a second time throws `InvalidOperationException` instead of silently continuing in the middle of the input.
+- `TraceFailure.MatchedSteps` lists the constructs before a group in which matching failed, instead of being empty, and the report escapes control characters on the `Found:` line.
+
+### Analysis and translation
+- `AnalyzeSafety()` reports no issues for `NonBacktracking` patterns, and no longer suggests a possessive quantifier for adjacent repetitions over the same characters, which would break the pattern.
+- Every inexact `ToLike` result has a warning, including a case-sensitive pattern under `LikeCollation.CaseInsensitive`.
+- Generating samples from a class with no usable character, such as `\p{Cs}`, explains the problem in the exception message.
+
+### Source generator and analyzers
+- A null-forgiving `!` or parentheses around a `[GeneratePattern]` body no longer crash the generator, and `TimeSpan.Parse` in a constant chain reports `FRX001` instead of crashing the generator or the analyzer. An unexpected evaluation failure affects only that member.
+- `FRX001`, `FRX002` and `FRX009` can be configured in `.editorconfig` and suppressed with `#pragma`.
+- A `NonBacktracking` chain with an unsupported construct reports `FRX003` instead of crashing the analyzer (`AD0001`).
+- `FRX007` is no longer reported after its code fix was applied, on `[GeneratePattern]` members, or inside a non-partial outer type.
+- `FRX008` says what happens at run time (extracting throws, or the value is always null), the generated `[GeneratedCode]` carries the package version, and diagnostic help links point to the documentation site.
+
+### Integrations and tools
+- EF Core: `Replace` reads `$12` and `$02` like .NET (whole number; literal `$` when it names no group).
+- ASP.NET Core: `AddFluentPatterns` registers the `pattern` route constraint even when the app registered its own `PatternRegistry` first.
+- CLI: the help lists every exit code 1 case, `convert --file` counts skipped literals separately, and the profiler says "1 step per input character".
+
+
 # What's New in 3.1.1
 
 A packaging and documentation release. There are no code or API changes.
