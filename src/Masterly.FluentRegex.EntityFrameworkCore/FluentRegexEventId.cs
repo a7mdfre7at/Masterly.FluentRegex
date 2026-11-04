@@ -35,6 +35,7 @@ public static class FluentRegexEventId
     /// so this event is not raised by them. It stays defined so that <c>ConfigureWarnings</c> settings that name it
     /// keep compiling.
     /// </remarks>
+    [Obsolete("Never raised: the SQL regex translations are either exact or refused with NotSupportedException. Remove references to it.")]
     public static readonly EventId TranslationWarning = MakeEventId(Id.TranslationWarning);
 
     private static EventId MakeEventId(Id id) => new EventId((int)id, EventPrefix + id);

@@ -1281,7 +1281,7 @@ All five throw `ArgumentNullException` for a `null` argument. Rows come back in 
 |---------------|--------|
 | `SqlDialect` | `PostgreSql` (0), `MySql` (1), `MariaDb` (2), `SqlServer2025` (3), `SqlServer` (4): before 2025, no regex, LIKE only, `Sqlite` (5). |
 | `LikeFallback` | `ExactOnly` (0): LIKE only when exact, otherwise throw (the default). `AllowSuperset` (1): a superset LIKE plus a logged warning. `Never` (2): every pattern throws. |
-| `FluentRegexEventId` | `LikeSupersetFallback` (id 79000) and `TranslationWarning` (id 79001), both `static readonly EventId` named `Microsoft.EntityFrameworkCore.Query.LikeSupersetFallback` and `Microsoft.EntityFrameworkCore.Query.TranslationWarning`, for `ConfigureWarnings`. |
+| `FluentRegexEventId` | `LikeSupersetFallback` (id 79000) and `TranslationWarning` (id 79001, `[Obsolete]`: never raised), both `static readonly EventId` named `Microsoft.EntityFrameworkCore.Query.LikeSupersetFallback` and `Microsoft.EntityFrameworkCore.Query.TranslationWarning`, for `ConfigureWarnings`. |
 
 ```csharp
 using System;

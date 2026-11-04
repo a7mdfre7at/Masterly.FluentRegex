@@ -806,7 +806,7 @@ The package logs through EF Core's diagnostics logger, so its events honor `LogT
 | `FluentRegexEventId` | Id | Logged when |
 |----------------------|----|-------------|
 | `LikeSupersetFallback` | 79000 | `LikeFallback.AllowSuperset` translated a pattern to a superset `LIKE` on SQL Server before 2025. |
-| `TranslationWarning` | 79001 | A dialect translation reported behavior that differs from .NET. The message lists each difference. |
+| `TranslationWarning` | 79001 | Obsolete. Never raised, because every translation is exact or refused (see below). |
 
 To turn the superset fallback into an error:
 
@@ -822,7 +822,7 @@ options.UseSqlServer(connectionString)
 
 :::note
 
-In this version, every SQL regex translation is either exact or throws `NotSupportedException`, so `TranslationWarning` is not raised in practice. It stays available for `ConfigureWarnings` so that your configuration keeps working if a future translation reports differences.
+Every SQL regex translation is either exact or throws `NotSupportedException`, so `TranslationWarning` is never raised. It is marked `[Obsolete]`: code that names it still compiles, with a warning that tells you to remove the reference.
 
 :::
 

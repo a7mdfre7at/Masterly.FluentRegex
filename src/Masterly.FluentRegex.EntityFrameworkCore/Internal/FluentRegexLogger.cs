@@ -49,7 +49,11 @@ internal sealed class FluentRegexLogger
         }
     }
 
-    /// <summary>Logs <see cref="FluentRegexEventId.TranslationWarning"/> when the translation reported differences.</summary>
+    /// <summary>
+    /// Logs <see cref="FluentRegexEventId.TranslationWarning"/> when the translation reported differences. The built-in
+    /// translators never do; the path stays so a translator that reports differences is logged, not silently dropped.
+    /// </summary>
+#pragma warning disable CS0618 // TranslationWarning is obsolete for callers because the built-in translators never raise it.
     public void TranslationWarnings(IDiagnosticsLogger<DbLoggerCategory.Query> logger, Pattern pattern, SqlDialect dialect, DialectRegex regex)
     {
         if (regex.Warnings.Count == 0)
@@ -80,4 +84,5 @@ internal sealed class FluentRegexLogger
             logger.DispatchEventData(definition, eventData, diagnosticSourceEnabled, simpleLogEnabled);
         }
     }
+#pragma warning restore CS0618
 }

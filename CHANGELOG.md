@@ -36,6 +36,7 @@ that was wrong; they are marked **Behavior change**.
 
 ### Integrations and tools
 - EF Core: `Replace` reads `$12` and `$02` like .NET (whole number; literal `$` when it names no group).
+- EF Core: `FluentRegexEventId.TranslationWarning` is marked `[Obsolete]`. It was never raised, because every SQL translation is exact or refused.
 - ASP.NET Core: `AddFluentPatterns` registers the `pattern` route constraint even when the app registered its own `PatternRegistry` first.
 - CLI: the help lists every exit code 1 case, `convert --file` counts skipped literals separately, and the profiler says "1 step per input character".
 
