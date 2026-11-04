@@ -6,7 +6,8 @@ namespace Masterly.FluentRegex;
 
 /// <summary>
 /// Ready-made semantic rules for <see cref="Pattern.Must(Func{string, bool}, string?)"/>.
-/// Every validator returns <c>false</c> for null instead of throwing.
+/// Every validator returns <c>false</c> for null instead of throwing. A digit may be any Unicode decimal digit,
+/// such as the Arabic-Indic '٣', because that is what <c>\d</c> matches by default.
 /// </summary>
 public static class Validators
 {
@@ -38,6 +39,7 @@ public static class Validators
             return false;
         }
 
+        value = WithAsciiDigits(value);
         int sum = 0;
         int digits = 0;
         for (int i = value.Length - 1; i >= 0; i--)
@@ -73,7 +75,7 @@ public static class Validators
             return false;
         }
 
-        string compact = value.Replace(" ", string.Empty).ToUpperInvariant();
+        string compact = WithAsciiDigits(value).Replace(" ", string.Empty).ToUpperInvariant();
         if (compact.Length < IbanMinimumLength || compact.Length > IbanMaximumLength || !HasIbanPrefix(compact))
         {
             return false;
@@ -96,7 +98,7 @@ public static class Validators
             return false;
         }
 
-        return DateTime.TryParseExact(value, IsoDateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
+        return DateTime.TryParseExact(WithAsciiDigits(value), IsoDateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
     }
 
     /// <summary>
@@ -112,7 +114,7 @@ public static class Validators
             return false;
         }
 
-        string[] octets = value.Split('.');
+        string[] octets = WithAsciiDigits(value).Split('.');
         if (octets.Length != IPv4OctetCount)
         {
             return false;
@@ -188,6 +190,25 @@ public static class Validators
     }
 
     private static bool IsAsciiDigit(char c) => c >= '0' && c <= '9';
+
+    /// <summary>Replaces every Unicode decimal digit with the ASCII digit of the same value.</summary>
+    private static string WithAsciiDigits(string value)
+    {
+        char[]? converted = null;
+        for (int i = 0; i < value.Length; i++)
+        {
+            char c = value[i];
+            if (IsAsciiDigit(c) || !char.IsDigit(c))
+            {
+                continue;
+            }
+
+            converted ??= value.ToCharArray();
+            converted[i] = (char)('0' + CharUnicodeInfo.GetDecimalDigitValue(c));
+        }
+
+        return converted == null ? value : new string(converted);
+    }
 
     private static bool IsAsciiUpper(char c) => c >= 'A' && c <= 'Z';
 }

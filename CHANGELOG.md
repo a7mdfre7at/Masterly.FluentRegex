@@ -21,6 +21,7 @@ that was wrong; they are marked **Behavior change**.
 - `Extract<T>`, `ExtractAll<T>` and `Template<T>.Parse` set the properties of structs (they were lost on a boxed copy) and accept structs that have only settable properties.
 - **Behavior change:** when redaction hits overlap, the part of the losing hit that reaches past the winner is masked too, instead of staying visible (`abcd` with `bcd` and `abc` was `***d`, now `****`).
 - `Template<T>.Format` throws `ArgumentException` for a negative `TimeSpan` under a custom format, which cannot write a sign, instead of writing it as positive.
+- **Behavior change:** `Validators.Luhn`, `IbanChecksum`, `IsoDate` and `IPv4` read any Unicode decimal digit by its value, as the default `\d` does, so a card number in Arabic-Indic digits passes `CreditCard().Must(Validators.Luhn)`.
 - Enumerating the result of `Matches(TextReader)` or `MatchesAsync` a second time throws `InvalidOperationException` instead of silently continuing in the middle of the input.
 - `TraceFailure.MatchedSteps` lists the constructs before a group in which matching failed, instead of being empty, and the report escapes control characters on the `Found:` line.
 

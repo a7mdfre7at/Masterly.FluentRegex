@@ -366,10 +366,10 @@ string message = result switch
 
 | Validator | Accepts | Ignores | Rejects |
 |-----------|---------|---------|---------|
-| `Validators.Luhn` | A Luhn (mod 10) check digit, as used by card numbers and IMEIs. At least two digits. | Spaces and `-` | Any other character, such as `.` or a non-ASCII digit |
+| `Validators.Luhn` | A Luhn (mod 10) check digit, as used by card numbers and IMEIs. At least two digits. | Spaces and `-` | Any other character, such as `.` |
 | `Validators.IbanChecksum` | ISO 13616 mod-97 check digits. Letters in either case. 5 to 34 characters, starting with two letters and two digits. | Spaces | Any other separator, such as `-` |
 | `Validators.IsoDate` | Exactly `yyyy-MM-dd` naming a real date in the Gregorian calendar, from `0001-01-01`. | Nothing | One-digit months or days, times, surrounding white space, year `0000` |
-| `Validators.IPv4` | Four dot-separated octets, each one to three ASCII digits with a value of 0-255. Leading zeros are accepted, as by `CommonPatterns.IPv4()`. | Nothing | Missing or extra octets, empty octets, surrounding white space |
+| `Validators.IPv4` | Four dot-separated octets, each one to three digits with a value of 0-255. Leading zeros are accepted, as by `CommonPatterns.IPv4()`. | Nothing | Missing or extra octets, empty octets, surrounding white space |
 
 ```csharp
 using Masterly.FluentRegex;
@@ -630,7 +630,7 @@ string fine = safePositive.Check("42").ToString();            // Valid
 
 **Expecting a shorter alternative to be tried.** After a rule rejects a candidate, the search moves to the next position. It does not try a shorter match at the same position. Make the pattern itself precise, for example with `Times(16)` instead of `OneOrMore`.
 
-**Non-ASCII digits.** `\d` in .NET matches digits from every script, but the built-in validators accept ASCII `0`-`9` only. `Validators.Luhn("٤١١١١١١١١١١١١١١١")` returns `false`. This is usually what you want for card and bank numbers. Your own rules that compute with `c - '0'` must guard against such digits too. To restrict the pattern as well, call `WithAsciiDigits()` on it or use the `DigitMode.Ascii` overloads of `CommonPatterns`, such as `CommonPatterns.CreditCard(DigitMode.Ascii)` (see [Unicode](./unicode.md)).
+**Non-ASCII digits.** `\d` in .NET matches digits from every script, and the built-in validators read them by value too: `Validators.Luhn("٤١١١ ١١١١ ١١١١ ١١١١")` returns `true`, like `4111 1111 1111 1111`. Your own rules that compute with `c - '0'` must convert such digits first, for example with `CharUnicodeInfo.GetDecimalDigitValue(c)`. To accept `0`-`9` only, call `WithAsciiDigits()` on the pattern or use the `DigitMode.Ascii` overloads of `CommonPatterns`, such as `CommonPatterns.CreditCard(DigitMode.Ascii)` (see [Unicode](./unicode.md)).
 
 **Logging the trace.** `ConstraintResult.ToString()` is safe to log; `ConstraintResult.Trace` contains the input.
 

@@ -6,6 +6,27 @@ public class ConstraintTests
 {
     private static readonly ConstrainedPattern Card = CommonPatterns.CreditCard().Must(Validators.Luhn, "Luhn checksum");
 
+    // 4111 1111 1111 1111 written with Arabic-Indic digits, which the default \d accepts.
+    private const string ArabicIndicCard = "٤١١١ ١١١١ ١١١١ ١١١١";
+
+    [Fact]
+    public void Validators_AcceptTheUnicodeDigitsThatTheDefaultDigitClassMatches()
+    {
+        Validators.Luhn(ArabicIndicCard).ShouldBeTrue();
+        Validators.Luhn("٤١١١ ١١١١ ١١١١ ١١١٢").ShouldBeFalse();
+        Validators.IsoDate("٢٠٢٤-٠٢-٢٩").ShouldBeTrue();
+        Validators.IsoDate("٢٠٢٦-٠٢-٣٠").ShouldBeFalse();
+        Validators.IbanChecksum("GB٨٢ WEST ١٢٣٤ ٥٦٩٨ ٧٦٥٤ ٣٢").ShouldBeTrue();
+        Validators.IPv4("١٩٢.١٦٨.٠.١").ShouldBeTrue();
+    }
+
+    [Fact]
+    public void CreditCardWithLuhn_ArabicIndicDigits_MatchesLikeAsciiDigits()
+    {
+        Card.IsMatch(ArabicIndicCard).ShouldBeTrue();
+        Card.IsMatch("4111 1111 1111 1111").ShouldBeTrue();
+    }
+
     private static readonly ConstrainedPattern IsoDate = CommonPatterns.DateIso().Must(Validators.IsoDate, "real calendar date");
 
     private static readonly Pattern Age = Pattern.With.NamedGroup("age", Pattern.With.Digit.Repeat.Times(1, 3));
