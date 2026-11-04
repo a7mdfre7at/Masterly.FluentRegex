@@ -116,6 +116,7 @@ package has no new dependencies.
 ## Upgrade Notes
 - The new public `Masterly.FluentRegex.Validators` class can clash with a `Validators` type in your own code when both namespaces are imported. Use a using alias to resolve it.
 - `\d` matches every Unicode decimal digit, so the parameterless `CommonPatterns` methods accept digits such as "٩" (for example, `IPv4()` accepts "0.0.0.٩"). This is unchanged from 3.0. Pass `DigitMode.Ascii` or call `WithAsciiDigits()` when only 0-9 are valid.
+- `Pattern.Equals` now compares the rendered regex, options and timeout; before 3.1 it compared references, so `Pattern.With.Digit.Equals(Pattern.With.Digit)` was `false`. This changes how patterns behave as `HashSet` and `Dictionary` keys. The `==` operator still compares references.
 
 ---
 
@@ -123,16 +124,18 @@ package has no new dependencies.
 
 FluentRegex 3.0 goes beyond building patterns: it now helps you understand, test, secure and ship them.
 
+3.0.0 was not published to NuGet. NuGet users upgrade from 2.0.0 straight to 3.1.0 or later, so these notes apply to them too.
+
 ## Breaking Changes
 
-See the [migration guide](https://github.com/a7mdfre7at/Masterly.FluentRegex#migrating-from-2x-to-30) for details.
+See [Upgrading from 2.x](https://a7mdfre7at.github.io/Masterly.FluentRegex/docs/upgrading-from-2x) for details.
 
 - **Patterns are immutable.** Every member returns a new `Pattern`. Code that called a member as a statement and ignored the result, such as `pattern.WithOptions(...);`, must assign the result.
 - **`Literal` inside a `Set` escapes `-`.** `Set(Literal("a-f"))` now matches `a`, `-` and `f`. Use the new `Range('a', 'f')` for ranges.
 - **`Letter`, `LowercaseLetter` and `UppercaseLetter` outside a `Set`** now render `[a-zA-Z]`, `[a-z]` and `[A-Z]` instead of literal text.
 - **`Repeat.AtMost(n)`** now renders `{0,n}`. .NET treated the old `{,n}` as literal text.
-- **`ToRegex()` without arguments** now uses the pattern's options and timeout.
-- **Invalid builder calls throw.** `Repeat` on an empty pattern throws `InvalidOperationException`, and negative or reversed bounds throw `ArgumentOutOfRangeException`.
+- **`ToRegex()` without arguments** now uses the pattern's options and timeout. This takes effect when you recompile: an assembly built against 2.x still calls the old `ToRegex(RegexOptions)` overload with `None`.
+- **Invalid builder calls throw.** `Repeat` on an empty pattern throws `InvalidOperationException`, and negative or reversed bounds throw `ArgumentOutOfRangeException`. `null` arguments throw `ArgumentNullException`; in 2.x, `Group(null)` gave `()` and `Set(null)` gave `[]`. A constant chain with such an error now fails the build with FRX006 or FRX003.
 - `GeneratePackageOnBuild` is off; pack with `dotnet pack`.
 
 ## Fixed
@@ -141,7 +144,7 @@ See the [migration guide](https://github.com/a7mdfre7at/Masterly.FluentRegex#mig
 - `Repeat.AtMost` never matched as intended.
 - `Letter` outside a set matched the literal text `a-zA-Z`.
 - Literal hyphens inside sets silently created ranges. In 2.x, `CommonPatterns.StrongPassword()` treated every digit as a special character because of the range `+` to `=`.
-- `CommonPatterns.Url()` allowed polynomial backtracking through dots in the first host label.
+- `CommonPatterns.Url()` allowed polynomial backtracking through dots in the first host label. The fix also changes which URLs match: hyphens in paths are accepted (`https://example.com/my-page`), while `<`, `>`, `{` and `}` in paths and empty host labels (`https://a..b.com`) are rejected.
 - A quantifier applied to an already-quantified element produced an invalid nested quantifier; it is now wrapped in a non-capturing group.
 - The README documented `.Lazy`, which did not exist.
 
