@@ -530,7 +530,7 @@ These are the real messages, from theories in a `MyApp.Tests.BrokenTests` class 
 
 :::warning
 
-The constructor rejects a `null` type, and a `null`, empty or whitespace member name (`ArgumentNullException` or `ArgumentException`). xUnit v3 does not show that exception. The theory fails with only "No data found for MyApp.Tests.CtorTests.C1_Blank". When you see "No data found" on a theory that uses these attributes, check the constructor arguments first. Using `typeof` and `nameof` avoids the problem.
+A `null` type, or a `null`, empty or whitespace member name, fails when xUnit asks for the data, with an `InvalidOperationException` that xUnit shows, for example `[MatchingData(Patterns)] needs the name of a member that returns a Pattern, but the name is empty.` The constructor itself does not throw, because xUnit v3 would hide such an exception behind "No data found". Using `typeof` and `nameof` avoids the problem.
 
 :::
 

@@ -189,15 +189,25 @@ public class PatternDataAttributeTests
     }
 
     [Fact]
-    public void Constructor_NullType_ThrowsArgumentNull()
+    public async Task GetData_NullType_ThrowsAVisibleInvalidOperationException()
     {
-        Should.Throw<ArgumentNullException>(() => new MatchingDataAttribute(null!, "Member"));
+        MatchingDataAttribute attribute = new MatchingDataAttribute(null!, "Member");
+
+        InvalidOperationException exception = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await attribute.GetData(StringTheory, new DisposalTracker()));
+
+        exception.Message.ShouldBe("[MatchingData] needs the type that declares the pattern member, but the type is null.");
     }
 
     [Fact]
-    public void Constructor_BlankMemberName_ThrowsArgument()
+    public async Task GetData_BlankMemberName_ThrowsAVisibleInvalidOperationException()
     {
-        Should.Throw<ArgumentException>(() => new NonMatchingDataAttribute(typeof(TestPatterns), " "));
+        NonMatchingDataAttribute attribute = new NonMatchingDataAttribute(typeof(TestPatterns), " ");
+
+        InvalidOperationException exception = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await attribute.GetData(StringTheory, new DisposalTracker()));
+
+        exception.Message.ShouldBe("[NonMatchingData(TestPatterns)] needs the name of a member that returns a Pattern, but the name is empty.");
     }
 
     [Fact]
@@ -311,28 +321,23 @@ public class PatternDataAttributeTests
         attribute.MemberName.ShouldBe(nameof(TestPatterns.HexColor));
     }
 
-    [Fact]
-    public void Constructor_NullMemberName_ThrowsArgumentNull()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public async Task GetData_NullOrEmptyMemberName_ThrowsAVisibleInvalidOperationException(string? memberName)
     {
-        ArgumentNullException exception = Should.Throw<ArgumentNullException>(() => new MatchingDataAttribute(typeof(TestPatterns), null!));
+        MatchingDataAttribute attribute = new MatchingDataAttribute(typeof(TestPatterns), memberName!);
 
-        exception.ParamName.ShouldBe("memberName");
+        InvalidOperationException exception = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await attribute.GetData(StringTheory, new DisposalTracker()));
+
+        exception.Message.ShouldContain("needs the name of a member that returns a Pattern");
     }
 
     [Fact]
-    public void Constructor_EmptyMemberName_ThrowsArgument()
+    public void Constructor_InvalidArguments_DoesNotThrow_SoXunitShowsTheGetDataMessage()
     {
-        ArgumentException exception = Should.Throw<ArgumentException>(() => new MatchingDataAttribute(typeof(TestPatterns), string.Empty));
-
-        exception.ParamName.ShouldBe("memberName");
-    }
-
-    [Fact]
-    public void Constructor_NullTypeOnNonMatching_ThrowsArgumentNull()
-    {
-        ArgumentNullException exception = Should.Throw<ArgumentNullException>(() => new NonMatchingDataAttribute(null!, "Member"));
-
-        exception.ParamName.ShouldBe("patternSource");
+        Should.NotThrow(() => new NonMatchingDataAttribute(null!, null!));
     }
 
     private static async Task<string[]> ValuesOf(DataAttribute attribute)

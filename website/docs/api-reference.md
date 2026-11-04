@@ -1433,7 +1433,7 @@ public class SkuTests
 ```
 
 - Each attribute supplies one `string` per row, so the theory's first parameter must accept a `string`.
-- The constructors throw `ArgumentNullException` for a `null` type or member name and `ArgumentException` for a blank member name.
+- A `null` type or a `null` or blank member name makes `GetData` throw `InvalidOperationException` with a message that names the attribute. The constructors do not throw, so xUnit can show that message.
 - When xUnit asks for data, the attributes throw `InvalidOperationException` with a clear message when `Count` is below 1, the theory's first parameter does not accept a `string`, the member is missing, is not a `Pattern` or returns `null`, or no samples could be generated.
 - Rows are deterministic, so they are listed during test discovery. Both attributes can be applied more than once.
 

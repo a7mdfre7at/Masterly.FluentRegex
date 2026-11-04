@@ -31,12 +31,12 @@ public abstract class PatternDataAttribute : DataAttribute
     /// <summary>Initializes a new instance that reads the pattern from <paramref name="memberName"/> on <paramref name="patternSource"/>.</summary>
     /// <param name="patternSource">The type that declares the pattern member.</param>
     /// <param name="memberName">The name of a public static property, field or parameterless method returning <see cref="Pattern"/>.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="patternSource"/> or <paramref name="memberName"/> is null.</exception>
-    /// <exception cref="ArgumentException"><paramref name="memberName"/> is empty or whitespace.</exception>
+    /// <remarks>
+    /// The arguments are checked when xUnit asks for the data, not here: xUnit v3 hides an exception from an attribute
+    /// constructor behind "No data found", while an exception from <see cref="GetData"/> is shown with its message.
+    /// </remarks>
     protected PatternDataAttribute([DynamicallyAccessedMembers(PatternMembers)] Type patternSource, string memberName)
     {
-        ArgumentNullException.ThrowIfNull(patternSource);
-        ArgumentException.ThrowIfNullOrWhiteSpace(memberName);
         PatternSource = patternSource;
         MemberName = memberName;
     }
@@ -64,6 +64,7 @@ public abstract class PatternDataAttribute : DataAttribute
     public override ValueTask<IReadOnlyCollection<ITheoryDataRow>> GetData(MethodInfo testMethod, DisposalTracker disposalTracker)
     {
         ArgumentNullException.ThrowIfNull(testMethod);
+        EnsureArgumentsAreValid();
         EnsureCountIsPositive();
         EnsureAcceptsString(testMethod);
 
@@ -159,6 +160,21 @@ public abstract class PatternDataAttribute : DataAttribute
     }
 
     private static bool IsPattern(Type type) => typeof(Pattern).IsAssignableFrom(type);
+
+    private void EnsureArgumentsAreValid()
+    {
+        string attribute = GetType().Name.Replace("Attribute", string.Empty, StringComparison.Ordinal);
+        if (PatternSource == null)
+        {
+            throw new InvalidOperationException($"[{attribute}] needs the type that declares the pattern member, but the type is null.");
+        }
+
+        if (string.IsNullOrWhiteSpace(MemberName))
+        {
+            throw new InvalidOperationException(
+                $"[{attribute}({PatternSource.Name})] needs the name of a member that returns a Pattern, but the name is empty.");
+        }
+    }
 
     private string Describe() => $"[{GetType().Name.Replace("Attribute", string.Empty, StringComparison.Ordinal)}({PatternSource.Name}.{MemberName})]";
 }
