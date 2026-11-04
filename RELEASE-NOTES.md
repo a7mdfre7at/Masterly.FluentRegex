@@ -1,7 +1,11 @@
-Masterly.FluentRegex 3.1.1
+Masterly.FluentRegex 3.2.0
 
-A packaging and documentation release with no code or API changes. Every package now ships the new
-FluentRegex icon, and the NuGet readme shows the new banner. The full documentation, with run-verified
-examples, the API reference and the upgrade guide, is now at https://a7mdfre7at.github.io/Masterly.FluentRegex/
-and the browser playground at https://a7mdfre7at.github.io/Masterly.FluentRegex/playground/.
-See CHANGELOG.md.
+A correctness release with more than 30 fixes, found while every feature was run end to end for the new
+documentation site (https://a7mdfre7at.github.io/Masterly.FluentRegex/). Highlights: CommonPatterns.PhoneNumber()
+and Time12() match what their docs promise; Explain() describes conditionals, escapes and inline options
+correctly; validation uses the pattern's options; literals keep matching under IgnorePatternWhitespace; structs
+work with Extract<T>; redaction no longer leaves part of an overlapping value visible; the source generator and
+analyzers no longer crash and every rule can be configured in .editorconfig; EF Core Replace reads $12 like .NET;
+and the ASP.NET Core route constraint works with a pre-registered registry.
+Breaking: Repeat.Optional directly after a quantifier now makes the repetition optional, (?:\d+)?, instead of
+lazy; use .Lazy for a lazy quantifier. See CHANGELOG.md for every change.

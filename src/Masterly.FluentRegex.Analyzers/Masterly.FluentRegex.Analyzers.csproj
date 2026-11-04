@@ -21,7 +21,7 @@
     into [GeneratedCode], which then always matches the installed package.
   -->
   <PropertyGroup>
-    <LibraryProjectFile>$(MSBuildThisFileDirectory)..\Masterly.FluentRegex\Masterly.FluentRegex.csproj</LibraryProjectFile>
+    <LibraryProjectFile>$(MSBuildThisFileDirectory)../Masterly.FluentRegex/Masterly.FluentRegex.csproj</LibraryProjectFile>
     <Version>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(LibraryProjectFile)')), '(?&lt;=&lt;Version&gt;)[^&lt;]+'))</Version>
   </PropertyGroup>
 

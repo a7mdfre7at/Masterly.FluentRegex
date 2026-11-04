@@ -126,7 +126,7 @@ const config = {
       },
       announcementBar: {
         id: `release-${majorMinor}`,
-        content: `<strong>${majorMinor} is out.</strong> Pattern algebra, a verified optimizer, SQL regex dialects and the EF Core package. <a href="${baseUrl}docs/overview">See what's new →</a>`,
+        content: `<strong>${majorMinor} is out.</strong> More than 30 fixes, one breaking change for <code>Repeat.Optional</code>. <a href="${repositoryUrl}/blob/master/CHANGELOG.md">See what's new →</a>`,
         isCloseable: true,
       },
       docs: {

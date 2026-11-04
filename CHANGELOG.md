@@ -1,7 +1,9 @@
-# Unreleased
+# What's New in 3.2.0
 
-Bug fixes found while every feature was run end to end for the documentation site. Some fixes change behavior
-that was wrong; they are marked **Behavior change**.
+A correctness release: more than 30 bugs found while every feature was run end to end for the new documentation
+site at https://a7mdfre7at.github.io/Masterly.FluentRegex/. Some fixes change behavior that was wrong; they are
+marked **Behavior change**. `Repeat.Optional` after a quantifier is the one breaking change: use `.Lazy` where you
+used it to mean "lazy".
 
 ## Fixed
 

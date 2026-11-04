@@ -87,7 +87,7 @@ namespace MyApp.Validation
         /// A cached, compiled regex for <see cref="ProductCode"/>:
         /// <c>^[A-Z]{3}-\d{4}$</c>
         /// </summary>
-        [global::System.CodeDom.Compiler.GeneratedCode("Masterly.FluentRegex.Analyzers", "3.1.1")]
+        [global::System.CodeDom.Compiler.GeneratedCode("Masterly.FluentRegex.Analyzers", "3.2.0")]
         public static global::System.Text.RegularExpressions.Regex ProductCodeRegex() =>
             __fluentRegex_ProductCode ??= new global::System.Text.RegularExpressions.Regex(ProductCodeSource, (global::System.Text.RegularExpressions.RegexOptions)8, global::System.Text.RegularExpressions.Regex.InfiniteMatchTimeout);
     }
