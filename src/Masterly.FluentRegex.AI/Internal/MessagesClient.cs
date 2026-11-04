@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -39,6 +40,7 @@ internal sealed class MessagesClient
     private readonly int _maxTokens;
     private readonly TimeSpan _timeout;
     private readonly bool _useFallback;
+    private readonly Regex? _apiKeyPattern;
 
     public MessagesClient(HttpClient httpClient, PatternAssistantOptions options)
     {
@@ -50,6 +52,11 @@ internal sealed class MessagesClient
         _maxTokens = options.MaxTokens;
         _timeout = options.Timeout;
         _useFallback = options.UseServerSideFallback;
+
+        // The key is redacted only as a whole token, so a short key cannot rewrite parts of other words.
+        _apiKeyPattern = _apiKey.Length == 0
+            ? null
+            : new Regex("(?<![A-Za-z0-9_-])" + Regex.Escape(_apiKey) + "(?![A-Za-z0-9_-])", RegexOptions.CultureInvariant);
     }
 
     public async Task<ModelReply> SendAsync(List<MessageParam> messages, CancellationToken cancellationToken)
@@ -72,8 +79,11 @@ internal sealed class MessagesClient
         }
         catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new PatternAssistantException(
-                $"The Claude API did not respond within {_timeout}.", ApiFailure.Transient, ex);
+            // Our own timeout, or HttpClient.Timeout when that is shorter and fired first.
+            string which = timeout.IsCancellationRequested
+                ? $"{_timeout} (PatternAssistantOptions.Timeout)"
+                : $"{_httpClient.Timeout} (HttpClient.Timeout)";
+            throw new PatternAssistantException($"The Claude API did not respond within {which}.", ApiFailure.Transient, ex);
         }
         catch (HttpRequestException ex)
         {
@@ -165,7 +175,8 @@ internal sealed class MessagesClient
         string detail = error?.Message is { Length: > 0 } message ? $": {Truncate(Redact(message))}" : string.Empty;
         string kind = error?.Type is { Length: > 0 } type ? $" {type}" : string.Empty;
         string request = requestId != null ? $" (request-id {requestId})" : string.Empty;
-        return new PatternAssistantException($"The Claude API returned HTTP {status}{kind}{detail}{request}.", failure);
+        string text = $"The Claude API returned HTTP {status}{kind}{detail}{request}";
+        return new PatternAssistantException(text.EndsWith(".", StringComparison.Ordinal) ? text : text + ".", failure);
     }
 
     private static ApiErrorBody? TryParseError(string body)
@@ -202,7 +213,7 @@ internal sealed class MessagesClient
         status == RequestTimeoutStatus || status == ConflictStatus || status == TooManyRequestsStatus || status >= FirstServerErrorStatus;
 
     private string Redact(string text) =>
-        _apiKey.Length == 0 ? text : text.Replace(_apiKey, "<redacted>", StringComparison.Ordinal);
+        _apiKeyPattern == null ? text : _apiKeyPattern.Replace(text, "<redacted>");
 
     private static string Truncate(string text) =>
         text.Length <= MaxErrorMessageLength ? text : $"{text.Substring(0, MaxErrorMessageLength)}...";

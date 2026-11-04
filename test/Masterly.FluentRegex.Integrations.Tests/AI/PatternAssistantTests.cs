@@ -346,6 +346,47 @@ public class PatternAssistantTests
     }
 
     [Fact]
+    public async Task DraftAsync_HttpClientTimeoutFiresFirst_NamesThatTimeout()
+    {
+        FakeAnthropicHandler handler = new FakeAnthropicHandler().EnqueueHang();
+        HttpClient client = new HttpClient(handler) { Timeout = TimeSpan.FromMilliseconds(100) };
+        PatternAssistant assistant = new PatternAssistant(client, new PatternAssistantOptions { ApiKey = ApiKey });
+
+        PatternAssistantException exception = await Should.ThrowAsync<PatternAssistantException>(
+            () => assistant.DraftAsync(ZipDescription, cancellationToken: Ct));
+
+        exception.IsTransient.ShouldBeTrue();
+        exception.Message.ShouldBe("The Claude API did not respond within 00:00:00.1000000 (HttpClient.Timeout).");
+    }
+
+    [Fact]
+    public async Task DraftAsync_ErrorMessageEndingWithAPeriod_IsNotDoubled()
+    {
+        FakeAnthropicHandler handler = new FakeAnthropicHandler()
+            .EnqueueError(HttpStatusCode.TooManyRequests, "rate_limit_error", "Number of requests exceeds your rate limit.");
+        PatternAssistant assistant = CreateAssistant(handler, options => options.MaxAttempts = 1);
+
+        PatternAssistantException exception = await Should.ThrowAsync<PatternAssistantException>(
+            () => assistant.DraftAsync(ZipDescription, cancellationToken: Ct));
+
+        exception.Message.ShouldEndWith("rate limit.");
+        exception.Message.ShouldNotContain("..");
+    }
+
+    [Fact]
+    public async Task DraftAsync_ShortApiKey_DoesNotRedactInsideOtherWords()
+    {
+        FakeAnthropicHandler handler = new FakeAnthropicHandler()
+            .EnqueueError(HttpStatusCode.Unauthorized, "authentication_error", "invalid x-api-key k");
+        PatternAssistant assistant = CreateAssistant(handler, options => options.ApiKey = "k");
+
+        PatternAssistantException exception = await Should.ThrowAsync<PatternAssistantException>(
+            () => assistant.DraftAsync(ZipDescription, cancellationToken: Ct));
+
+        exception.Message.ShouldContain("invalid x-api-key <redacted>");
+    }
+
+    [Fact]
     public async Task DraftAsync_CustomBaseAddressAndModel_AreUsed()
     {
         FakeAnthropicHandler handler = new FakeAnthropicHandler().EnqueueDraft("^abc$");
@@ -838,7 +879,7 @@ public class PatternAssistantTests
         PatternAssistantException exception = await Should.ThrowAsync<PatternAssistantException>(
             () => assistant.DraftAsync(ZipDescription, cancellationToken: Ct));
 
-        exception.Message.ShouldBe($"The Claude API returned HTTP 400 invalid_request_error: {new string('x', 500)}....");
+        exception.Message.ShouldBe($"The Claude API returned HTTP 400 invalid_request_error: {new string('x', 500)}...");
     }
 
     [Fact]

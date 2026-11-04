@@ -461,13 +461,13 @@ services.AddHttpClient<PatternAssistant>(client => client.Timeout = TimeSpan.Fro
 
 Every request is limited by both `PatternAssistantOptions.Timeout` (5 minutes by default) and `HttpClient.Timeout`. The default `HttpClient.Timeout` is 100 seconds, so it is usually the one that fires first. A draft at a high effort level can take longer than that. Raise `HttpClient.Timeout` above `Options.Timeout`, as in the registration above.
 
-When `HttpClient.Timeout` fires, the exception still names the options timeout. In a real run with `HttpClient.Timeout` set to 2 seconds and the default options, the call failed after 2 seconds with:
+The exception names the timeout that fired. With `HttpClient.Timeout` set to 2 seconds and the default options, the call fails after 2 seconds with:
 
 ```text
-The Claude API did not respond within 00:05:00.
+The Claude API did not respond within 00:00:02 (HttpClient.Timeout).
 ```
 
-- With `Options.Timeout` set to `Timeout.InfiniteTimeSpan`, the message is odd but harmless. In a real run with a 2-second `HttpClient.Timeout`, it read `The Claude API did not respond within -00:00:00.0010000.`
+- When `Options.Timeout` fires first, the message ends with `(PatternAssistantOptions.Timeout)` instead.
 - `Options.Timeout` applies to each request separately, not to the whole `DraftAsync` call. A call with three attempts can take up to three times as long.
 - Both timeouts cover everything the client does for one request, including retries by a resilience handler.
 
@@ -490,11 +490,11 @@ These are real messages, each from a handler that returned the failure in the fi
 |---------|-----------|---------------|
 | HTTP 401 with a `request-id` header | `The Claude API returned HTTP 401 authentication_error: invalid x-api-key (request-id req_011CabcXYZ).` | `false` |
 | HTTP 400 | `The Claude API returned HTTP 400 invalid_request_error: model: not found.` | `false` |
-| HTTP 429 with `Retry-After: 30` | `The Claude API returned HTTP 429 rate_limit_error: Number of request tokens has exceeded your per-minute rate limit..` (`RetryAfter` is `00:00:30`) | `true` |
+| HTTP 429 with `Retry-After: 30` | `The Claude API returned HTTP 429 rate_limit_error: Number of request tokens has exceeded your per-minute rate limit.` (`RetryAfter` is `00:00:30`) | `true` |
 | HTTP 529 | `The Claude API returned HTTP 529 overloaded_error: Overloaded.` | `true` |
 | HTTP 502 with an HTML body | `The Claude API returned HTTP 502.` | `true` |
 | Network failure (a `BaseAddress` whose host does not exist) | `Could not reach the Claude API: No such host is known. (nonexistent-host.invalid:443)` | `true` |
-| `Options.Timeout` of 2 seconds expired | `The Claude API did not respond within 00:00:02.` | `true` |
+| `Options.Timeout` of 2 seconds expired | `The Claude API did not respond within 00:00:02 (PatternAssistantOptions.Timeout).` | `true` |
 | `stop_reason` is `refusal` | `The model declined to draft this pattern (stop_reason "refusal").` | `false` |
 | HTTP 200 with a body that is not JSON | `The Claude API returned a response that is not valid JSON.` | `false` |
 | HTTP 200 without a `content` array | `The Claude API response has no content array.` | `false` |
