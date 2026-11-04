@@ -815,6 +815,17 @@ public class TemplateTests
     }
 
     [Fact]
+    public void Parse_DecimalWithArabicDigitsAndSeparator_IsReadByTheDefaultPlaceholder()
+    {
+        Template<Price> template = Template.Of<Price>("{Amount}");
+
+        Price price = template.Parse("١٢٫٥");
+
+        price.Amount.ShouldBe(12.5m);
+        template.Parse("12.5").Amount.ShouldBe(12.5m);
+    }
+
+    [Fact]
     public void Format_NegativeTimeSpanWithACustomFormat_ThrowsInsteadOfDroppingTheSign()
     {
         Template<Duration> compiled = Template.Of<Duration>(@"took {Elapsed:hh\:mm}");

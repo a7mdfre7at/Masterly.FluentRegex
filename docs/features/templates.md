@@ -159,7 +159,7 @@ german.Format(new Price(3.75m));      // "3,75 EUR"
 `\d` in .NET matches every Unicode decimal digit, and templates convert them: `{Value}` reads
 `"٢٠٢٦"` (Arabic-Indic), `"۲۰۲۶"` (Persian) and `"२०२६"` (Devanagari) as `2026`, and
 `{When:yyyy-MM-dd}` reads `"٢٠٢٦-١١-٠٢"`. The Arabic decimal separator `٫` is mapped to the
-culture's separator when it appears in a matched number (use `re:` to allow it in the fragment).
+culture's separator, and the default number fragment accepts it next to the culture's own separator.
 
 ## Using the pattern directly
 

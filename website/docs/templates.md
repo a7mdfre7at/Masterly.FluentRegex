@@ -689,12 +689,12 @@ using Masterly.FluentRegex;
 Template<Item> item = Template.Of<Item>("{Id}");
 int arabicIndic = item.Parse("٢٠٢٦").Id;  // 2026
 
-// The fragment uses the culture's separator, so allow the Arabic decimal separator with re:
-Template<Price> price = Template.Of<Price>(@"{Amount:re:\d+(?:[.٫]\d+)?}");
+// The number fragment accepts the Arabic decimal separator next to the culture's own
+Template<Price> price = Template.Of<Price>("{Amount}");
 decimal amount = price.Parse("١٢٫٥").Amount; // 12.5
 ```
 
-- The Arabic decimal separator `٫` is converted to the culture's separator when it appears in a matched number. The default number fragment does not match it, so `Template.Of<Price>("{Amount}").Parse("١٢٫٥")` fails. Use `re:` as above.
+- The Arabic decimal separator `٫` is accepted by the default number fragment, next to the culture's own separator, and is converted to the culture's separator before the number is parsed.
 - `Format` writes numbers with the .NET formatting of the culture, so a round trip turns Unicode digits into ASCII digits.
 
 ### Case sensitivity

@@ -130,7 +130,13 @@ internal sealed class FloatingCodec : FieldCodec
 
     private string Sign => $"(?:{RegexText.Escape(_numbers.NegativeSign)})?";
 
-    private string Separator => RegexText.Escape(_numbers.NumberDecimalSeparator);
+    // The Arabic decimal separator is accepted next to the culture's own, because parsing maps it to the culture's
+    // separator (as it maps Arabic-Indic and other digits that \d matches).
+    private string Separator => _numbers.NumberDecimalSeparator == ArabicDecimalSeparator
+        ? RegexText.Escape(ArabicDecimalSeparator)
+        : $"(?:{RegexText.Escape(_numbers.NumberDecimalSeparator)}|{ArabicDecimalSeparator})";
+
+    private const string ArabicDecimalSeparator = "٫";
 
     private string FixedFragment(int decimals)
     {
