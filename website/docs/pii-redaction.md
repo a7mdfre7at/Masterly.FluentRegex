@@ -496,7 +496,7 @@ string leading = leadingOnly.Mask("a 123 4567");                 // a *** ***7
 
 ## When matches overlap
 
-Each pattern searches the whole text on its own. When hits of different patterns overlap, the redactor keeps one and drops the others, using these rules in order:
+Each pattern searches the whole text on its own. When hits of different patterns overlap, the redactor keeps one whole hit, using these rules in order:
 
 1. The hit that **starts earliest** wins.
 2. For hits with the same start, the **longest** hit wins.
@@ -504,8 +504,9 @@ Each pattern searches the whole text on its own. When hits of different patterns
 
 ```csharp title="Overlap rules"
 RedactionReport earliest = Redactor.For(Pattern.With.Literal("bcd"), Pattern.With.Literal("abc")).Redact("abcd");
-string first = earliest.Text;                        // ***d
+string first = earliest.Text;                        // ****
 int firstIndex = earliest.Spans[0].PatternIndex;     // 1: "abc" starts earlier
+int tailIndex = earliest.Spans[1].PatternIndex;      // 0: the "d" of "bcd" is masked too
 
 RedactionReport longest = Redactor.For(Pattern.With.Literal("ab"), Pattern.With.Literal("abc")).Redact("abcx");
 string longer = longest.Text;                        // ***x
@@ -516,6 +517,8 @@ Redactor tie = Redactor.For()
     .Add(Pattern.With.Literal("ab"), RedactionStyle.Label("[B]"));
 string tied = tie.Mask("ab");                        // [A]: registered first
 ```
+
+When a losing hit reaches past the winner, its uncovered part is still redacted, with the `Mask` style, and gets a span of its own. No character that any pattern matched stays visible.
 
 In real text, the longest-hit rule lets a specific pattern beat a generic one, whatever the registration order:
 

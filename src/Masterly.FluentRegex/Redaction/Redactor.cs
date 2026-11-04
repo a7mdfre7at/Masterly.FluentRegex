@@ -20,7 +20,8 @@ namespace Masterly.FluentRegex;
 /// </para>
 /// <para>
 /// When hits of different patterns overlap, the earliest start wins, then the longest hit, then
-/// the pattern registered first. A redactor is immutable and thread-safe: <see cref="Add(Pattern, RedactionStyle?)"/>
+/// the pattern registered first. The part of a losing hit that reaches past the winner is masked too,
+/// so no matched character is left visible. A redactor is immutable and thread-safe: <see cref="Add(Pattern, RedactionStyle?)"/>
 /// returns a new redactor.
 /// </para>
 /// </remarks>
@@ -117,7 +118,7 @@ public sealed class Redactor
             throw new ArgumentNullException(nameof(text));
         }
 
-        List<Hit> selected = SelectNonOverlapping(CollectHits(text));
+        List<Piece> selected = SelectNonOverlapping(CollectHits(text));
         return BuildReport(text, selected);
     }
 
@@ -159,36 +160,48 @@ public sealed class Redactor
         return byLength != 0 ? byLength : left.RuleIndex.CompareTo(right.RuleIndex);
     }
 
-    private static List<Hit> SelectNonOverlapping(List<Hit> sortedHits)
+    /// <summary>
+    /// Keeps the winning hit of each overlap (earliest start, then longest, then first registered). When a losing hit
+    /// reaches past the winner, its uncovered tail becomes a masked piece of its own, so no matched character of any
+    /// pattern is left visible.
+    /// </summary>
+    private static List<Piece> SelectNonOverlapping(List<Hit> sortedHits)
     {
-        List<Hit> selected = new List<Hit>();
+        List<Piece> selected = new List<Piece>();
         int covered = 0;
         foreach (Hit hit in sortedHits)
         {
-            if (hit.Match.Index >= covered)
+            int start = hit.Match.Index;
+            int end = start + hit.Match.Length;
+            if (start >= covered)
             {
-                selected.Add(hit);
-                covered = hit.Match.Index + hit.Match.Length;
+                selected.Add(new Piece(start, hit.Match.Length, hit.Match, hit.RuleIndex));
+                covered = end;
+            }
+            else if (end > covered)
+            {
+                selected.Add(new Piece(covered, end - covered, null, hit.RuleIndex));
+                covered = end;
             }
         }
 
         return selected;
     }
 
-    private RedactionReport BuildReport(string text, List<Hit> selected)
+    private RedactionReport BuildReport(string text, List<Piece> selected)
     {
         StringBuilder sb = new StringBuilder(text.Length);
         List<RedactedSpan> spans = new List<RedactedSpan>(selected.Count);
         int copied = 0;
-        foreach (Hit hit in selected)
+        foreach (Piece piece in selected)
         {
-            Match match = hit.Match;
-            RedactionStyle style = _rules[hit.RuleIndex].Style;
-            sb.Append(text, copied, match.Index - copied);
+            // A whole hit uses its pattern's style; the uncovered tail of a losing hit is masked.
+            RedactionStyle style = piece.Match != null ? _rules[piece.RuleIndex].Style : RedactionStyle.Mask;
+            sb.Append(text, copied, piece.Start - copied);
             int redactedStart = sb.Length;
-            sb.Append(style.Apply(match));
-            spans.Add(new RedactedSpan(match.Index, match.Length, redactedStart, sb.Length - redactedStart, style, hit.RuleIndex));
-            copied = match.Index + match.Length;
+            sb.Append(piece.Match != null ? style.Apply(piece.Match) : RedactionStyle.MaskText(text.Substring(piece.Start, piece.Length)));
+            spans.Add(new RedactedSpan(piece.Start, piece.Length, redactedStart, sb.Length - redactedStart, style, piece.RuleIndex));
+            copied = piece.Start + piece.Length;
         }
 
         sb.Append(text, copied, text.Length - copied);
@@ -206,6 +219,25 @@ public sealed class Redactor
         public ConstrainedPattern Searcher { get; }
 
         public RedactionStyle Style { get; }
+    }
+
+    private readonly struct Piece
+    {
+        public Piece(int start, int length, Match? match, int ruleIndex)
+        {
+            Start = start;
+            Length = length;
+            Match = match;
+            RuleIndex = ruleIndex;
+        }
+
+        public int Start { get; }
+
+        public int Length { get; }
+
+        public Match? Match { get; }
+
+        public int RuleIndex { get; }
     }
 
     private readonly struct Hit

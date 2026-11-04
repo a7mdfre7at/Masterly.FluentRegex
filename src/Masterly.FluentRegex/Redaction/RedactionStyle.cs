@@ -103,6 +103,9 @@ public abstract class RedactionStyle
     /// <summary>Computes the redacted replacement for a match.</summary>
     internal abstract string Apply(Match match);
 
+    /// <summary>Masks every letter and digit of <paramref name="value"/>, keeping the rest, like <see cref="Mask"/>.</summary>
+    internal static string MaskText(string value) => MaskAlphanumerics(value, 0, 0);
+
     private static int RequireCount(int count)
     {
         if (count < 0)

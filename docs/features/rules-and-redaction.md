@@ -98,7 +98,7 @@ redactor.Mask("Mail bob@example.com, card 4111 1111 1111 1111 (not 4111 1111 111
   lookahead stay, so `CommonPatterns.Email(PatternStrictness.Strict)` can miss an address in long text.
 - **Rules filter hits.** Only the Luhn-valid card above was redacted.
 - **Overlaps** between patterns: the earliest start wins, then the longest hit, then the pattern
-  registered first.
+  registered first. The part of a losing hit that reaches past the winner is masked too.
 - **Immutable and thread-safe.** `Add` returns a new `Redactor`; share one instance across threads.
 
 ### Styles

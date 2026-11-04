@@ -169,14 +169,32 @@ public class RedactionTests
     }
 
     [Fact]
-    public void Redact_OverlappingHits_EarliestStartWins()
+    public void Redact_OverlappingHits_EarliestStartWins_AndTheLosersTailIsStillRedacted()
     {
         Redactor redactor = Redactor.For(Pattern.With.Literal("bcd"), Pattern.With.Literal("abc"));
 
         RedactionReport report = redactor.Redact("abcd");
 
-        report.Text.ShouldBe("***d");
-        report.Spans.Single().PatternIndex.ShouldBe(1);
+        // "d" belongs to the losing hit "bcd"; leaving it visible would leak part of a sensitive value.
+        report.Text.ShouldBe("****");
+        report.Spans.Count.ShouldBe(2);
+        report.Spans[0].PatternIndex.ShouldBe(1);
+        report.Spans[1].PatternIndex.ShouldBe(0);
+        report.Spans[1].Start.ShouldBe(3);
+        report.Spans[1].Length.ShouldBe(1);
+        report.Spans[1].Style.ShouldBe("Mask");
+    }
+
+    [Fact]
+    public void Redact_LabelledWinnerWithOverlappingLoser_MasksTheUncoveredTail()
+    {
+        Redactor redactor = Redactor.For()
+            .Add(Pattern.With.Literal("ab"), RedactionStyle.Label("[A]"))
+            .Add(Pattern.With.Literal("bc"), RedactionStyle.Label("[B]"));
+
+        string masked = redactor.Mask("abc!");
+
+        masked.ShouldBe("[A]*!");
     }
 
     [Fact]
