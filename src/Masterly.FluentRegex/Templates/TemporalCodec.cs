@@ -68,7 +68,22 @@ internal sealed class TemporalCodec : FieldCodec
         return ParseDateOrTime(ascii);
     }
 
-    public override string Format(object? value) => ConverterCodec.Render(value, _format, _culture);
+    public override string Format(object? value)
+    {
+        // Custom TimeSpan formats have no sign specifier, so a negative value would be written as positive.
+        if (value is TimeSpan span && span < TimeSpan.Zero && !IsStandardTimeSpanFormat(_format))
+        {
+            throw new ArgumentException(
+                $"The TimeSpan value '{span}' is negative, but the custom format '{_format}' cannot write a sign. " +
+                "Use the c, g or G format for values that can be negative.",
+                nameof(value));
+        }
+
+        return ConverterCodec.Render(value, _format, _culture);
+    }
+
+    private static bool IsStandardTimeSpanFormat(string format) =>
+        format.Length == 1 && "cgGtT".IndexOf(format[0]) >= 0;
 
     private object ParseDateOrTime(string text)
     {

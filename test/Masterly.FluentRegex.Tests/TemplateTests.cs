@@ -815,6 +815,30 @@ public class TemplateTests
     }
 
     [Fact]
+    public void Format_NegativeTimeSpanWithACustomFormat_ThrowsInsteadOfDroppingTheSign()
+    {
+        Template<Duration> compiled = Template.Of<Duration>(@"took {Elapsed:hh\:mm}");
+
+        ArgumentException exception = Should.Throw<ArgumentException>(
+            () => compiled.Format(new Duration(TimeSpan.FromMinutes(-90))));
+
+        exception.Message.ShouldContain("negative");
+    }
+
+    [Theory]
+    [InlineData("took {Elapsed:c}", "took -01:30:00")]
+    [InlineData("took {Elapsed:g}", "took -1:30:00")]
+    public void ParseFormat_NegativeTimeSpanWithAStandardFormat_RoundTrips(string template, string expected)
+    {
+        Template<Duration> compiled = Template.Of<Duration>(template);
+
+        string text = compiled.Format(new Duration(TimeSpan.FromMinutes(-90)));
+
+        text.ShouldBe(expected);
+        compiled.Parse(text).Elapsed.ShouldBe(TimeSpan.FromMinutes(-90));
+    }
+
+    [Fact]
     public void Of_TimeSpanFormatWithUnescapedLiteral_ThrowsArgumentException()
     {
         Should.Throw<ArgumentException>(() => Template.Of<Duration>("{Elapsed:hh:mm}"));

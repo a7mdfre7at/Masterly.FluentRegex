@@ -643,7 +643,7 @@ TimeSpan formats follow the .NET rules, which are stricter than date formats: ev
 
 :::
 
-- Custom TimeSpan formats have no sign. `Format` writes `TimeSpan.FromMinutes(-90)` as `01:30` with `hh\:mm`, which parses back as a positive value. Use `c`, `g` or `G` when values can be negative.
+- Custom TimeSpan formats have no sign, so `Format` throws `ArgumentException` for a negative value under one, such as `TimeSpan.FromMinutes(-90)` with `hh\:mm`, instead of writing it as positive. Use `c`, `g` or `G` when values can be negative: `c` writes `-01:30:00`.
 - A custom format without `d` drops whole days. `Format` writes `TimeSpan.FromHours(25)` as `01:00` with `hh\:mm`, without an error. Add a `d` specifier, or use `c`, when durations can reach a day.
 - Without a format, `Format` writes the constant format `c` and `Parse` uses `TimeSpan.Parse`, which also accepts short forms such as `1:02:03`.
 

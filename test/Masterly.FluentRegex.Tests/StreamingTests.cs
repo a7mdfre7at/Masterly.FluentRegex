@@ -20,7 +20,8 @@ public class StreamingTests
     [Fact]
     public async Task MatchesAsync_EnumeratedTwice_ThrowsInsteadOfContinuingMidStream()
     {
-        IAsyncEnumerable<StreamMatch> matches = Pattern.With.Digit.Repeat.OneOrMore.MatchesAsync(new StringReader("1 22"));
+        IAsyncEnumerable<StreamMatch> matches = Pattern.With.Digit.Repeat.OneOrMore
+            .MatchesAsync(new StringReader("1 22"), cancellationToken: TestContext.Current.CancellationToken);
 
         List<string> first = new List<string>();
         await foreach (StreamMatch match in matches)

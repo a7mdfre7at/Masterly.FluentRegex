@@ -115,7 +115,8 @@ invoice.Format(new Invoice(12345, DateTime.Today));            // ArgumentExcept
   `{When:yyyy-MM-ddTHH:mm:sszzz}` reads `2026-11-02T10:30:00+03:00` with offset +03:00.
 - `TimeSpan` custom formats follow .NET rules: literals must be quoted or escaped, so write
   `{Elapsed:hh\:mm\:ss}`; `{Elapsed:hh:mm}` is rejected. Custom TimeSpan formats have no sign, so
-  negative durations only round-trip with `c`, `g` or `G`.
+  negative durations only round-trip with `c`, `g` or `G`; `Format` throws `ArgumentException` for a
+  negative value under a custom format.
 
 ## Parsing errors say where and why
 
