@@ -50,7 +50,7 @@ Legend: \e[44;97m match \e[0m
 ```
 
 - `Highlight` marks **every** match, in text order, the same matches `Matches(text)` returns. See [Matching](./matching.md).
-- Text outside the matches is copied unchanged (Brackets), HTML-encoded (Html), or copied with escape characters made visible (Ansi).
+- Text outside the matches is copied unchanged (Brackets), HTML-encoded with control characters made visible (Html), or copied with escape characters made visible (Ansi).
 - When nothing matches, Brackets returns the text unchanged, Html returns it HTML-encoded, and Ansi returns it followed by the legend line.
 - The pattern's options and match timeout apply, because `Highlight` runs the same cached `Regex` as `IsMatch` and `Matches`.
 
@@ -346,7 +346,7 @@ string html = tag.Highlight("<script>alert('x' & 1)</script>", HighlightFormat.H
 
 - Because the result is already encoded, insert it as raw HTML. In Razor use `@Html.Raw(html)`; in Blazor use `@((MarkupString)html)`. Encoding it again would show the tags as text.
 - `WebUtility.HtmlEncode` also writes characters from U+00A0 to U+00FF and characters outside the Basic Multilingual Plane as numeric entities: `café` becomes `caf&#233;` and an emoji becomes `&#128512;`. Browsers display them normally.
-- Control characters such as the escape character are not changed in HTML.
+- Control characters other than tab, line feed and carriage return are shown as their Unicode control pictures in HTML, for example the escape character as `␛` (U+241B).
 
 ### A complete page
 
@@ -433,7 +433,7 @@ The output starts with `␛[31m` as plain text, followed by the colored match.
 
 :::warning
 
-Only the Ansi format replaces escape characters. The Brackets and Html formats copy them unchanged. Do not print Brackets output of untrusted text to a terminal if control sequences are a concern.
+The Html format also shows control characters as visible symbols. Only the Brackets format copies them unchanged, because it is meant for test assertions. Do not print Brackets output of untrusted text to a terminal if control sequences are a concern.
 
 :::
 

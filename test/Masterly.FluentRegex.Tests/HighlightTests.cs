@@ -5,6 +5,19 @@ namespace Masterly.FluentRegex.Tests;
 
 public class HighlightTests
 {
+    [Fact]
+    public void Html_ControlCharactersInTheInput_AreShownAsVisibleSymbols()
+    {
+        string input = "a\u001B[31mb\u0007\tc\u007F";
+
+        string html = Pattern.With.Literal("b").Highlight(input, HighlightFormat.Html);
+
+        html.ShouldNotContain("\u001B");
+        html.ShouldNotContain("\u0007");
+        html.ShouldNotContain("\u007F");
+        html.ShouldBe("a␛[31m<mark class=\"frx-match\">b</mark>␇\tc␡");
+    }
+
     private const string Esc = "\u001b";
 
     private static readonly Pattern Phone = Pattern.With.Digit.Repeat.Times(3).Literal("-").Digit.Repeat.Times(4);
