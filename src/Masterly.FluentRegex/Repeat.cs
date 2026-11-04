@@ -26,9 +26,10 @@ namespace Masterly.FluentRegex
             if (last == null)
                 throw new InvalidOperationException("Repeat must follow an element to repeat, for example Pattern.With.Digit.Repeat.OneOrMore.");
 
-            // A quantifier directly on a quantifier is a .NET syntax error ("nested quantifier"),
-            // except for '?' which is the legacy way of writing a lazy quantifier.
-            if (last is QuantifiedToken && quantifier != "?")
+            // A quantifier directly on a quantifier is a .NET syntax error ("nested quantifier"), and a '?' there
+            // would make the first one lazy instead of optional, so the quantified element is wrapped in a group.
+            // Use Pattern.Lazy for a lazy quantifier.
+            if (last is QuantifiedToken)
                 last = new WrapToken("(?:", Pattern.With.Append(last), ")");
 
             return _pattern.ReplaceLast(new QuantifiedToken(last, quantifier, QuantifierMode.Greedy));
@@ -40,7 +41,10 @@ namespace Masterly.FluentRegex
         /// <summary>Zero or more times: <c>*</c>.</summary>
         public Pattern ZeroOrMore => Apply("*");
 
-        /// <summary>Zero or one time: <c>?</c>.</summary>
+        /// <summary>
+        /// Zero or one time: <c>?</c>. After another quantifier the repeated element is wrapped first, so
+        /// <c>Digit.Repeat.OneOrMore.Repeat.Optional</c> is <c>(?:\d+)?</c>. Use <see cref="Pattern.Lazy"/> for a lazy quantifier.
+        /// </summary>
         public Pattern Optional => Apply("?");
 
         /// <summary>Exactly <paramref name="exactly"/> times: <c>{n}</c>.</summary>

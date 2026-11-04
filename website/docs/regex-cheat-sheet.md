@@ -388,7 +388,7 @@ Console.WriteLine(stacked);                  // (?:\d{2}){3}
 Console.WriteLine(optionalAfterQuantifier);  // \d+?
 ```
 
-- `Repeat.Optional` directly after another quantifier is not wrapped. It renders `?`, which .NET reads as "make it lazy". Write `.Lazy` when you mean lazy. Wrap the element in `NonCapturingGroup(...)` first when you mean "optional".
+- `Repeat.Optional` directly after another quantifier wraps the element too, so `Digit.Repeat.OneOrMore.Repeat.Optional` renders `(?:\d+)?`. Write `.Lazy` for a lazy quantifier.
 - A quantifier on an empty pattern, such as `Pattern.With.Repeat.OneOrMore`, throws `InvalidOperationException`. Reading `.Repeat` alone does not throw; the count does. `Lazy` and `Possessive` also throw `InvalidOperationException` when the last element has no quantifier.
 - Negative counts throw `ArgumentOutOfRangeException`, and so does `Times(min, max)` when `max` is less than `min`.
 
@@ -857,7 +857,7 @@ See [Compile-Time Checks](./compile-time-checks.md) for the analyzer, and [Valid
 ## Common pitfalls
 
 - **A quantifier repeats one element.** `Literal("ab").Repeat.OneOrMore` is `ab+`. Group first: `NonCapturingGroup(Pattern.With.Literal("ab")).Repeat.OneOrMore`.
-- **`Repeat.Optional` after a quantifier means lazy.** `Digit.Repeat.OneOrMore.Repeat.Optional` is `\d+?`. Use `.Lazy` to say what you mean.
+- **A lazy quantifier is `.Lazy`, not `Repeat.Optional`.** `Digit.Repeat.OneOrMore.Repeat.Optional` is `(?:\d+)?`, an optional repetition.
 - **`Choice` captures.** It adds a numbered group and shifts later group numbers. Use `|` or `OneOf` when you only need alternation.
 - **`$` is not the end of the input.** It also matches before a trailing `\n`. Use `EndOfInput` (`\z`) for validation.
 - **`\d` and `\w` are Unicode.** Use `AsciiDigit`, `Letter`, `DigitIn(UnicodeScript.Latin)` or `WithAsciiDigits()` for ASCII-only formats.

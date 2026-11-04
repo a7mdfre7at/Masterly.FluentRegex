@@ -220,56 +220,36 @@ Console.WriteLine(pairs);              // (?:\d{2}){3}
 Console.WriteLine(pairs.IsValid());    // True
 ```
 
-There is one exception: `Repeat.Optional`. In regex syntax a `?` after a quantifier means "lazy", and the builder keeps that legacy meaning. So `Repeat.Optional` on an already quantified element does **not** make it optional. It makes it lazy.
+`Repeat.Optional` follows the same rule, so it makes a repeated element optional as a whole. A lazy quantifier is written with `.Lazy`:
 
 ```csharp
-Pattern lazyNotOptional = Pattern.With.Digit.Repeat.OneOrMore.Repeat.Optional;
-Console.WriteLine(lazyNotOptional);                        // \d+?
-Console.WriteLine(lazyNotOptional.Match("12345").Value);   // 1
+Pattern optional = Pattern.With.Digit.Repeat.OneOrMore.Repeat.Optional;
+Console.WriteLine(optional);                        // (?:\d+)?
+Console.WriteLine(optional.Match("12345").Value);   // 12345
 
-Pattern stillRequired = Pattern.With.StartOfLine.Literal("v").Digit.Repeat.Times(2).Repeat.Optional.EndOfLine;
-Console.WriteLine(stillRequired);                // ^v\d{2}?$
-Console.WriteLine(stillRequired.IsMatch("v"));   // False
+Pattern version = Pattern.With.StartOfLine.Literal("v").Digit.Repeat.Times(2).Repeat.Optional.EndOfLine;
+Console.WriteLine(version);                  // ^v(?:\d{2})?$
+Console.WriteLine(version.IsMatch("v"));     // True
+Console.WriteLine(version.IsMatch("v12"));   // True
 
-Pattern reallyOptional = Pattern.With.StartOfLine.Literal("v")
-    .NonCapturingGroup(Pattern.With.Digit.Repeat.Times(2)).Repeat.Optional
-    .EndOfLine;
-Console.WriteLine(reallyOptional);                 // ^v(?:\d{2})?$
-Console.WriteLine(reallyOptional.IsMatch("v"));    // True
-Console.WriteLine(reallyOptional.IsMatch("v12"));  // True
+Pattern lazy = Pattern.With.Digit.Repeat.OneOrMore.Lazy;
+Console.WriteLine(lazy);                     // \d+?
+Console.WriteLine(lazy.Match("12345").Value);   // 1
 ```
 
-:::warning
-
-To make a repeated element optional, wrap it in `NonCapturingGroup(...)` (or `Group(...)`) and then call `Repeat.Optional`, as `reallyOptional` does. Calling `Repeat.Optional` straight after another quantifier gives you a lazy quantifier, not an optional one. When you mean lazy, write `.Lazy`. It says what you mean.
-
-:::
-
-Mixing the two ways of writing lazy produces an invalid pattern. `.Lazy` followed by `Repeat.Optional`, or `Repeat.Optional` followed by `.Lazy`, both add a second `?` after the lazy one, and .NET rejects the result:
+`.Lazy` and `Repeat.Optional` can be combined in either order, and each keeps its meaning:
 
 ```csharp
-// count comes from your application
-int count = int.Parse("1");
+Pattern lazyThenOptional = Pattern.With.Digit.Repeat.AtLeast(2).Lazy.Repeat.Optional;
+Console.WriteLine(lazyThenOptional);                       // (?:\d{2,}?)?
+Console.WriteLine(lazyThenOptional.Match("12345").Value);  // 12
 
-Pattern lazyThenOptional = Pattern.With.Digit.Repeat.AtLeast(count).Lazy.Repeat.Optional;
-Console.WriteLine(lazyThenOptional);              // \d{1,}??
-Console.WriteLine(lazyThenOptional.IsValid());    // False
-
-Pattern optionalThenLazy = Pattern.With.Digit.Repeat.AtLeast(count).Repeat.Optional.Lazy;
-Console.WriteLine(optionalThenLazy);              // \d{1,}??
-
-try
-{
-    optionalThenLazy.IsMatch("1");
-}
-catch (ArgumentException ex)
-{
-    Console.WriteLine(ex.Message);   // Invalid pattern '\d{1,}??' at offset 8. Nested quantifier '?'.
-}
+Pattern optionalThenLazy = Pattern.With.Digit.Repeat.AtLeast(2).Repeat.Optional.Lazy;
+Console.WriteLine(optionalThenLazy);                       // (?:\d{2,})??
 ```
 
-- The builder does not reject these chains. The error appears only when the regex is compiled, as a `RegexParseException` (a subclass of `ArgumentException`).
-- When the whole chain is made of constants, such as `Pattern.With.Digit.Repeat.OneOrMore.Lazy.Repeat.Optional`, the package's analyzer reports error `FRX003` at compile time: *The pattern produces an invalid regular expression '\d+??' ... Nested quantifier '?'.* That is why this sample takes the count from a variable. See [Compile-Time Checks](./compile-time-checks.md).
+- `lazyThenOptional` is an optional group around a lazy repetition: when it matches, it takes as few digits as it can, two here.
+- `optionalThenLazy` is a lazy optional group: it prefers to match nothing, so `Match("12345")` returns an empty match at position 0.
 
 ## Greedy, lazy and possessive
 
@@ -598,13 +578,12 @@ More tools: [Validation and Debugging](./validation-and-debugging.md), [Optimize
 ## Tips and pitfalls
 
 - **Repeat sequences through a group.** `Literal("ab").Repeat.OneOrMore` is `ab+`. Write `NonCapturingGroup(Pattern.With.Literal("ab")).Repeat.OneOrMore` for `(?:ab)+`.
-- **Make a repeated element optional through a group.** `Repeat.Optional` straight after another quantifier makes it lazy (`\d+?`), not optional.
+- **Write `.Lazy` for a lazy quantifier.** `Repeat.Optional` after another quantifier makes the repetition optional, `(?:\d+)?`, not lazy.
 - **Anchor exact counts.** `Times(5)` without anchors also finds five digits inside a longer number.
 - **Watch for empty matches.** `ZeroOrMore`, `Optional`, `AtMost` and `Times(0, n)` can all match nothing.
 - **Prefer a narrow class to a lazy dot.** `[^>]+` is clearer and faster than `.+?` before `>`.
 - **Never nest open-ended repetitions without protection.** Make the inner one `Possessive`, or restructure it. Run `AnalyzeSafety()` on patterns that handle untrusted input.
 - **Use `Possessive` only where giving back cannot help.** It can turn a match into no match, as `(?>\d+)\d` shows.
 - **Avoid `Possessive` in patterns you export.** It becomes an atomic group, which JavaScript, JSON Schema, PostgreSQL, SQL Server and SQLite cannot express. Only the MySQL and MariaDB flavors keep it.
-- **Do not mix `.Lazy` with `Repeat.Optional` on the same quantifier.** Either order writes an invalid `??` pair.
 
 For a summary of every regex quantifier, see the [Regex Cheat Sheet](./regex-cheat-sheet.md).

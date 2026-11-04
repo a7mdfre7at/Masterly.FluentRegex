@@ -231,11 +231,11 @@ In 2.x, adding a quantifier to an element that already had one produced an inval
 
 ```csharp
 Console.WriteLine(Pattern.With.Digit.Repeat.Times(2).Repeat.Times(3));   // (?:\d{2}){3}
-Console.WriteLine(Pattern.With.Digit.Repeat.OneOrMore.Repeat.Optional);  // \d+?
+Console.WriteLine(Pattern.With.Digit.Repeat.OneOrMore.Repeat.Optional);  // (?:\d+)?
 Console.WriteLine(Pattern.With.Digit.Repeat.OneOrMore.Lazy);             // \d+?
 ```
 
-- `Repeat.Optional` directly after a quantifier is the one exception. It still produces the lazy form, as it did in 2.x, so existing code keeps its meaning.
+- `Repeat.Optional` directly after a quantifier is wrapped too, so it makes the repetition optional. In 2.x (and up to 3.1.1) it produced the lazy form `\d+?` instead. If your code used it to mean "lazy", replace it with `.Lazy`.
 - Prefer the new `.Lazy` for lazy quantifiers. The 2.x README documented `.Lazy`, but 2.x did not have it. 3.0 added `.Lazy` and `.Possessive`. See [Quantifiers](./quantifiers.md).
 
 ### What did not change

@@ -11,6 +11,7 @@ that was wrong; they are marked **Behavior change**.
 - **Behavior change:** `IsValid()` and `TryValidate()` validate with the pattern's own options, so they accept valid `IgnorePatternWhitespace` patterns and reject `NonBacktracking` patterns the engine cannot run.
 - **Behavior change:** under `RegexOptions.IgnorePatternWhitespace` (and inside `InlineOptions(IgnorePatternWhitespace, ...)`), `Literal` escapes whitespace and `#`, so it still matches its own text. Patterns without the option render as before.
 - **Behavior change:** `a | b` keeps the options and timeout of the left operand, like `a + b`, instead of resetting them.
+- **Behavior change:** `Repeat.Optional` directly after another quantifier makes the repetition optional, `(?:\d+)?`, instead of making it lazy (`\d+?`). Use `.Lazy` for a lazy quantifier.
 - `Explain()` describes conditionals, `\A`, `\z`, `\x41`, `\u00E9`, `\p{Lu}`, octal escapes, inline options, comments, quoted and balancing groups, lazy `??`, escaped `]` in sets and multi-digit backreferences correctly, treats a `{` that is not a quantifier as a literal, and describes `\d` and `\w` as Unicode-aware unless `RegexOptions.ECMAScript` is set.
 - `UnicodeBlock` accepts the `Is` prefix in any case and rejects unknown block names when the pattern is built.
 - `AnyOf(null)` and `NoneOf(null)` throw `ArgumentNullException`; `IsEquivalentTo`, `IsSubsetOf` and `Overlaps` name `other` as the null parameter; `Literal(params char[])` names its parameter `characters`.

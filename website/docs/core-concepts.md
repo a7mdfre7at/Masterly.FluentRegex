@@ -145,7 +145,7 @@ Pattern appended = Pattern.With.Literal("x").Then(Pattern.With.Literal("ab")).Re
 - `RegEx("ab")` adds one element, but the quantifier is written right after it. The regex engine then repeats only `b`, exactly as it would in a hand-written `ab+`.
 - `Then(...)` appends the other pattern's elements one by one, as if you had written them inline. A quantifier after it applies to the other pattern's last element.
 - A quantifier directly after another quantifier wraps the first in a non-capturing group: `Pattern.With.Digit.Repeat.Times(2).Repeat.Times(3)` builds `(?:\d{2}){3}`.
-- `Repeat.Optional` is the exception. Directly after a quantifier it appends a plain `?`, which is the regex syntax for a lazy quantifier: `Pattern.With.Digit.Repeat.OneOrMore.Repeat.Optional` builds `\d+?`. The library keeps this legacy way of writing a lazy quantifier. Write `.Lazy` when you mean lazy, and `Group(...)` when you really want an optional repetition.
+- `Repeat.Optional` follows the same rule: `Pattern.With.Digit.Repeat.OneOrMore.Repeat.Optional` builds `(?:\d+)?`, an optional repetition. Write `.Lazy` for a lazy quantifier: `Pattern.With.Digit.Repeat.OneOrMore.Lazy` builds `\d+?`.
 
 ## Immutability
 

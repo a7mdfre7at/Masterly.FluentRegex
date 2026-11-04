@@ -193,6 +193,26 @@ public class BuilderTests
         exception.Message.ShouldContain("Unknown Unicode block 'Klingon'");
     }
 
+    [Theory]
+    [InlineData(@"(?:\d+)?")]
+    public void RepeatOptional_AfterAQuantifier_MakesTheRepetitionOptional_NotLazy(string expected)
+    {
+        Pattern pattern = Pattern.With.Digit.Repeat.OneOrMore.Repeat.Optional;
+
+        pattern.ToString().ShouldBe(expected);
+        pattern.Match("12345").Value.ShouldBe("12345");
+        Pattern.With.StartOfLine.Literal("v").Digit.Repeat.Times(2).Repeat.Optional.EndOfLine.IsMatch("v").ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Lazy_IsTheWayToWriteALazyQuantifier()
+    {
+        Pattern pattern = Pattern.With.Digit.Repeat.OneOrMore.Lazy;
+
+        pattern.ToString().ShouldBe(@"\d+?");
+        pattern.Match("12345").Value.ShouldBe("1");
+    }
+
     [Fact]
     public void OrOperator_KeepsTheSharedOptionsOfItsOperands()
     {
